@@ -7,6 +7,13 @@ Audience: security reviewers, implementers, and organizations considering adopti
 
 Status: design analysis, not a completed security assessment.
 
+The implemented [local infrastructure](deployment.md#local-development) has no
+protocol operations, signers, credentials, or databases. It rejects non-loopback
+binds, does not read request bodies, and discards HTTP diagnostics that could
+include peer addresses or panic values. These are limited infrastructure controls,
+not the protocol properties below. Other local users, browser-initiated requests,
+host compromise, and externally configured proxies remain outside that isolation.
+
 ## Assets and principals
 
 Protect membership identities, eligibility, private keys, answers, token unlinkability,

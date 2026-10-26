@@ -5,19 +5,26 @@
 
 Audience: contributors choosing work and reviewers assessing scope.
 
-The repository currently contains documentation and checks, not a working product.
+The repository contains documentation, checks, and local Go HTTP infrastructure,
+not a working submission product.
 Now / Next / Later express focus, not delivery promises. Use issues for individual
 tasks and keep technical requirements in the linked reference documents.
 
 ## Now
 
-- Build the Go services, CLI/WASM entry points, and local Compose environment using
+- Extend the local Go services with CLI/WASM entry points and a Compose environment using
   the boundaries in [architecture](architecture.md) and [deployment](deployment.md).
-- Add real build, test, and security targets from [testing](testing.md).
+- Extend the implemented build, race, lint, fuzz, and security targets with database,
+  client, container, and browser checks from [testing](testing.md).
 - Implement local key generation, bounded encrypted backups, CA signing, enrollment,
   and revocation under [key management](key-management.md) and [protocol](protocol.md).
 - Keep any initial interface read-only, locally bound, and clearly marked as mock
   data. Unimplemented security operations must fail without accepting real secrets.
+
+Implemented infrastructure consists of separate CA, issuer, and submission commands,
+loopback-only listeners, liveness/status/source endpoints, and bounded shutdown.
+Readiness remains unavailable. Protocol routes fail explicitly without reading
+request bodies; no protocol or storage security property is claimed.
 
 ## Next
 

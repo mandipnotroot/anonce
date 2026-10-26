@@ -9,7 +9,8 @@ Audience: contributors and automated tooling.
 
 anonce designs anonymous submissions from verified members with administrator-set
 per-member response limits for each round.
-This checkout contains documentation and repository checks, not a working product.
+This checkout contains documentation, repository checks, and demonstration-only Go
+HTTP infrastructure, not a working submission product.
 Keep implemented behavior distinct from intended behavior.
 
 - `docs/`: architecture, security, operations, and contributor reference.
@@ -18,7 +19,8 @@ Keep implemented behavior distinct from intended behavior.
 - `scripts/`: policy, commit, and documentation checks.
 - `.githooks/`: local enforcement, installed through `make setup`.
 - `.github/`: collaboration templates and supported CI workflows.
-- Planned runtime layout: `cmd/`, `internal/`, `migrations/`, `web/`.
+- `cmd/`, `internal/`: local CA, issuer, and submission HTTP infrastructure.
+- Planned runtime layout also includes `migrations/` and `web/`.
 
 ## Authorship and wording
 
@@ -56,11 +58,16 @@ make docs-setup       # install checksum-pinned mdBook and asset notices
 make docs-build       # build and validate the mdBook site
 make docs-external    # check externally hosted references
 make workflow-lint    # pinned actionlint; requires Go
+make build            # build the local demonstration commands
+make test             # race tests and coverage report
+make lint             # Go analysis, formatting, and module checks
+make fuzz             # bounded configuration-parser fuzzing
+make vuln             # Go vulnerability, static security, and secret checks
 ```
 
-The Go/container work is not present yet. Its required command contract is recorded
-in [testing](docs/testing.md): setup, build, race tests, lint, vulnerability checks,
-WASM build, stack startup, and browser tests must have real Make targets when added.
+The remaining runtime command contract is recorded in [testing](docs/testing.md).
+Database, WASM, container, browser, and protocol work is not present yet; its
+commands must have real Make targets when added.
 Do not add successful no-op checks or claim unavailable commands passed.
 
 ## Engineering boundaries

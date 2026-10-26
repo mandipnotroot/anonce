@@ -10,6 +10,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Local-only Go CA, issuer, and submission commands with liveness, explicit
+  demonstration status, source discovery, bounded connections, and graceful shutdown.
+- Go build, race/coverage, lint, bounded configuration fuzzing, vulnerability, and
+  secret checks. Protocol operations remain unavailable and readiness fails closed.
 - Project licensing, contributor rules, local hooks, and repository policy checks.
 - Technical references for architecture, protocol, security, storage, and interfaces.
 - A component roadmap with implementation priorities and open questions.
@@ -20,6 +24,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Align public status with the demonstration infrastructure, include Go module
+  dependency updates, document publication prerequisites, and reject padded commit
+  descriptions.
 - Define an administrator-set per-member limit
   in each signed round bulletin. Tokens remain single-use; quota enforcement and
   multi-response privacy checks are design requirements, not implemented features.

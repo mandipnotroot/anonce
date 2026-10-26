@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+title = "anonce source secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Git internals and disposable tool, build, and report outputs"
+paths = ['''(?:^|/)(?:\.git|\.cache|bin|dist|coverage|site|test-results|playwright-report|node_modules)/''']

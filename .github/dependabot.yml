@@ -16,3 +16,10 @@ updates:
     commit-message:
       prefix: build(deps)
     labels: ["component:docs", "semver:patch", "dependencies"]
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build(deps)
+    labels: ["component:server", "semver:patch", "dependencies"]

@@ -5,12 +5,54 @@
 
 Audience: operators, maintainers, and organizations planning a demo or deployment.
 
-Status: deployment contract. No Dockerfile, Compose stack, production image, or
-application binary is available yet. Do not collect real data with this checkout.
+Status: local Go HTTP infrastructure is available. No Dockerfile, Compose stack,
+production image, or working protocol exists. Do not collect real data.
 
 ## Local development
 
-The runtime foundation must provide a reproducible Docker/Podman-compatible image
+Build with `make build` using Go 1.27.3. Run each command separately with
+`-source-url` set to an HTTPS location containing its exact corresponding source,
+including modifications and build/install material:
+
+```sh
+./bin/server -source-url "$ANONCE_SOURCE_URL"
+./bin/issuer -source-url "$ANONCE_SOURCE_URL"
+./bin/ca -source-url "$ANONCE_SOURCE_URL"
+```
+
+These commands are long-running; use separate terminals or a process supervisor.
+The shell variable is an operator convenience, not an application environment
+setting. A missing value fails startup. Only `-listen`, `-source-url`, and `-help`
+are supported; positional arguments and unknown flags fail.
+
+| Command | Default bind |
+| --- | --- |
+| `bin/server` | `127.0.0.1:8080` |
+| `bin/issuer` | `127.0.0.1:8081` |
+| `bin/ca` | `127.0.0.1:8082` |
+
+`-listen` accepts an unzoned loopback IP literal and canonical decimal port from
+0 to 65535. Port 0 requests an ephemeral port; use a fixed port for manual inspection.
+Hostnames, wildcard binds, and non-loopback addresses are rejected. The source URL
+must be absolute HTTPS without credentials, query, or fragment. Its contents are
+not fetched or verified by the process; source completeness remains an operator duty.
+
+`GET /healthz` reports process liveness. `/api/v1/status` explicitly reports
+demonstration mode. `/readyz` always fails with `503` because storage, migrations,
+and protocol controls do not exist. Owned protocol routes return `501`; other
+routes return `404`. There are no UI pages or input forms. See [API](api.md).
+
+Each process bounds accepted connections at 64, headers at 8 KiB plus the Go HTTP
+parser's fixed read allowance, header reads at 5 seconds, full reads and writes at
+10 seconds, and idle connections at 30 seconds. Shutdown on interrupt or SIGTERM
+cancels request contexts, drains for up to 5 seconds, then closes remaining
+connections. No request/access logs or HTTP error diagnostics are retained.
+Handlers never read request bodies; body-bearing requests close the connection
+without draining for reuse. The network stack can still buffer incoming bytes.
+Loopback is not authentication and does not isolate other users or processes on
+the same host. Do not put these services behind an externally reachable proxy.
+
+The remaining runtime work must provide a reproducible Docker/Podman-compatible image
 and a Compose stack with an issuer, a submission/web service, and independent
 PostgreSQL services. Expose development ports on loopback only, run as non-root, bound
 resources, use health checks, and document volume removal explicitly. Provide
@@ -68,9 +110,11 @@ Keep reviewer keys and decrypted exports out of server backups. Follow
 
 Every web page must offer a prominent `/source` link to the exact corresponding
 source for the deployed version, including modifications and the material needed
-to build/install it as required by the license. Support an explicit source URL flag
-or environment setting, with a build-linked default. Do not replace it with an
-unrelated upstream homepage when running a modified build.
+to build/install it as required by the license. The local processes require an
+explicit source URL flag because an unversioned modified build has no trustworthy
+default. A future release may supply a build-linked default only when it names
+that exact build's corresponding source. Never substitute an unrelated upstream
+homepage for a modified build.
 
 Keep notices, license texts, build instructions, configuration interface, and
 redistributed asset licenses available. Source availability is an operator duty;

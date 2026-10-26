@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 .DEFAULT_GOAL := help
 MDBOOK ?= .cache/mdbook/bin/mdbook
+GO ?= go
+export GOTOOLCHAIN := go1.27.3
+FUZZTIME ?= 15s
 
-.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check
+.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln
 help:
 	@echo 'setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check'
+	@echo 'build test lint fuzz vuln'
 
 setup:
 	git config --local core.hooksPath .githooks
@@ -39,9 +43,35 @@ docs-build: docs-lint docs-links
 	python3 scripts/build_docs.py --command '$(MDBOOK)'
 
 workflow-lint:
-	go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
 labels:
 	python3 scripts/sync_labels.py
 
-check: policy-test attribution commitlint reuse docs-lint docs-links
+build:
+	$(GO) build -trimpath -o bin/ ./cmd/...
+
+test:
+	mkdir -p coverage
+	$(GO) test -race -coverprofile=coverage/out ./...
+	$(GO) tool cover -func=coverage/out
+
+lint:
+	$(GO) vet ./...
+	$(GO) run mvdan.cc/gofumpt@v0.12.0 -d cmd internal
+	test -z "$$($(GO) run mvdan.cc/gofumpt@v0.12.0 -l cmd internal)"
+	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run
+	$(GO) mod tidy -diff
+	$(GO) mod verify
+
+fuzz:
+	$(GO) test ./internal/service -run='^$$' -fuzz='^FuzzConfig$$' -fuzztime=$(FUZZTIME) -parallel=2
+
+vuln:
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+	$(GO) run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 ./...
+	$(GO) mod verify
+	$(GO) list -m all
+	$(GO) run github.com/zricethezav/gitleaks/v8@v8.30.1 dir --redact --no-banner .
+
+check: policy-test attribution commitlint reuse docs-lint docs-links build test lint fuzz vuln

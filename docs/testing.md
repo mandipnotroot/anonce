@@ -7,14 +7,45 @@ Audience: contributors and security reviewers.
 
 ## Current executable checks
 
-The [command reference](../AGENTS.md#commands) lists available repository and
-documentation checks. Installation is in [CONTRIBUTING.md](../CONTRIBUTING.md).
-None of these checks tests the protocol; unavailable references fail link validation.
+The [command reference](../AGENTS.md#commands) lists available repository,
+documentation, and Go infrastructure checks. Installation is in
+[CONTRIBUTING.md](../CONTRIBUTING.md). None tests a working submission protocol.
+
+`make build` builds every current Go command with Go 1.27.3. `make test` runs race
+detection and writes `coverage/out`, then prints statement coverage. The complete
+Go module, including thin command wrappers and process signal handling, is included
+in that report without exclusions. Process signal handling also needs manual
+execution checks; unit coverage alone is not lifecycle evidence.
+
+`make lint` runs vet, pinned gofumpt and golangci-lint, tidy diff, and module
+verification. `make fuzz` runs `FuzzConfig` with two workers for 15 seconds by
+default; `FUZZTIME` changes the time budget. Inputs are capped at 8192 bytes before
+configuration parsing, which separately caps listen and source-URL lengths.
+Go retains failures under `internal/service/testdata/fuzz/FuzzConfig`; review and
+license any retained corpus before committing it.
+
+`make vuln` runs govulncheck, gosec, module verification/inventory, and redacted
+Gitleaks scanning of current files. Only Git internals and disposable tool/build
+outputs are excluded by `.gitleaks.toml`. The module currently has no third-party
+runtime dependencies. Module inventory is evidence for manual dependency review,
+not automated license approval. Tool versions and admission are in
+[dependencies](dependencies.md).
+
+Infrastructure cases map to `TestConfig`, `TestConfigSourceURL`,
+`TestInfrastructureRoutes`, `TestInfrastructureMethods`,
+`TestUnavailableRoutesRespectServiceBoundary`,
+`TestInfrastructureDoesNotReadOrReflectRequestData`, `TestServeRejectsBodyBeforeContinue`,
+`TestServeLifecycle`, `TestServePropagatesCancellationToRequests`,
+`TestServeClosesUnresponsiveRequests`,
+`TestServeListenerFailureClosesRequests`,
+`TestConnectionLimitAndClose`, `TestServerBounds`, and `TestRunFailures`.
+These do not establish database isolation, anonymity, or any protocol attack result.
 
 ## Required runtime command contract
 
-Runtime implementation must introduce genuine targets for this interface. Until
-then, they are requirements rather than available commands. See the [roadmap](roadmap.md).
+Build, test, lint, fuzz, and vulnerability targets below are implemented for the
+current infrastructure only. All other rows remain requirements, not available
+commands. See the [roadmap](roadmap.md).
 
 | Target | Required behavior |
 | --- | --- |

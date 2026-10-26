@@ -3,10 +3,12 @@
 # Audience: HTTP implementers and client authors.
 openapi: 3.1.0
 info:
-  title: anonce infrastructure API design
+  title: anonce infrastructure API
   version: 0.0.0
   description: >-
-    Proposed discovery and infrastructure endpoints. No service is implemented.
+    Local demonstration processes implement liveness, status, source discovery,
+    and always-unavailable readiness. Protocol/discovery routes return 501 on
+    their owning process; their successful responses below remain proposed.
     Cryptographic request formats are not published or stable. Round bulletins
     must bind an administrator-set per-member response_limit. Each authorization
     token remains single-use; identity-side allowance slots are never public.
@@ -20,6 +22,7 @@ paths:
   /healthz:
     get:
       operationId: liveness
+      x-implementation-state: implemented
       summary: Process liveness without dependency checks
       responses:
         '200':
@@ -29,18 +32,36 @@ paths:
               schema:
                 type: string
                 const: ok
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    head:
+      operationId: livenessHeaders
+      responses:
+        '200':
+          description: Process is alive; no response body
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
   /readyz:
     get:
       operationId: readiness
-      summary: Service readiness with its own database and migration checks
+      x-implementation-state: implemented
+      summary: Always unavailable until storage and protocol controls exist
       responses:
-        '200':
-          description: Ready to serve implemented operations
         '503':
-          description: Required dependency or schema is unavailable
+          $ref: '#/components/responses/NotReady'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    head:
+      operationId: readinessHeaders
+      responses:
+        '503':
+          description: Not ready; no response body
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
   /api/v1/status:
     get:
       operationId: capabilities
+      x-implementation-state: implemented
       summary: Explicit capability inventory
       responses:
         '200':
@@ -60,9 +81,36 @@ paths:
                       type: string
                   demonstration:
                     type: boolean
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    head:
+      operationId: capabilitiesHeaders
+      responses:
+        '200':
+          description: Capability response headers only
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+  /source:
+    get:
+      operationId: correspondingSource
+      x-implementation-state: implemented
+      summary: Redirect to the operator-configured exact corresponding source
+      responses:
+        '302':
+          $ref: '#/components/responses/SourceRedirect'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    head:
+      operationId: correspondingSourceHeaders
+      responses:
+        '302':
+          $ref: '#/components/responses/SourceRedirect'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
   /api/v1/ca/certificate:
     get:
       operationId: membershipCertificate
+      x-implementation-state: unavailable
       summary: Public membership CA certificate
       responses:
         '200':
@@ -76,6 +124,7 @@ paths:
   /api/v1/ca/revocations:
     get:
       operationId: membershipRevocations
+      x-implementation-state: unavailable
       summary: Signed public revocation list
       responses:
         '200':
@@ -90,6 +139,7 @@ paths:
   /api/v1/rounds/{round_id}/bulletin:
     get:
       operationId: roundBulletin
+      x-implementation-state: unavailable
       summary: Retrieve a signed round bulletin
       parameters:
         - name: round_id
@@ -115,7 +165,46 @@ paths:
         '501':
           $ref: '#/components/responses/NotImplemented'
 components:
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
   responses:
+    SourceRedirect:
+      description: Bodyless redirect to the configured source URL
+      headers:
+        Location:
+          required: true
+          schema:
+            type: string
+            format: uri
+    NotReady:
+      description: Required storage, migrations, and protocol controls are absent
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: not_ready
+            message: Required storage, migrations, and protocol controls are not implemented.
+    MethodNotAllowed:
+      description: The infrastructure endpoint accepts only GET and HEAD
+      headers:
+        Allow:
+          required: true
+          schema:
+            type: string
+            const: GET, HEAD
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     NotImplemented:
       description: Capability unavailable; no protocol operation was performed
       content:

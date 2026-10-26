@@ -6,13 +6,13 @@
 **Anonymous submissions. Verified members. Configurable response limits.**
 
 [![License: AGPL-3.0-only](docs/images/license.svg)](LICENSE)
-[![Documentation](docs/images/status.svg)](docs/README.md)
+[![Development status](docs/images/status.svg)](docs/README.md)
 
 anonce designs feedback, reports, and ballots from verified members without attaching
 their identities to their submissions.
 
-> **Design only.** This repository contains documentation and repository checks, not
-> a working application. Do not use it to collect sensitive information or run an election.
+> **Development only.** Local Go services expose infrastructure endpoints, not a
+> working submission protocol. Do not collect sensitive information or run an election.
 
 ## Planned capabilities
 
@@ -33,8 +33,9 @@ eligible member; it cannot change after publication under the same round ID.
 
 ## Contribute now
 
-Python 3.11 or newer, Git, GNU Make, and REUSE 6.2.0 are sufficient for the current
-checks. ExifTool is required when tracked binary images, fonts, or PDFs are added.
+Use Go 1.27.3, Python 3.11 or newer, Git, GNU Make, and REUSE 6.2.0 for local checks.
+The Go launcher can download the pinned toolchain. ExifTool is required when tracked
+binary images, fonts, or PDFs are added.
 
 ```sh
 git clone git@github.com:mandipnotroot/anonce.git
@@ -44,8 +45,26 @@ make check
 ```
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and [AGENTS.md](AGENTS.md)
-for repository rules. The [roadmap](docs/roadmap.md) tracks the future Go application
-and local deployment.
+for repository rules. The [roadmap](docs/roadmap.md) tracks implementation and
+local deployment.
+
+## Run the local infrastructure
+
+```sh
+make build test
+./bin/server -source-url "$ANONCE_SOURCE_URL"
+```
+
+Set `ANONCE_SOURCE_URL` to the HTTPS location of the exact corresponding source,
+including local modifications, before running. It has no default or example value
+that silently claims to describe your build.
+
+The submission process binds `127.0.0.1:8080`; `bin/issuer` and `bin/ca` use ports
+8081 and 8082. `/healthz` reports liveness, `/api/v1/status` lists only implemented
+infrastructure, and `/source` redirects to the configured source. `/readyz` always
+returns `503`; owned protocol routes return `501` without reading request bodies.
+There is no UI, database, signing, enrollment, or submission support yet.
+See [deployment](docs/deployment.md#local-development) for flags and limits.
 
 ## Architecture at a glance
 

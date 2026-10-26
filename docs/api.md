@@ -5,17 +5,46 @@
 
 Audience: transport implementers and client authors.
 
-Status: design only. [OpenAPI](openapi.yaml) describes proposed infrastructure and
-public discovery endpoints; it is not evidence of a running service. Cryptographic
-request schemas are intentionally absent until their encoding and profiles are
-reviewed.
+Status: infrastructure endpoints are implemented by local demonstration processes.
+[OpenAPI](openapi.yaml) distinguishes these from proposed public discovery endpoints.
+Cryptographic request schemas are intentionally absent until their encoding and
+profiles are reviewed.
+
+## Implemented infrastructure
+
+All three commands expose `GET` and `HEAD` on `/healthz`, `/readyz`, `/api/v1/status`,
+and `/source`. Other methods on these paths return `405` with `Allow: GET, HEAD`.
+Liveness returns `200` with `ok`. Readiness always returns
+`503` with code `not_ready`; no storage or protocol readiness is asserted.
+
+Status returns version `development`, `demonstration: true`, and exactly the
+capability identifiers `liveness`, `status`, and `source-discovery`. `/source`
+returns a bodyless `302` to the required configured HTTPS source location.
+All handler responses use `Cache-Control: no-store` and the restrictive headers described
+in [deployment](deployment.md#transport-and-headers). No cookies or CORS access
+are issued. `HEAD` returns no response body.
+
+The CA process owns enrollment and CA discovery; the issuer owns challenges,
+issuances, and CA discovery. Both reserve `/admin` and its descendants. The
+submission process reserves rounds, submissions, receipts, log, and reply-mailbox
+paths. These owned route roots and descendants return `501` with code
+`not_implemented` for every method. Unknown paths, including another process's
+exclusive routes, return `404` with code `not_found`. No handler reads request
+bodies or reflects request data in errors. This is not authentication or a
+protocol parser. No capability or private state can be consumed.
+
+JSON errors contain only `code` and `message`. Resource limits and local-only
+configuration are in [deployment](deployment.md#local-development).
+Malformed HTTP or oversized headers can be rejected by Go's transport parser
+before the application handler runs, without application JSON or headers.
 
 ## Endpoint ownership
 
 | Origin | Planned endpoints | Input boundary |
 | --- | --- | --- |
 | CA/issuer | `/healthz`, `/readyz`, `/api/v1/status`, `/api/v1/ca/certificate`, `/api/v1/ca/revocations` | Public discovery; no private material |
-| CA/issuer | `/api/v1/enrollments`, `/api/v1/challenges`, `/api/v1/issuances` | Enrollment code/CSR, challenge context, authenticated blinded request |
+| CA | `/api/v1/enrollments` | Enrollment code/CSR |
+| Issuer | `/api/v1/challenges`, `/api/v1/issuances` | Challenge context, authenticated blinded request |
 | Submission | `/healthz`, `/readyz`, `/api/v1/status`, `/api/v1/rounds/{round_id}/bulletin` | Public signed round data |
 | Submission | `/api/v1/submissions`, `/api/v1/receipts/{record_id}`, `/api/v1/log/checkpoint` | Anonymous token and ciphertext; public receipt commitments |
 | Submission | `/api/v1/reply-mailboxes/{mailbox_id}` | Anonymous capability and encrypted replies |

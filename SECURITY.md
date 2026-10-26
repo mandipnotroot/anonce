@@ -8,8 +8,9 @@ Audience: security researchers, contributors, and operators.
 ## Current support
 
 There are no released or production-supported versions. The repository currently
-contains design documents and contributor checks. Review of `main` is best effort;
-no cryptographic or deployment security certification is implied.
+contains design documents, contributor checks, and demonstration-only Go HTTP
+infrastructure. Review of `main` is best effort; no cryptographic or deployment
+security certification is implied. The submission protocol is not implemented.
 
 When releases exist, the latest published release will receive security fixes.
 Older releases are unsupported unless this policy explicitly says otherwise.
@@ -39,4 +40,4 @@ may require earlier warnings. Reporters will be consulted about credit and timin
 
 The [deployment guide](docs/deployment.md) defines source availability, operational
 separation, logging, backup, and key-retention requirements. Do not deploy the current
-documentation foundation to collect real submissions.
+development infrastructure to collect real submissions.

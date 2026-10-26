@@ -27,6 +27,8 @@ def validate(message):
         return "unsupported type or scope"
     if description != description.lower() or description.endswith("."):
         return "description must be lowercase with no trailing period"
+    if description != description.strip():
+        return "description must have no surrounding whitespace"
     if len(subject) > CONFIG["subject_limit"]:
         return "subject exceeds configured limit"
     if len(lines) > 1 and lines[1]:

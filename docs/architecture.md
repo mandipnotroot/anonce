@@ -5,7 +5,8 @@
 
 Audience: implementers, reviewers, and operators evaluating system boundaries.
 
-Status: proposed architecture; runtime implementation is absent.
+Status: application architecture is proposed. Local HTTP infrastructure is
+implemented; domain policy, clients, persistence, and cryptography are absent.
 
 ## Components and ownership
 
@@ -55,11 +56,12 @@ validate the bulletin and compare a trusted checkpoint or independent copy. A va
 signature alone cannot detect a dishonest
 publisher serving different signed forms to different people.
 
-## Planned package boundaries
+## Package boundaries
 
 | Location | Responsibility |
 | --- | --- |
 | `cmd/server`, `cmd/issuer`, `cmd/ca` | Process configuration and lifecycle |
+| `internal/app`, `internal/service` | Implemented command configuration, bounded local HTTP, and unavailable-operation responses |
 | `cmd/cli`, `cmd/wasm` | Device-side entry points |
 | `internal/client` | Shared composition, validation, and local state |
 | `internal/membership`, `internal/issuer` | Identity-side policy and issuance |
@@ -75,6 +77,7 @@ listed in [dependencies](dependencies.md).
 
 Domain code must not depend on HTTP handlers. Client packages must not import server
 storage or database drivers. No command may silently connect to both databases.
+The current processes connect to neither database and do not contain domain packages.
 
 ## Availability and failure
 

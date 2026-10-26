@@ -30,6 +30,13 @@ make check docs-build
 Add new files to Git before index, link, and site validation includes them. The
 site build uses tracked documents directly; do not maintain separate site copies.
 
+Go infrastructure uses the pinned Go 1.27.3 toolchain. `make check` includes build,
+race/coverage, lint, bounded parser fuzzing, and security checks. The tools are
+pinned in `Makefile` and downloaded through the Go module proxy/checksum service.
+Local process flags are in [deployment](docs/deployment.md#local-development),
+with evidence limits in [testing](docs/testing.md). No container or database setup
+is available yet.
+
 `make docs-setup` installs mdBook 0.5.4 from the official release using the SHA-256
 digests in `scripts/mdbook.toml`. It also verifies the notices for published theme
 assets. The installer supports Linux and macOS on x86_64 and aarch64; no Rust

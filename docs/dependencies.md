@@ -6,24 +6,37 @@
 Audience: maintainers, redistributors, and license reviewers.
 
 Verified access date: 2026-10-26. Version observations are not a completed transitive
-license or vulnerability audit. Runtime dependencies are not installed or vendored
-yet. Recheck each exact artifact, checksum, license, and advisory before import.
+license or vulnerability audit. The Go infrastructure uses only the standard
+library; proposed third-party runtime modules and assets are not imported or
+vendored. Recheck each exact artifact, checksum, license, and advisory before import.
 
 ## Current materials
 
 | Material | License | Treatment |
 | --- | --- | --- |
-| Original documentation and repository checks | AGPL-3.0-only | SPDX headers; [license](../LICENSE) |
+| Original code, documentation, and repository checks | AGPL-3.0-only | SPDX headers; [license](../LICENSE) |
 | Contributor Covenant 3.0 adaptation | CC-BY-SA-4.0 | Upstream attribution and separate document license retained |
 | Python standard library | PSF-2.0 | External interpreter, not copied into the project |
 | Git and GNU Make | GPL-2.0-only / GPL-3.0-or-later upstream tools | External development tools, not project relicensing |
 | REUSE 6.2.0 | GPL-3.0-or-later upstream tool | External compliance check; REUSE 3.3 specification |
 | [mdBook 0.5.4](https://github.com/rust-lang/mdBook/releases/tag/v0.5.4) | MPL-2.0 | Documentation-only tool; official release archives and asset notices pinned in `scripts/mdbook.toml` |
 | pip-tools 7.6.2 | BSD-3-Clause | External documentation lock compiler |
+| [Go 1.27.3](https://go.dev/dl/?mode=json) | BSD-3-Clause | Pinned standard-library runtime and external compiler; no third-party runtime modules |
+| [gofumpt 0.12.0](https://github.com/mvdan/gofumpt) | BSD-3-Clause | External Go formatter |
+| [golangci-lint 2.15.0](https://github.com/golangci/golangci-lint) | GPL-3.0-only | External Go lint aggregator |
+| [govulncheck 1.9.0](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) | BSD-3-Clause | External Go vulnerability check |
+| [gosec 2.30.0](https://github.com/securego/gosec) | Apache-2.0 | External static security check; no hosted analysis configured |
+| [Gitleaks 8.30.1](https://github.com/gitleaks/gitleaks) | MIT | External current-file secret scanner |
 
 Upstream tool licenses do not change the project's AGPL-3.0-only grant. The project
 does not offer dual licensing. Every redistributed upstream file must keep its own
 notice and have the applicable license text under `LICENSES/`.
+The module directive declares the minimum Go version and Make targets pin the
+toolchain; tool invocations pin module versions and use Go's checksum verification.
+These are external development tools, not copied project files. Their transitive
+graphs still require review before redistribution. Any future binary distribution
+must retain the Go runtime's applicable copyright and license notices alongside
+the project license.
 
 The mdBook installer verifies release archive digests reported by the official
 release API, and downloads original notices with individually reviewed hashes.
@@ -51,7 +64,6 @@ Documentation assets are separate from future product browser dependencies.
 
 | Dependency | Observed version | License | Purpose |
 | --- | --- | --- | --- |
-| [Go](https://go.dev/dl/?mode=json) | 1.27.3 | BSD-3-Clause | HTTP, templates, embedding, cryptography, CLI/WASM |
 | [PostgreSQL](https://www.postgresql.org/support/versioning/) | 18.6 | PostgreSQL | Independent service databases |
 | [pgx](https://github.com/jackc/pgx) | 5.11.0 | MIT | Native PostgreSQL driver |
 | [Goose](https://github.com/pressly/goose) | 3.29.0 | MIT | Separate SQL migration histories |

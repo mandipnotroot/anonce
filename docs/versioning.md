@@ -22,6 +22,12 @@ If public Go modules are later introduced, breaking releases at v2 and above mus
 use the required `/vN` module path, including matching import paths. A monorepo tag
 does not excuse Go module compatibility rules.
 
+The current commands identify themselves as `development` and expose only the
+infrastructure contract in [API](api.md#implemented-infrastructure) and
+[deployment](deployment.md#local-development). This is an additive, unreleased
+feature, not a stable wire profile or a released product. Future cryptographic
+formats still require explicit breaking-change review.
+
 ## Change classification
 
 | Impact | Stable release behavior | Unstable release policy |

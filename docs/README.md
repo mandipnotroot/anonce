@@ -8,14 +8,15 @@ Audience: readers choosing the appropriate project reference.
 ## Project status
 
 **Implemented:** Git hooks, repository wording and identity inspection, commit grammar
-checks, REUSE licensing, and the documentation checks described in [CI/CD](ci-cd.md).
+checks, REUSE licensing, documentation checks, and local Go HTTP infrastructure with
+race, lint, fuzz, and security checks described in [testing](testing.md).
 **Designed:** the application, cryptographic composition, UI, database boundaries,
-and release infrastructure. **Unavailable:** any live protocol, runnable Go product,
+and release infrastructure. **Unavailable:** any live protocol, usable submission product,
 screenshots, production deployment, or protocol security test results.
 
-The references below describe the intended application. They are not installation
-instructions or evidence that the runtime works. Update the relevant topic directly
-when requirements change.
+The references distinguish implemented infrastructure from the intended application.
+Local process instructions are in [deployment](deployment.md#local-development).
+Update the relevant topic directly when requirements change.
 
 ## Requirements coverage
 

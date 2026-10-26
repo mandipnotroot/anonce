@@ -42,6 +42,18 @@ class PolicyTests(unittest.TestCase):
         self.assertIsNotNone(validate("docs(unknown): clarify enrollment"))
         self.assertIsNotNone(validate("Docs: Clarify enrollment."))
 
+    def test_commit_descriptions_reject_surrounding_whitespace(self):
+        for message in (
+            "docs(repo):  clarify checks",
+            "docs(repo): \tclarify checks",
+            "docs(repo): clarify checks ",
+            "docs(repo): clarify checks\t",
+            "docs(repo):  ",
+        ):
+            with self.subTest(message=message):
+                self.assertIsNotNone(validate(message))
+        self.assertIsNone(validate("docs(repo): clarify checks"))
+
 
 if __name__ == "__main__":
     unittest.main()
