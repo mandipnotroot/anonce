@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+types = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"]
+scopes = ["repo", "ca", "issuer", "server", "reviewer", "client", "wasm", "keystore", "log", "web", "admin", "db", "docs", "ci", "deps", "release"]
+subject_limit = 100

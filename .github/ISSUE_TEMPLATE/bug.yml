@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+name: Defect
+description: Report a reproducible non-sensitive defect
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Use private vulnerability reporting for security issues. Use dummy data only.
+  - type: input
+    id: revision
+    attributes:
+      label: Revision and environment
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction and expected behavior
+      description: Include exact commands and safe input, not secrets or personal data.
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Actual behavior and non-sensitive evidence
+    validations:
+      required: true

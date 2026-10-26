@@ -1,0 +1,6 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+set -eu
+python3 scripts/commit_lint.py --message "$1"
+python3 scripts/policy.py --commit-message "$1"

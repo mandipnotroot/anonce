@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+name: checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Harden runner defaults
+        run: sh scripts/harden-runner.sh
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+      - name: Install locked documentation tools
+        run: |
+          umask 077
+          ulimit -c 0
+          python -m pip install --require-hashes -r requirements-docs.txt
+      - name: Regression tests and licensing
+        run: make policy-test reuse
+      - name: Inspect current repository
+        run: python3 scripts/policy.py --index
+      - name: Inspect pull request and protected base history
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/check_pr.py "$GITHUB_EVENT_PATH"
+      - name: Inspect accepted history
+        if: github.event_name != 'pull_request'
+        run: make attribution commitlint
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Harden runner defaults
+        run: sh scripts/harden-runner.sh
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+      - name: Install locked documentation tools
+        run: python -m pip install --require-hashes -r requirements-docs.txt
+      - name: Validate documentation
+        run: make docs-setup docs-build
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Validate workflow syntax
+        run: make workflow-lint

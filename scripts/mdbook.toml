@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+# Audience: documentation tool and license reviewers.
+version = "0.5.4"
+
+[platforms.linux-x86_64]
+url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-unknown-linux-gnu.tar.gz"
+sha256 = "3f28de05dafca9d0f2eab99c662116b0e37b89b1d96a08f8f430b9eeae958cd7"
+
+[platforms.linux-aarch64]
+url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-aarch64-unknown-linux-musl.tar.gz"
+sha256 = "753e5c5c363ee8a56972344dcf91466f005a51db84a7aeffe427ae3ef83d6d44"
+
+[platforms.darwin-x86_64]
+url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-apple-darwin.tar.gz"
+sha256 = "a47d7bf0d5d670cff9ee6cce95537cbeb62dc10704d9e7131ffbd13e2b59a5de"
+
+[platforms.darwin-aarch64]
+url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-aarch64-apple-darwin.tar.gz"
+sha256 = "03e8a6d8b13a2971e0b3280affd03b388373c1485e26f73407c3a76b0b1838df"
+
+[notices.mdbook]
+url = "https://raw.githubusercontent.com/rust-lang/mdBook/v0.5.4/LICENSE"
+sha256 = "af175b9d96ee93c21a036152e1b905b0b95304d4ae8c2c921c7609100ba8df7e"
+
+[notices.highlight]
+url = "https://raw.githubusercontent.com/highlightjs/highlight.js/10.1.1/LICENSE"
+sha256 = "6c081431591d9df696c82dc598fe1423765b8a299b200ed00b281afd0f64c490"
+
+[notices.clipboard]
+url = "https://raw.githubusercontent.com/zenorocha/clipboard.js/v2.0.11/LICENSE"
+sha256 = "a798e7b5fa604117d52d607e05f1cbac3b2fa5da087837f412a1a3c866b4b748"
+
+[notices.mark]
+url = "https://raw.githubusercontent.com/julkue/mark.js/8.11.1/LICENSE"
+sha256 = "402936bcc8f1b6947750eb9193183d7d0c4dbca3c0ba06398571d94ee85c24be"
+
+[notices.elasticlunr]
+url = "https://raw.githubusercontent.com/weixsong/elasticlunr.js/v0.9.5/LICENSE"
+sha256 = "7aa22f48b4ec3cf73b82c976d5476d3fa5232757bb1c06b7388a2dc520696763"
+
+[notices.font-awesome]
+url = "https://static.crates.io/crates/font-awesome-as-a-crate/font-awesome-as-a-crate-0.3.1.crate"
+sha256 = "b40fbe89eb7639971503bf5f17bd31c41338e8f92e03c5744d07f2e03d43f679"
+member = "font-awesome-as-a-crate-0.3.1/fontawesome-free-6.2.0-desktop/LICENSE.txt"

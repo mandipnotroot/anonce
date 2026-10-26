@@ -1,0 +1,11 @@
+<!-- SPDX-FileCopyrightText: 2026 Anonce Contributors -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="24" role="img" aria-labelledby="title">
+  <title id="title">License: AGPL-3.0-only</title>
+  <rect width="200" height="24" rx="4" fill="#4338ca"/>
+  <path d="M4 0h58v24H4a4 4 0 0 1-4-4V4a4 4 0 0 1 4-4" fill="#334155"/>
+  <g fill="#fff" font-family="sans-serif" font-size="12" text-anchor="middle">
+    <text x="31" y="16">license</text>
+    <text x="131" y="16">AGPL-3.0-only</text>
+  </g>
+</svg>

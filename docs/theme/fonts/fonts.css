@@ -1,0 +1,8 @@
+/* SPDX-FileCopyrightText: 2026 Anonce Contributors */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Use device fonts rather than distributing additional font files. */
+:root {
+    --main-font: system-ui, sans-serif;
+    --code-font: ui-monospace, monospace;
+}

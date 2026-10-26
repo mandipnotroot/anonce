@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[book]
+title = "anonce"
+description = "Anonymous submissions from verified members with configurable response limits"
+language = "en"
+src = "source"
+
+[build]
+build-dir = "site"
+create-missing = false
+
+[output.html]
+theme = "theme"
+default-theme = "light"
+preferred-dark-theme = "navy"
+smart-punctuation = false
+mathjax-support = false
+no-section-label = true
+git-repository-url = "https://github.com/mandipnotroot/anonce"
+edit-url-template = "https://github.com/mandipnotroot/anonce/edit/main/{path}"
+site-url = "/anonce/"
+
+[output.html.playground]
+editable = false
+copy-js = false
+runnable = false
+
+[output.html.search]
+enable = true
+
+[output.html.fold]
+enable = true
+level = 1

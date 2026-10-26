@@ -1,0 +1,132 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+# Audience: HTTP implementers and client authors.
+openapi: 3.1.0
+info:
+  title: anonce infrastructure API design
+  version: 0.0.0
+  description: >-
+    Proposed discovery and infrastructure endpoints. No service is implemented.
+    Cryptographic request formats are not published or stable. Round bulletins
+    must bind an administrator-set per-member response_limit. Each authorization
+    token remains single-use; identity-side allowance slots are never public.
+  license:
+    name: AGPL-3.0-only
+    identifier: AGPL-3.0-only
+servers:
+  - url: https://service.example.invalid
+    description: Non-routable documentation example
+paths:
+  /healthz:
+    get:
+      operationId: liveness
+      summary: Process liveness without dependency checks
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: ok
+  /readyz:
+    get:
+      operationId: readiness
+      summary: Service readiness with its own database and migration checks
+      responses:
+        '200':
+          description: Ready to serve implemented operations
+        '503':
+          description: Required dependency or schema is unavailable
+  /api/v1/status:
+    get:
+      operationId: capabilities
+      summary: Explicit capability inventory
+      responses:
+        '200':
+          description: Version and implemented capability identifiers
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [version, capabilities, demonstration]
+                properties:
+                  version:
+                    type: string
+                  capabilities:
+                    type: array
+                    items:
+                      type: string
+                  demonstration:
+                    type: boolean
+  /api/v1/ca/certificate:
+    get:
+      operationId: membershipCertificate
+      summary: Public membership CA certificate
+      responses:
+        '200':
+          description: Public certificate only
+          content:
+            application/pem-certificate-chain:
+              schema:
+                type: string
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+  /api/v1/ca/revocations:
+    get:
+      operationId: membershipRevocations
+      summary: Signed public revocation list
+      responses:
+        '200':
+          description: DER-encoded revocation list
+          content:
+            application/pkix-crl:
+              schema:
+                type: string
+                format: binary
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+  /api/v1/rounds/{round_id}/bulletin:
+    get:
+      operationId: roundBulletin
+      summary: Retrieve a signed round bulletin
+      parameters:
+        - name: round_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      responses:
+        '200':
+          description: >-
+            Signed bulletin bytes binding the common positive response_limit,
+            round context, and release policy. Exact wire format pending review;
+            no member quota counters or reservation slot identifiers are included.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Round not found
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+components:
+  responses:
+    NotImplemented:
+      description: Capability unavailable; no protocol operation was performed
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [code, message]
+            properties:
+              code:
+                type: string
+                const: not_implemented
+              message:
+                type: string

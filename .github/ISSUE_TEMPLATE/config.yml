@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/mandipnotroot/anonce/security/advisories/new
+    about: Do not disclose vulnerabilities or private data in public issues.
+  - name: Documentation and support
+    url: https://github.com/mandipnotroot/anonce/blob/main/SUPPORT.md
+    about: Check current status and available support channels.

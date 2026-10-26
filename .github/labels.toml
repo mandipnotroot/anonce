@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[[groups]]
+prefix = "priority:"
+color = "0f766e"
+description = "Component focus"
+names = ["now", "next", "later"]
+
+[[groups]]
+prefix = "component:"
+color = "4338ca"
+description = "Affected component"
+names = ["ca", "issuer", "server", "reviewer", "client", "wasm", "keystore", "log", "web", "admin", "db", "docs", "ci", "release"]
+
+[[groups]]
+prefix = "semver:"
+color = "7c3aed"
+description = "Reviewed public compatibility impact"
+names = ["major", "minor", "patch"]
+
+[[groups]]
+prefix = "changelog:"
+color = "64748b"
+description = "Maintainer-confirmed absence of a user-visible change"
+names = ["not-needed"]
+
+[[groups]]
+prefix = ""
+color = "0369a1"
+description = "Review and contribution category"
+names = ["bug", "enhancement", "security", "accessibility", "research", "dependencies"]

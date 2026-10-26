@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+name: Feature or component
+description: Propose a focused capability or design change
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Problem and intended users
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria and relevant documentation
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security, privacy, licensing, and compatibility considerations
+    validations:
+      required: true

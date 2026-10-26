@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+.cache/
+__pycache__/
+*.pyc
+.env
+bin/
+dist/
+coverage/
+site/
+test-results/
+playwright-report/
+node_modules/
+*.prof
+*.test
+*.key
+*.p12
+*.pfx
+*.keystore

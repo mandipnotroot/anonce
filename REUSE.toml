@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+version = 1
+
+[[annotations]]
+path = ["go.sum", "**/*.json", "docs/images/*.png", "docs/images/*.webp", "requirements-docs.txt"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Anonce Contributors"
+SPDX-License-Identifier = "AGPL-3.0-only"

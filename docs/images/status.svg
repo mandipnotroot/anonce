@@ -1,0 +1,11 @@
+<!-- SPDX-FileCopyrightText: 2026 Anonce Contributors -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<svg xmlns="http://www.w3.org/2000/svg" width="235" height="24" role="img" aria-labelledby="title">
+  <title id="title">Status: documentation foundation</title>
+  <rect width="235" height="24" rx="4" fill="#0f766e"/>
+  <path d="M4 0h54v24H4a4 4 0 0 1-4-4V4a4 4 0 0 1 4-4" fill="#334155"/>
+  <g fill="#fff" font-family="sans-serif" font-size="12" text-anchor="middle">
+    <text x="29" y="16">status</text>
+    <text x="146" y="16">documentation foundation</text>
+  </g>
+</svg>
