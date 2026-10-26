@@ -21,6 +21,14 @@ Original contributions use AGPL-3.0-only. Submitting confirms your right to lice
 the contribution on those terms. No copyright transfer or separate contributor
 agreement is required. Preserve imported material's upstream notices.
 
+## Go guidelines
+
+Use the [Modern Go Guidelines](https://github.com/JetBrains/go-modern-guidelines)
+for writing and reviewing Go code (accessed 2026-10-26). Prefer modern language
+features and standard-library APIs supported by the Go version in `go.mod` and
+the toolchain pinned in `Makefile`. Project security requirements and engineering
+boundaries in [AGENTS.md](AGENTS.md#engineering-boundaries) take precedence.
+
 ## Local checks
 
 For the complete documentation checks on Linux with Python 3.13:

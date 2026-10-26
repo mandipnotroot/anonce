@@ -74,6 +74,8 @@ No successful no-op checks or claims that unavailable commands passed.
 
 ## Engineering boundaries
 
+- Follow the [Modern Go Guidelines](https://github.com/JetBrains/go-modern-guidelines)
+  for Go code, with the [project-specific rules](CONTRIBUTING.md#go-guidelines).
 - Keep command entry points thin; domain packages must not import transport packages.
 - Keep member/reviewer cryptography in shared device-side Go packages.
 - Never implement a primitive; choose reviewed libraries and document profiles in `docs/cryptography.md` before implementation.
