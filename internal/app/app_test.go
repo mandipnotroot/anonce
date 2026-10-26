@@ -5,7 +5,6 @@ package app
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"flag"
 	"io"
@@ -87,7 +86,7 @@ func TestDevelopmentStyleGuideFlag(t *testing.T) {
 
 func TestRunRejectsConfigurationBeforeBinding(t *testing.T) {
 	t.Parallel()
-	if err := run(context.Background(), service.Submission, nil, io.Discard); err == nil {
+	if err := run(t.Context(), service.Submission, nil, io.Discard); err == nil {
 		t.Fatal("started without required configuration")
 	}
 }

@@ -30,6 +30,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Modernize internal Go cleanup, slice searches, and test contexts without changing
+  HTTP responses, command interfaces, or device-backup formats.
 - Breaking cryptographic-format addition: define device-backup profile 1 with no
   legacy decoder or parameter fallback. Independent review and native/WASM
   interoperability evidence are still required before real-key use.

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/mandipnotroot/anonce/internal/web"
@@ -105,12 +106,9 @@ func unavailable(role Role, path string) bool {
 	case Submission:
 		prefixes = []string{"/api/v1/rounds", "/api/v1/submissions", "/api/v1/receipts", "/api/v1/log", "/api/v1/reply-mailboxes"}
 	}
-	for _, prefix := range prefixes {
-		if path == prefix || strings.HasPrefix(path, prefix+"/") {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(prefixes, func(prefix string) bool {
+		return path == prefix || strings.HasPrefix(path, prefix+"/")
+	})
 }
 
 func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string) {

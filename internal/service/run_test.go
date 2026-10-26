@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -41,7 +42,7 @@ func awaitResult(t *testing.T, result <-chan error) error {
 func TestServeLifecycle(t *testing.T) {
 	t.Parallel()
 	listener := listenForTest(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	result := make(chan error, 1)
 	handler := handlerFor(t, Submission)
@@ -72,7 +73,7 @@ func TestServeLifecycle(t *testing.T) {
 func TestServePropagatesCancellationToRequests(t *testing.T) {
 	t.Parallel()
 	listener := listenForTest(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	started := make(chan struct{})
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +108,7 @@ func TestServePropagatesCancellationToRequests(t *testing.T) {
 func TestServeRejectsBodyBeforeContinue(t *testing.T) {
 	t.Parallel()
 	listener := listenForTest(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	result := make(chan error, 1)
 	handler := handlerFor(t, Submission)
@@ -142,7 +143,7 @@ func TestServeRejectsBodyBeforeContinue(t *testing.T) {
 func TestServeListenerFailureClosesRequests(t *testing.T) {
 	t.Parallel()
 	listener := listenForTest(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	started, stopped := make(chan struct{}), make(chan struct{})
 	handler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -187,7 +188,7 @@ func TestServeListenerFailureClosesRequests(t *testing.T) {
 func TestServeClosesUnresponsiveRequests(t *testing.T) {
 	t.Parallel()
 	listener := listenForTest(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	started, release, stopped := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	defer close(release)
@@ -232,26 +233,26 @@ func TestServeClosesUnresponsiveRequests(t *testing.T) {
 
 func TestRunFailures(t *testing.T) {
 	t.Parallel()
-	if err := Run(context.Background(), Config{}); err == nil {
+	if err := Run(t.Context(), Config{}); err == nil {
 		t.Fatal("accepted invalid configuration")
 	}
 	listener := listenForTest(t)
 	cfg := testConfig(Submission)
 	cfg.Listen = listener.Addr().String()
-	if err := Run(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "listen for HTTP service") {
+	if err := Run(t.Context(), cfg); err == nil || !strings.Contains(err.Error(), "listen for HTTP service") {
 		t.Fatalf("occupied listener returned %v", err)
 	}
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := serve(context.Background(), listener, handlerFor(t, Submission)); err == nil {
+	if err := serve(t.Context(), listener, handlerFor(t, Submission)); err == nil {
 		t.Fatal("closed listener did not fail")
 	}
 }
 
 func TestServerBounds(t *testing.T) {
 	t.Parallel()
-	server := newServer(context.Background(), handlerFor(t, Submission))
+	server := newServer(t.Context(), handlerFor(t, Submission))
 	if server.ReadHeaderTimeout != 5*time.Second || server.ReadTimeout != 10*time.Second ||
 		server.WriteTimeout != 10*time.Second || server.IdleTimeout != 30*time.Second ||
 		server.MaxHeaderBytes != 8<<10 || !server.DisableGeneralOptionsHandler ||
@@ -268,7 +269,7 @@ type pipeListener struct {
 	net.Listener
 	connections chan net.Conn
 	done        chan struct{}
-	once        sync.Once
+	close       func() error
 }
 
 func (l *pipeListener) Accept() (net.Conn, error) {
@@ -281,14 +282,18 @@ func (l *pipeListener) Accept() (net.Conn, error) {
 }
 
 func (l *pipeListener) Close() error {
-	l.once.Do(func() { close(l.done) })
-	return nil
+	return l.close()
 }
 
 func TestConnectionLimitAndClose(t *testing.T) {
 	t.Parallel()
 	underlying := &pipeListener{connections: make(chan net.Conn, 1), done: make(chan struct{})}
-	listener := &limitedListener{Listener: underlying, slots: make(chan struct{}, 1), done: make(chan struct{})}
+	closeUnderlying := sync.OnceFunc(func() { close(underlying.done) })
+	underlying.close = func() error {
+		closeUnderlying()
+		return nil
+	}
+	listener := newLimitedListener(underlying, 1)
 	t.Cleanup(func() { _ = listener.Close() })
 	server, client := net.Pipe()
 	defer func() { _ = client.Close() }()
@@ -342,5 +347,75 @@ func TestConnectionLimitAndClose(t *testing.T) {
 	}
 	if _, err := listener.Accept(); !errors.Is(err, net.ErrClosed) {
 		t.Fatalf("Accept after Close returned %v", err)
+	}
+}
+
+func TestLimitedListenerCloseCachesError(t *testing.T) {
+	t.Parallel()
+	want := errors.New("synthetic listener close failure")
+	var calls atomic.Int32
+	underlying := &pipeListener{close: func() error {
+		calls.Add(1)
+		return want
+	}}
+	listener := newLimitedListener(underlying, 1)
+	var group sync.WaitGroup
+	for range 8 {
+		group.Go(func() {
+			if err := listener.Close(); !errors.Is(err, want) {
+				t.Errorf("Close returned %v, want %v", err, want)
+			}
+		})
+	}
+	group.Wait()
+	if calls.Load() != 1 {
+		t.Fatalf("underlying Close called %d times, want 1", calls.Load())
+	}
+	select {
+	case <-listener.done:
+	default:
+		t.Fatal("failed close did not wake blocked Accept")
+	}
+}
+
+type closeErrorConn struct {
+	net.Conn
+	calls atomic.Int32
+	err   error
+}
+
+func (c *closeErrorConn) Close() error {
+	c.calls.Add(1)
+	return errors.Join(c.Conn.Close(), c.err)
+}
+
+func TestLimitedConnCloseCachesError(t *testing.T) {
+	t.Parallel()
+	server, client := net.Pipe()
+	t.Cleanup(func() { _ = server.Close() })
+	t.Cleanup(func() { _ = client.Close() })
+	want := errors.New("synthetic connection close failure")
+	underlying := &closeErrorConn{Conn: server, err: want}
+	pipe := &pipeListener{connections: make(chan net.Conn, 1)}
+	pipe.connections <- underlying
+	listener := newLimitedListener(pipe, 1)
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var group sync.WaitGroup
+	for range 8 {
+		group.Go(func() {
+			if err := conn.Close(); !errors.Is(err, want) {
+				t.Errorf("Close returned %v, want %v", err, want)
+			}
+		})
+	}
+	group.Wait()
+	if underlying.calls.Load() != 1 {
+		t.Fatalf("underlying Close called %d times, want 1", underlying.calls.Load())
+	}
+	if len(listener.slots) != 0 {
+		t.Fatal("failed connection close did not release its slot")
 	}
 }

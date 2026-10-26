@@ -53,7 +53,7 @@ func newServer(ctx context.Context, handler http.Handler) *http.Server {
 func serve(ctx context.Context, listener net.Listener, handler http.Handler) error {
 	ctx, cancelRequests := context.WithCancel(ctx)
 	defer cancelRequests()
-	bounded := &limitedListener{Listener: listener, slots: make(chan struct{}, maxConnections), done: make(chan struct{})}
+	bounded := newLimitedListener(listener, maxConnections)
 	server := newServer(ctx, handler)
 	result := make(chan error, 1)
 	go func() { result <- server.Serve(bounded) }()
@@ -84,8 +84,16 @@ type limitedListener struct {
 	net.Listener
 	slots chan struct{}
 	done  chan struct{}
-	once  sync.Once
-	err   error
+	close func() error
+}
+
+func newLimitedListener(listener net.Listener, limit int) *limitedListener {
+	l := &limitedListener{Listener: listener, slots: make(chan struct{}, limit), done: make(chan struct{})}
+	l.close = sync.OnceValue(func() error {
+		close(l.done)
+		return listener.Close()
+	})
+	return l
 }
 
 func (l *limitedListener) Accept() (net.Conn, error) {
@@ -99,28 +107,22 @@ func (l *limitedListener) Accept() (net.Conn, error) {
 		<-l.slots
 		return nil, err
 	}
-	return &limitedConn{Conn: conn, release: func() { <-l.slots }}, nil
+	return &limitedConn{Conn: conn, close: sync.OnceValue(func() error {
+		err := conn.Close()
+		<-l.slots
+		return err
+	})}, nil
 }
 
 func (l *limitedListener) Close() error {
-	l.once.Do(func() {
-		close(l.done)
-		l.err = l.Listener.Close()
-	})
-	return l.err
+	return l.close()
 }
 
 type limitedConn struct {
 	net.Conn
-	release func()
-	once    sync.Once
-	err     error
+	close func() error
 }
 
 func (c *limitedConn) Close() error {
-	c.once.Do(func() {
-		c.err = c.Conn.Close()
-		c.release()
-	})
-	return c.err
+	return c.close()
 }

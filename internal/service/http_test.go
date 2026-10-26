@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -130,10 +131,7 @@ func TestUnavailableRoutesRespectServiceBoundary(t *testing.T) {
 		for _, tc := range cases {
 			t.Run(string(role)+tc.path, func(t *testing.T) {
 				t.Parallel()
-				owned := false
-				for _, owner := range tc.roles {
-					owned = owned || owner == role
-				}
+				owned := slices.Contains(tc.roles, role)
 				for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut} {
 					response := httptest.NewRecorder()
 					handlerFor(t, role).ServeHTTP(response, httptest.NewRequest(method, tc.path, nil))
