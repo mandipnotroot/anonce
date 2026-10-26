@@ -25,6 +25,15 @@ caller queues, total RSS, repeated guessing, or hostile client execution. Encryp
 backups permit offline password guessing and do not prevent rollback or expired-key
 reuse. See [custody limits](key-management.md#device-keystores).
 
+The isolated member-key package generates fresh device-local Ed25519 keys and
+validates canonical member-purpose encrypted backups. Export rejects inconsistent
+private/public halves; import rejects other algorithms, noncanonical encodings,
+and authenticated non-key payloads. No keys enter HTTP services. The package does
+not verify identity, authorization, revocation, expiry, or backup freshness, and
+does not protect returned private keys from callers or compromised devices.
+The same password-guessing and runtime-erasure limits apply. No reviewed
+password-entry, file/browser custody, enrollment, or reviewer-key workflow exists.
+
 ## Assets and principals
 
 - **Assets:** membership identities, eligibility, keys, answers, token unlinkability,

@@ -31,6 +31,14 @@ file format and requires breaking-impact review. There is no previous format or
 legacy decoder to migrate. Unknown versions/profiles fail closed; future format
 or parameter changes require breaking review and an explicit migration plan.
 
+**Member-key compatibility:** the unreleased
+[member-key payload profile 1](cryptography.md#member-key-payload-profile-1)
+defines canonical Ed25519 PKCS #8 plaintext inside existing member-purpose backups.
+This is a breaking cryptographic-payload addition requiring `semver:major` review,
+not a change to the outer backup format or generic keystore API. The typed importer
+does not accept arbitrary opaque member-purpose payloads; no prior typed key format
+or migration exists. HTTP and CLI contracts are unchanged.
+
 **Shell compatibility:** submission `/` changed from JSON `404` to HTML `200`,
 breaking HTTP behavior even before release. Consumers expecting root errors must
 use explicit infrastructure endpoints. `/about`, hashed CSS, and opt-in

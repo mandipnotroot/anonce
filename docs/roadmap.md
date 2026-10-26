@@ -14,9 +14,10 @@ promises. Track tasks in issues and requirements in the linked references.
   the boundaries in [architecture](architecture.md) and [deployment](deployment.md).
 - Extend the implemented build, race, lint, fuzz, and security targets with database,
   client, container, and browser checks from [testing](testing.md).
-- Implement local key generation, bounded encrypted backups, CA signing, enrollment,
-  and revocation under [key management](key-management.md) and [protocol](protocol.md).
-  Connect the implemented in-memory device-backup package to reviewed device interfaces.
+- Connect the implemented in-memory device-backup and member-key packages to
+  reviewed device interfaces. Implement reviewer-key generation, CA signing,
+  enrollment, and revocation under [key management](key-management.md) and
+  [protocol](protocol.md).
 - Extend the read-only local interface only with clearly marked mock data until
   the required security operations exist. Add browser, screenshot, and manual
   accessibility evidence under [UI design](ui-design.md#demonstration-and-evidence).
@@ -30,6 +31,10 @@ Shared device-backup encryption implements
 [profile 1](cryptography.md#device-backup-profile-1), with bounded parsing,
 authenticated headers, cancellation-aware admission, tests, and native benchmarks.
 It has no CLI/browser or persistence integration and needs independent review.
+Local member-key generation, encrypted PKCS #8 export, and validated import now
+use this backup foundation under the
+[member-key payload profile](cryptography.md#member-key-payload-profile-1).
+They have no enrollment, signing-service, or device-interface integration.
 
 ## Next
 

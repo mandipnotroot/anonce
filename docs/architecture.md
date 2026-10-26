@@ -6,8 +6,9 @@
 Audience: implementers, reviewers, and operators evaluating system boundaries.
 
 Status: proposed application architecture. Local HTTP infrastructure, a read-only
-web shell, and shared device-backup encryption exist. No domain policy, device
-entry points, storage, or working submission protocol.
+web shell, shared device-backup encryption, and local member-key generation and
+encrypted import/export exist. No domain policy, device entry points, storage,
+or working submission protocol.
 
 ## Components and ownership
 
@@ -63,6 +64,7 @@ validly signed forms served to different members.
 | `cmd/cli`, `cmd/wasm` | Device-side entry points |
 | `internal/client` | Shared composition, validation, and local state |
 | `internal/client/keystore` | Implemented in-memory device-backup encryption; no transport or persistence |
+| `internal/client/memberkey` | Implemented local Ed25519 member-key generation and typed encrypted backups; no transport or persistence |
 | `internal/membership`, `internal/issuer` | Identity-side policy and issuance |
 | `internal/submission` | Ciphertext acceptance and atomic spending |
 | `internal/transparency`, `internal/audit` | Distinct public and administrative logs |
@@ -81,8 +83,8 @@ packages. `internal/web`
 pre-renders fixed pages at startup using escaped templates and first-party CSS
 embedded in `web/`. Request data never enters templates. Only submission serves
 these pages; there is no executable browser code or device entry point. The
-standalone shared keystore package is not imported by HTTP services. Its profile
-and limits are defined in [cryptography](cryptography.md#device-backup-profile-1).
+shared keystore and member-key packages are not imported by HTTP services. Their
+profiles and limits are defined in [cryptography](cryptography.md#keystore-composition).
 
 ## Availability and failure
 

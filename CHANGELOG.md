@@ -10,6 +10,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Shared local Ed25519 member-key generation, validated encrypted PKCS #8 backups,
+  strict import validation, cancellation/concurrency tests, and bounded payload
+  fuzzing. CLI/browser custody, reviewer keys, and enrollment remain unavailable.
 - Shared in-memory device-backup encryption with bounded Argon2id, AES-256-GCM,
   authenticated key purposes and headers, cancellation-aware derivation admission,
   tampering/concurrency tests, parser fuzzing, and native benchmarks. No device
@@ -30,6 +33,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking cryptographic-payload addition: define member-key payload profile 1
+  inside the unchanged device-backup format. The typed importer rejects opaque,
+  wrong-algorithm, and noncanonical payloads. Independent review is still required.
 - Modernize internal Go cleanup, slice searches, and test contexts without changing
   HTTP responses, command interfaces, or device-backup formats.
 - Breaking cryptographic-format addition: define device-backup profile 1 with no

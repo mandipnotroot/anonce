@@ -9,7 +9,8 @@ Audience: contributors and automated tooling.
 
 anonce is designed for anonymous submissions from verified members with
 administrator-set per-member/round limits. Docs, checks, local demo HTTP
-infrastructure, a read-only shell, and shared device-backup encryption exist.
+infrastructure, a read-only shell, shared device-backup encryption, and local
+member-key generation/import/export exist.
 Distinguish implemented from planned behavior.
 
 - `docs/`: architecture, security, operations, and contributor reference.
@@ -21,6 +22,8 @@ Distinguish implemented from planned behavior.
 - `cmd/`, `internal/`: local CA, issuer, and submission HTTP infrastructure.
 - `internal/client/keystore`: bounded, in-memory device-backup encryption, not yet
   connected to a CLI, browser, or service.
+- `internal/client/memberkey`: local Ed25519 member keys and validated encrypted
+  backups; no device-interface or enrollment integration.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
 
@@ -63,7 +66,7 @@ make workflow-lint    # pinned actionlint; requires Go
 make build            # build the local demonstration commands
 make test             # race tests and coverage report
 make lint             # Go analysis, formatting, and module checks
-make fuzz             # bounded configuration, shell-route, and backup-parser fuzzing
+make fuzz             # bounded configuration, shell-route, backup, and key-parser fuzzing
 make vuln             # Go vulnerability, static security, and secret checks
 make web-lint         # rendered inert markup, local CSS, SRI, and HTTP delivery checks
 ```

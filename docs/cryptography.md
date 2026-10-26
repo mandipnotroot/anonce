@@ -5,8 +5,9 @@
 
 Audience: cryptographic reviewers and client implementers.
 
-Status: the device-backup profile below is implemented as a shared Go package.
-Submission, membership, and public-proof protocols remain prospective.
+Status: device-backup encryption and local member-key generation/import/export are
+implemented as shared Go packages. Submission, membership, and public-proof
+protocols remain prospective.
 
 ## Chosen implementation boundaries
 
@@ -58,6 +59,38 @@ Submission, membership, and public-proof protocols remain prospective.
 - Apply [compatibility review](versioning.md) to wire and parameter changes.
 
 ## Keystore composition
+
+### Member-key payload profile 1
+
+`internal/client/memberkey` generates device-local Ed25519 keys through
+`crypto/ed25519.GenerateKey` with `crypto/rand`. It serializes private keys only inside
+[device-backup profile 1](#device-backup-profile-1), with the member-key purpose.
+This is not enrollment, a certificate profile, or a general signing interface.
+
+- The encrypted plaintext is exactly 48 bytes of canonical, unencrypted PKCS #8
+  DER produced by `crypto/x509.MarshalPKCS8PrivateKey`: version zero, the RFC 8410
+  Ed25519 OID `1.3.101.112` with absent parameters, and a nested OCTET STRING
+  containing the 32-byte seed. Attributes, embedded public keys, PEM, raw seeds,
+  other algorithms, and trailing data are not accepted.
+- Imports use `crypto/x509.ParsePKCS8PrivateKey`, require an Ed25519 private key,
+  and compare re-encoded canonical DER in constant time. Decryption alone does not
+  establish validity. Unsupported or malformed payloads return the same invalid
+  backup error as authentication failure, with no key output.
+- Export accepts only a 64-byte Go Ed25519 private key whose public half matches
+  the library's seed-derived key, checked in constant time. Invalid input is not
+  silently repaired. Each export uses fresh backup salt and nonce.
+- Generation and import return caller-owned private-key buffers. Callers must
+  clear these after use and must never persist or transmit them unencrypted.
+  Owned temporary derived keys and DER buffers are cleared where accessible;
+  library/runtime copies cannot be completely erased. Cancellation is checked at
+  entry and before returning keys, in addition to the backup package's checks.
+
+The encrypted backup is 108 bytes. The outer backup format remains unchanged;
+the generic keystore still accepts opaque payloads, while this member-key importer
+rejects anything outside the profile. No older member-key payload is supported.
+This unreleased payload contract requires breaking-impact and independent review.
+It does not bind a key to a member, certificate, round, revocation state, or expiry.
+CLI/browser custody and native/WASM compatibility remain unimplemented or untested.
 
 ### Device-backup profile 1
 
@@ -136,6 +169,8 @@ end-to-end post-quantum claim.
 Primary sources, accessed 2026-10-26:
 
 - [RFC 5280: certificates and CRLs](https://www.rfc-editor.org/rfc/rfc5280).
+- [RFC 8410: Ed25519 key encoding](https://www.rfc-editor.org/rfc/rfc8410.html#section-7)
+  and [Go PKCS #8 parsing](https://pkg.go.dev/crypto/x509#ParsePKCS8PrivateKey).
 - [RFC 9474: RSA blind signatures](https://www.rfc-editor.org/rfc/rfc9474).
 - [RFC 9578: Privacy Pass issuance protocols](https://www.rfc-editor.org/rfc/rfc9578).
 - [RFC 9180: HPKE](https://www.rfc-editor.org/rfc/rfc9180).
