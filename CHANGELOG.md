@@ -26,6 +26,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Shorten documentation, improve scanning, and link named standards without changing
+  requirements or behavior.
 - Breaking HTTP behavior: the submission process now serves HTML at `/` instead
   of the previous JSON `404`. CA and issuer routes and the status JSON are unchanged.
 - Align public status with the demonstration infrastructure, include Go module

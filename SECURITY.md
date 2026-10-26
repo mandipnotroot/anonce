@@ -7,37 +7,34 @@ Audience: security researchers, contributors, and operators.
 
 ## Current support
 
-There are no released or production-supported versions. The repository currently
-contains design documents, contributor checks, and demonstration-only Go HTTP
-infrastructure. Review of `main` is best effort; no cryptographic or deployment
-security certification is implied. The submission protocol is not implemented.
-
-When releases exist, the latest published release will receive security fixes.
-Older releases are unsupported unless this policy explicitly says otherwise.
+- No released or production-supported versions. Only design docs, contributor checks,
+  and demo HTTP infrastructure exist; the submission protocol is unimplemented.
+- Review of `main` is best effort, not cryptographic or deployment certification.
+- Future security fixes cover the latest release only, unless this policy says otherwise.
 
 ## Private disclosure
 
 Use [Report a vulnerability](https://github.com/mandipnotroot/anonce/security/advisories/new)
-in the repository's Security tab. Do not open a public issue with exploit details,
-personal data, tokens, private keys, or real submission contents. If private reporting
-is unavailable, use the maintainer's profile to request a private contact channel
-without including vulnerability details.
+in the Security tab. If unavailable, request a private channel through the maintainer's
+profile without disclosing details.
 
-Include the affected revision, trust boundary, expected and actual behavior, safe
-reproduction using dummy data, and the smallest evidence needed to assess impact.
-Do not test deployed organizations, other people's accounts, or availability
-without their explicit permission.
+- Include revision, trust boundary, expected/actual behavior, dummy-data reproduction,
+  and minimal impact evidence.
+- Never post exploit details, personal data, tokens, private keys, or real submissions publicly.
+- Do not test deployed organizations, others' accounts, or availability without explicit permission.
 
 ## Response targets
 
-The maintainer aims to acknowledge reports within seven calendar days and provide
-an initial assessment within fourteen. Coordinate remediation and disclosure
-according to severity, normally targeting publication within ninety days. These
-are goals for a volunteer project, not guaranteed response times. Active exploitation
-may require earlier warnings. Reporters will be consulted about credit and timing.
+| Response | Volunteer target, not a guarantee |
+| --- | --- |
+| Acknowledgment | 7 calendar days |
+| Initial assessment | 14 days |
+| Coordinated publication | Normally within 90 days, depending on severity |
+
+Coordinate remediation and disclosure by severity. Active exploitation may require
+earlier warnings. Consult reporters on credit and timing.
 
 ## Operator obligations
 
-The [deployment guide](docs/deployment.md) defines source availability, operational
-separation, logging, backup, and key-retention requirements. Do not deploy the current
-development infrastructure to collect real submissions.
+Follow [deployment](docs/deployment.md) for source, separation, logging, backups,
+and key retention. Do not use current development infrastructure for real submissions.

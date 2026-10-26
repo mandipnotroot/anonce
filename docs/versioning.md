@@ -5,34 +5,31 @@
 
 Audience: maintainers, integrators, and client authors.
 
-Use Semantic Versioning 2.0.0 and tags `vMAJOR.MINOR.PATCH`. The first release will
-be `v0.1.0`; no tag exists yet. Development versions `0.y.z` remain unstable, but
-changes still receive explicit compatibility review.
+Use [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html) and `vMAJOR.MINOR.PATCH` tags.
+First release: `v0.1.0`; no tag yet.
+Unstable `0.y.z` changes still require compatibility review.
 
 ## Public API boundary
 
-The compatibility contract includes CLI commands/flags and exit behavior; HTTP
-paths/statuses and schemas; wire/token/envelope formats; keystore and backup files;
-certificate profiles and trust rules; supported database migration ranges;
-configuration keys/environment variables; and versioned form schemas/bulletins.
-Documented client-visible asset hashes and receipt profiles are also public contracts.
+Public contracts include:
 
-Internal Go packages are not an invitation to import unstable implementation details.
-If public Go modules are later introduced, breaking releases at v2 and above must
-use the required `/vN` module path, including matching import paths. A monorepo tag
-does not excuse Go module compatibility rules.
+- CLI commands, flags, exits; HTTP paths, statuses, schemas.
+- Wire/token/envelope formats; keystores/backups; certificate profiles and trust rules.
+- Database migration ranges; configuration keys/environment variables.
+- Versioned forms/bulletins; documented client-visible asset hashes and receipt profiles.
 
-The current commands identify themselves as `development` and expose the
-infrastructure and read-only shell contracts in [API](api.md) and
-[deployment](deployment.md#local-development). This is an additive, unreleased
-feature, not a stable wire profile or a released product. Future cryptographic
-formats still require explicit breaking-change review.
+Internal Go packages are unstable implementation details. Future public modules
+must use `/vN` module/import paths for breaking v2+ releases, even in a monorepo.
 
-The shell changes the submission process's root from JSON `404` to HTML `200`.
-This is a breaking HTTP behavior change even before release; consumers expecting
-the old root error must use an explicit infrastructure endpoint instead. `/about`,
-content-addressed CSS, and the opt-in `-dev-styleguide` flag are new interfaces.
-CA and issuer roots remain JSON `404`; existing infrastructure JSON is unchanged.
+**Current interfaces:** commands report `development`; see [API](api.md) and
+[deployment](deployment.md#local-development). Infrastructure and shell additions
+are unreleased, not stable wire profiles or a product. Future crypto formats need
+explicit breaking review.
+
+**Shell compatibility:** submission `/` changed from JSON `404` to HTML `200`,
+breaking HTTP behavior even before release. Consumers expecting root errors must
+use explicit infrastructure endpoints. `/about`, hashed CSS, and opt-in
+`-dev-styleguide` are new. CA/issuer roots remain JSON `404`; infrastructure JSON is unchanged.
 
 ## Change classification
 
@@ -42,33 +39,27 @@ CA and issuer roots remain JSON `404`; existing infrastructure JSON is unchanged
 | MINOR | Backward-compatible feature or new opt-in capability | Increase MINOR |
 | PATCH | Backward-compatible fix, clarification, hardening with no contract break | Increase PATCH |
 
-A security fix is not automatically a PATCH. Rejecting previously accepted unsafe
-parameters or changing trust anchors may require a breaking release and operator
-action. Crypto parameters and wire formats are breaking unless an explicit reviewed
-compatibility mechanism exists. Never retain an insecure path solely for compatibility.
+Security fixes are not automatically PATCH: rejecting unsafe parameters or changing
+trust anchors may break compatibility and require operator action. Crypto/wire
+changes are breaking without a reviewed compatibility mechanism. Never retain insecure paths for compatibility.
 
 ## Commit and PR mapping
 
-`feat` normally requests MINOR; `fix` and compatible `perf` normally request PATCH.
-Any type with `!` or `BREAKING CHANGE:` requests breaking review. Documentation,
-tests, CI, and maintenance types have no automatic release bump unless public
-behavior changes. Labels are an explicit review decision, not an inferred substitute
-for examining the diff.
-
-Every PR has exactly one `semver:major`, `semver:minor`, or `semver:patch` label.
-The `semver:major` label denotes breaking impact even during `0.y.z`, where the
-actual version policy above applies. Non-release changes may carry `semver:patch`
-with `changelog:not-needed` and a maintainer rationale.
+- `feat`: normally MINOR; `fix`/compatible `perf`: normally PATCH.
+- Any type with `!` or `BREAKING CHANGE:`: breaking review.
+- Docs/tests/CI/maintenance: no automatic bump unless public behavior changes.
+- Review the diff; labels do not replace compatibility analysis.
+- Every PR needs exactly one `semver:major`, `semver:minor`, or `semver:patch`.
+  `semver:major` means breaking impact during `0.y.z` too; apply the unstable policy above.
+- Non-release work may use `semver:patch` plus `changelog:not-needed` with maintainer rationale.
 
 ## Changelog contract
 
-[CHANGELOG.md](../CHANGELOG.md) is human-curated using Keep a Changelog 1.1.0.
-Its newest section is `## [Unreleased]`; dated sections use
-`## [X.Y.Z] - YYYY-MM-DD`, newest first. Allowed groups are Added, Changed,
-Deprecated, Removed, Fixed, Security. Keep comparison references at the bottom.
-A withdrawn release keeps its entry with `[YANKED]` in the version heading.
-
-PRs must modify content inside Unreleased, not merely touch the file elsewhere,
-unless `changelog:not-needed` is applied by a maintainer. Automation extracts a
-reviewed release section; it must not turn commit messages into a replacement
-changelog or reformat curated prose.
+- Human-curated [CHANGELOG.md](../CHANGELOG.md),
+  [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
+- Newest section: `## [Unreleased]`; dated entries: `## [X.Y.Z] - YYYY-MM-DD`, newest first.
+- Groups: Added, Changed, Deprecated, Removed, Fixed, Security. Comparison links at bottom.
+- Withdrawals retain entries with `[YANKED]` in the version heading.
+- PRs change content inside Unreleased unless a maintainer applies `changelog:not-needed`.
+- Automation extracts reviewed sections, never replaces the changelog with commit
+  messages or reformats curated prose.

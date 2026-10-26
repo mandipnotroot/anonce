@@ -7,29 +7,27 @@ Audience: security reviewers, implementers, and organizations considering adopti
 
 Status: design analysis, not a completed security assessment.
 
-The implemented [local infrastructure](deployment.md#local-development) has no
-protocol operations, signers, credentials, or databases. It rejects non-loopback
-binds, does not read request bodies, and discards HTTP diagnostics that could
-include peer addresses or panic values. These are limited infrastructure controls,
-not the protocol properties below. Other local users, browser-initiated requests,
-host compromise, and externally configured proxies remain outside that isolation.
-The read-only shell adds public HTML and an embedded local stylesheet, but no
-credentials, input forms, browser execution, or protocol operations. Only explicitly
-enabled development mode exposes mock style-guide content. Its checks and outstanding
-browser/manual evidence are described in [UI design](ui-design.md#current-local-shell).
+**Current controls:** [local infrastructure](deployment.md#local-development) rejects
+non-loopback binds, reads no request bodies, and discards HTTP diagnostics that
+could contain peer addresses or panic values. No protocol operations, signers, credentials,
+or databases exist. Local users, browser-initiated requests, host compromise, and
+externally configured proxies are not isolated by these controls.
+
+The read-only shell serves public HTML/local CSS without forms or browser execution.
+Mocks require explicit development mode. See [UI design](ui-design.md#current-local-shell)
+for checks and missing browser/manual evidence. None establishes the protocol properties below.
 
 ## Assets and principals
 
-Protect membership identities, eligibility, private keys, answers, token unlinkability,
-vote integrity, reply confidentiality, receipt validity, audit evidence, availability,
-and the integrity of distributed clients. Roles are defined in the
-[architecture](architecture.md#administrative-access). Public visitors and enrolled members are lower-trust
-inputs; no role grants unrestricted access to every component.
-
-Assume standard primitives remain secure, devices supply good randomness, reviewed
-clients validate trusted keys, and services enforce the documented boundaries.
-Operators control networks and servers but must not be assumed unable to observe
-traffic. A malicious reviewer can retain any answer or key they have obtained.
+- **Assets:** membership identities, eligibility, keys, answers, token unlinkability,
+  vote integrity, reply confidentiality, receipts, audit evidence, availability,
+  and distributed-client integrity.
+- **Roles:** see [architecture](architecture.md#administrative-access). Visitors and
+  members supply lower-trust inputs; no role has unrestricted component access.
+- **Assumptions:** secure primitives, good device randomness, reviewed clients
+  validating trusted keys, and enforced service boundaries.
+- **Limits:** operators can observe network/server traffic. Reviewers can retain
+  any answer or key they obtain.
 
 ## STRIDE analysis
 
@@ -58,46 +56,38 @@ traffic. A malicious reviewer can retain any answer or key they have obtained.
 
 ## Browser delivery trust
 
-The current inert shell uses escaped templates, restrictive CSP, and a same-origin
-content-addressed stylesheet with SRI. No request values enter templates. These
-controls and their tests are not evidence of protocol or client confidentiality.
-
-CSP, self-hosted assets, SRI, pinned WASM hashes, and reproducible builds reduce
-accidental compromise and support inspection. A hostile origin can replace both
-code and the page describing its hash. An independent signature/checkpoint trust
-anchor and the separately obtained CLI are required for stronger verification.
-WASM is not a sandbox protecting secrets from the page that loads it. Do not promise
-complete erasure or universally constant-time execution in Go or browser runtimes.
+- The inert shell uses escaped templates, restrictive CSP, and same-origin hashed
+  CSS with SRI. No request values enter templates. Tests do not prove confidentiality.
+- CSP, local assets, SRI, pinned WASM hashes, and reproducible builds aid inspection
+  and reduce accidental compromise. A hostile origin can replace code and its displayed hash.
+- Stronger verification requires an independent signature/checkpoint trust anchor
+  and separately obtained CLI.
+- WASM does not protect secrets from its loading page. No complete-erasure or
+  universally constant-time guarantee in Go/browser runtimes.
 
 ## Small cohorts and content
 
-A response threshold is a release policy, not cryptographic protection against a
-reviewer already holding the round key and ciphertext. Withheld ciphertext helps
-against an honest-but-curious reviewer, but not collusion with storage operators.
-Aggregates and exports can reidentify through differencing, rare answer combinations,
-or repeated filters. Publish a minimum cohort policy and restrict cross-filtering.
-
-With multiple responses allowed, one member may supply several accepted responses.
-A response-count release threshold is not evidence of that many distinct members;
-charts and exports must not label it as a participant count or turnout. Repeat
-responses may also be linked through content or timing despite independent tokens.
-Use one common published allowance, not individual limits that partition members.
-Any stronger distinct-participant release claim needs a separately reviewed design,
-not identity fields or member slot indices in anonymous storage.
+- Thresholds govern release, not confidentiality from reviewers holding keys and
+  ciphertext. Withholding ciphertext helps against honest-but-curious reviewers,
+  not collusion with storage operators.
+- Differencing, rare answer combinations, and repeated filters can reidentify.
+  Publish a minimum cohort policy and restrict cross-filtering.
+- One member can submit several responses. Never label response counts as distinct
+  participants or turnout. Independent tokens do not prevent content/timing linkage.
+- Use one common allowance, not individual limits that partition members.
+- Stronger distinct-participant release claims require separate review, not identity
+  fields or member slot indices in anonymous storage.
 
 ## Revocation, transfer, and deletion
 
-Membership revocation blocks future issuance once fresh revocation state is checked.
-It cannot identify or selectively revoke an unlinkable token already issued. Tokens
-are bearer capabilities and can be shared. A per-member issuance quota bounds
-authorization by the honest issuer; it is not proof of who authored each response.
-Fraudulent duplicate memberships or an over-issuing compromised issuer can violate
-the intended per-person bound. Submission storage cannot independently count a
-member's responses without undermining the identity-separation boundary.
-
-Round-key destruction offers bounded retrospective protection only if every relevant
-copy is gone. It is not a ratcheting forward-secrecy guarantee. Audit records attest
-to a procedure, not a proof that devices or snapshots forgot their copies.
+- Fresh revocation checks block future issuance, not already-issued unlinkable tokens.
+  Such tokens cannot be identified or selectively revoked.
+- Tokens are shareable bearer capabilities. Honest-issuer quotas bound authorization,
+  not authorship. Duplicate memberships or a compromised issuer can exceed per-person bounds.
+- Submission storage cannot count a member's responses without breaking identity separation.
+- Round-key destruction protects past data only if every relevant copy is gone.
+  It is not ratcheting forward secrecy. Audit records show a procedure, not proof
+  that devices or snapshots erased copies.
 
 ## Required security evidence
 
@@ -116,18 +106,16 @@ establish protocol security.
 | Administrative accountability | Role tests and independently anchored audit verification |
 | Retention protection | Controlled-copy inventory and restoration exercises with device limits disclosed |
 
-This is not a coercion-resistant election system and does not provide receipt
-freeness or public-election assurance. There is no unconditional anonymity,
-guaranteed erasure, or end-to-end post-quantum claim. Use established specialist
-systems when their operational model better fits the risk.
+Not provided: coercion resistance, receipt freeness, public-election assurance,
+unconditional anonymity, guaranteed erasure, or end-to-end post-quantum protection.
+Use established specialist systems where their model better fits the risk.
 
 ## Verification and updates
 
-Map each mitigation to a test in [testing](testing.md). Review this model whenever
-identity, plaintext, keys, metadata, trust anchors, transport, or operator access
-cross a new boundary. Track unresolved requirements in the [roadmap](roadmap.md#open-implementation-questions)
-and resolve them in the owning reference before implementation.
-
-Independent code review, external security review, transitive dependency audits,
-hosted protection settings, and reproducible-release evidence remain incomplete.
-The repository has one maintainer; its files alone cannot establish independent review.
+- Map mitigations to [tests](testing.md). Review new boundaries for identities,
+  plaintext, keys, metadata, trust anchors, transport, and operator access.
+- Track [open requirements](roadmap.md#open-implementation-questions); resolve them
+  in their owning reference before implementation.
+- Independent code/security review, transitive dependency audits, hosted protections,
+  and reproducible-release evidence remain incomplete. One maintainer and repository
+  files alone cannot establish independent review.

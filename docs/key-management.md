@@ -23,48 +23,42 @@ Status: custody design; no keystore or signing service is implemented.
 
 ## Protected CA storage
 
-The signing process holds the unlocked CA key and exposes a narrowly authorized
-signing interface. The encrypted keystore is stored separately from its unlock
-material. Simulated HSM operation illustrates isolation and authorization but does
-not provide physical tamper resistance. The web application must not receive a raw
-CA key or a universal signing oracle. Optional SoftHSM/PKCS#11 support requires exact
-mechanism and capability tests; it is not a substitute for physical hardware.
-
-Initialization requires reauthentication and an explicit human confirmation of the
-public fingerprint. Backup procedures must define who can restore the signer,
-where encrypted copies live, and how an expired key is kept out of active service.
-Dual control remains optional future work on the [roadmap](roadmap.md#later).
+- Keep the unlocked key in a signing process with a narrowly authorized interface.
+  Store the encrypted keystore separately from unlock material.
+- Never expose the raw CA key or a universal signing oracle to the web application.
+- Simulated HSMs provide no physical tamper resistance. Optional SoftHSM/PKCS#11
+  support requires exact mechanism/capability tests and does not replace hardware.
+- Initialization requires reauthentication and explicit human fingerprint confirmation.
+- Backups must define restoration authority, encrypted-copy locations, and how
+  expired keys stay out of service.
+- Dual control is [optional future work](roadmap.md#later).
 
 ## Device keystores
 
-The client generates member and reviewer keys locally, derives an encryption key
-from a user password under a bounded Argon2id profile, and authenticates the complete
-keystore header. Imported files are untrusted inputs and must have strict memory,
-iteration, size, and version limits. Wrong-password and corrupt-file failures must
-not expose partial plaintext. Browser persistence and export formats share the
-same reviewed Go implementation as the CLI.
-
-Do not promise password recovery without a separately reviewed recovery mechanism.
-Losing the key may require certificate revocation and fresh enrollment. Preserve
-the existing membership's quota usage; recovery must not reset its allowance or
-replace already-reserved tokens. Other unreserved slots remain subject to the
-published limit and ordinary eligibility checks.
+- Generate member/reviewer keys locally. Derive encryption keys from passwords
+  with bounded Argon2id; authenticate the complete keystore header.
+- Treat imports as untrusted. Enforce memory, iteration, size, and version limits.
+  Wrong passwords or corrupt files must expose no partial plaintext.
+- Browser persistence, exports, and CLI use the same reviewed Go implementation.
+- Promise password recovery only with a separately reviewed mechanism. Lost keys
+  may require revocation and fresh enrollment.
+- Recovery preserves membership quota usage. It cannot reset allowance or replace
+  reserved tokens. Unreserved slots retain ordinary limit and eligibility checks.
 
 ## Retention and destruction
 
-Destroy controlled round-key copies after the retention deadline, record the public
-key fingerprint and authorized outcome, and keep an externally checkable audit
-checkpoint. Inventory encrypted exports, snapshots, swap, crash dumps, and backup
-retention. Deletion of one active file is insufficient.
-
-The reviewer can keep a private copy or plaintext they already saw. Consequently,
-the product must describe this as round-level retention protection, not guaranteed
-erasure or ratcheting forward secrecy. See the [threat model](threat-model.md#revocation-transfer-and-deletion).
+- Destroy controlled round-key copies after the retention deadline. Record the public
+  fingerprint and authorized outcome; retain an externally checkable audit checkpoint.
+- Inventory encrypted exports, snapshots, swap, crash dumps, and backup retention.
+  Deleting one active file is insufficient.
+- Reviewers can retain keys or plaintext. Describe this as round-level retention
+  protection, not guaranteed erasure or ratcheting forward secrecy.
+  See [threat model](threat-model.md#revocation-transfer-and-deletion).
 
 ## Incident handling
 
-Revoke exposed membership certificates, stop affected signers, publish replacement
-trust material through the reviewed channel, and assess tokens issued before the
-incident. Existing anonymous tokens cannot be mapped back to a revoked certificate.
-Key rotation and trust-anchor recovery require an explicit compatibility plan,
-not silent acceptance of an untrusted replacement.
+- Revoke exposed certificates, stop affected signers, publish replacement trust
+  material through the reviewed channel, and assess pre-incident tokens.
+- Issued anonymous tokens cannot be mapped to revoked certificates.
+- Rotation and trust-anchor recovery require an explicit compatibility plan.
+  Never silently accept an untrusted replacement.

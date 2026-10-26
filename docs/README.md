@@ -7,44 +7,39 @@ Audience: readers choosing the appropriate project reference.
 
 ## Project status
 
-**Implemented:** Git hooks, repository wording and identity inspection, commit grammar
-checks, REUSE licensing, documentation checks, local Go HTTP infrastructure, and a
-read-only web shell with race, lint, fuzz, delivery, and security checks described
-in [testing](testing.md).
-**Designed:** the application, cryptographic composition, product UI, database boundaries,
-and release infrastructure. **Unavailable:** any live protocol, usable submission product,
-screenshots, production deployment, or protocol security test results.
+| Status | Scope |
+| --- | --- |
+| Implemented | Hooks, wording/identity checks, commit lint, REUSE, docs checks, local HTTP infrastructure, read-only shell; checks in [testing](testing.md) |
+| Designed | Application, cryptography, product UI, database boundaries, releases |
+| Unavailable | Working protocol/product, screenshots, production deployment, protocol security results |
 
-The references distinguish implemented infrastructure from the intended application.
-Local process instructions are in [deployment](deployment.md#local-development).
-Update the relevant topic directly when requirements change.
+[Run locally](deployment.md#local-development). Update requirements in their owning reference.
 
 ## Requirements coverage
 
-The following scope is required for the baseline application, not optional work.
-Detailed requirements live in the linked references. Implementation must include
-the corresponding tests and operational evidence before a capability is claimed.
+All rows are required baseline scope. Before claiming a capability, implement it
+and supply the [acceptance tests](testing.md#attack-simulation-matrix),
+[security evidence](threat-model.md#required-security-evidence), and operational
+evidence required by its reference.
 
-| Requirement | Owning reference | Required acceptance evidence |
-| --- | --- | --- |
-| Verified membership, local keys, certificate issuance and revocation | [Protocol](protocol.md#enrollment-and-authentication), [cryptography](cryptography.md#membership-and-authorization) | CSR, expiry, revocation, challenge replay, and atomic code-use tests |
-| Protected signer and encrypted device backups | [Key management](key-management.md) | Signer authorization, bounded import, wrong-password rejection, native/WASM compatibility |
-| Administrator-set response allowance per eligible member and round | [Protocol](protocol.md#round-response-limit), [database](database.md#privileges-and-transactions) | Validated immutable common limit; bounded concurrent issuance, reserved-slot recovery, and no token transcripts |
-| One accepted ciphertext per token | [Database](database.md#privileges-and-transactions) | Concurrent spending, immutable payload binding, and crash/outbox recovery |
-| Identity and submission isolation, with no identifying submission logs | [Architecture](architecture.md), [deployment](deployment.md#production-separation) | Real PostgreSQL grants, separate credentials, request capture, and infrastructure log inspection |
-| Reviewed signatures, blind authorization, and authenticated encryption | [Cryptography](cryptography.md) | Standards vectors, malformed-input and cross-context rejection |
-| Cohorts, forms, signed round lifecycle, thresholds, and retention policy | [Protocol](protocol.md), [UI design](ui-design.md) | Import, schema, schedule, bulletin substitution, and release-policy tests; response count is not distinct participant count |
-| Role-scoped multifactor administration | [Architecture](architecture.md#administrative-access), [API](api.md#authentication-and-caching) | Role, session, CSRF, recovery, replay, and reauthentication tests |
-| Local reviewer decryption, charts, and safe exports | [Protocol](protocol.md#review-and-replies), [UI design](ui-design.md) | No plaintext endpoint or upload; authorized round access and local export tests |
-| Encrypted private replies and anonymous abuse controls | [Protocol](protocol.md#review-and-replies) | Capability, expiry, replay, cross-round authorization, and privacy tests |
-| Inclusion receipts, consistency checking, and separate anchored audit events | [Cryptography](cryptography.md#encryption-and-public-proofs), [architecture](architecture.md#administrative-access) | Independent proof verification, split-view and audit-mutation tests |
-| Controlled-copy retention and truthful destruction limits | [Key management](key-management.md#retention-and-destruction), [threat model](threat-model.md) | Copy inventory and restore tests; no guaranteed-erasure or threshold-confidentiality claim |
-| Shared Go CLI/WASM, self-hosted assets, accessible responsive UI | [Architecture](architecture.md#client-and-server-contract), [UI design](ui-design.md) | Cross-client vectors, matching loader, keyboard/browser checks, no third-party requests |
-| Portable local stack and real security validation | [Deployment](deployment.md), [testing](testing.md), [CI/CD](ci-cd.md) | Genuine Make targets, race/fuzz/database/browser checks, at least 24 independent dummy members |
-| Open-source licensing, compatibility, and verifiable releases | [Dependencies](dependencies.md), [versioning](versioning.md), [releasing](releasing.md) | REUSE, reviewed public changes, signed artifacts, source, SBOM, provenance, and repeat-build hashes |
+| Requirement | Reference |
+| --- | --- |
+| Membership, local keys, certificates, enrollment, revocation | [Protocol](protocol.md#enrollment-and-authentication) |
+| Protected signer and encrypted device backups | [Key management](key-management.md) |
+| Administrator-set per-member/round allowance | [Protocol](protocol.md#round-response-limit) |
+| One accepted ciphertext per token; atomic quota/spending | [Database](database.md#privileges-and-transactions) |
+| Identity/submission isolation; no identifying submission logs | [Architecture](architecture.md), [deployment](deployment.md#production-separation) |
+| Reviewed signatures, blind tokens, authenticated encryption | [Cryptography](cryptography.md) |
+| Cohorts, forms, signed lifecycle, release thresholds, retention | [Protocol](protocol.md) |
+| Role-scoped multifactor administration | [Architecture](architecture.md#administrative-access), [API](api.md#authentication-and-caching) |
+| Local review, charts, safe exports, encrypted replies, anonymous abuse controls | [Protocol](protocol.md#review-and-replies), [UI design](ui-design.md) |
+| Inclusion receipts, consistency, separate anchored audits | [Cryptography](cryptography.md#encryption-and-public-proofs), [architecture](architecture.md#administrative-access) |
+| Controlled-copy retention and accurate destruction limits | [Key management](key-management.md#retention-and-destruction), [threat model](threat-model.md) |
+| Shared Go CLI/WASM; self-hosted, accessible, responsive UI | [Architecture](architecture.md#client-and-server-contract), [UI design](ui-design.md) |
+| Portable local stack and real security validation | [Deployment](deployment.md), [testing](testing.md), [CI/CD](ci-cd.md) |
+| Open-source licensing, compatibility, verifiable releases | [Dependencies](dependencies.md), [versioning](versioning.md), [releasing](releasing.md) |
 
-The [roadmap](roadmap.md) separates implementation priorities, optional extensions,
-and unresolved design questions. Independent security review remains a prerequisite
-for real use. Optional extensions must preserve the baseline boundaries.
+See [roadmap](roadmap.md) for priorities, optional extensions, and open questions.
+Extensions must preserve baseline boundaries. Independent security review is required before real use.
 
 Contribution rules: [AGENTS.md](../AGENTS.md) and [CONTRIBUTING.md](../CONTRIBUTING.md).

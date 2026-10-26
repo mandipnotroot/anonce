@@ -7,11 +7,9 @@ Audience: contributors and automated tooling.
 
 ## Repository status and layout
 
-anonce designs anonymous submissions from verified members with administrator-set
-per-member response limits for each round.
-This checkout contains documentation, repository checks, and demonstration-only Go
-HTTP infrastructure and a read-only local web shell, not a working submission product.
-Keep implemented behavior distinct from intended behavior.
+anonce is designed for anonymous submissions from verified members with
+administrator-set per-member/round limits. Only docs, checks, local demo HTTP
+infrastructure, and a read-only shell exist. Distinguish implemented from planned behavior.
 
 - `docs/`: architecture, security, operations, and contributor reference.
 - `docs/dependencies.md`: dependency choices, licensing, and review requirements.
@@ -67,10 +65,9 @@ make vuln             # Go vulnerability, static security, and secret checks
 make web-lint         # rendered inert markup, local CSS, SRI, and HTTP delivery checks
 ```
 
-The remaining runtime command contract is recorded in [testing](docs/testing.md).
-Database, WASM, container, browser, and protocol work is not present yet; its
-commands must have real Make targets when added.
-Do not add successful no-op checks or claim unavailable commands passed.
+See [testing](docs/testing.md) for required database, WASM, container, browser, and
+protocol targets, none available yet. Add real Make targets with implementation.
+No successful no-op checks or claims that unavailable commands passed.
 
 ## Engineering boundaries
 
@@ -100,19 +97,23 @@ Do not add successful no-op checks or claim unavailable commands passed.
 
 ## Git and review
 
-Use short feature names such as `docs/key-storage` and never rewrite shared history.
-Use Conventional Commits: `<type>[scope][!]: <description>`, lowercase imperative
-description, no trailing period. A breaking change needs `!` or the standard footer.
+- Use short feature branches, such as `docs/key-storage`. Never rewrite shared history.
+- Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
+  `<type>[scope][!]: <description>`, lowercase imperative,
+  no trailing period. Breaking changes need `!` or the standard footer.
 
 Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.
 Scopes: repo, ca, issuer, server, reviewer, client, wasm, keystore, log, web, admin,
 db, docs, ci, deps, release. `scripts/commits.toml` is the machine-readable authority.
 
 Examples: `docs(ca): describe revocation checks`; `fix(web): preserve focus on errors`.
-Keep commits atomic. PR titles must also pass commit lint. Every PR needs a SemVer
-impact label and an Unreleased entry unless the documented exception label applies.
-Use the [PR template](https://github.com/mandipnotroot/anonce/blob/main/.github/pull_request_template.md)
-and request owner review.
+
+- Keep commits atomic; PR titles must pass commit lint.
+- Every PR needs a [SemVer impact label](docs/versioning.md#commit-and-pr-mapping)
+  and Unreleased entry unless the documented
+  exception label applies.
+- Use the [PR template](https://github.com/mandipnotroot/anonce/blob/main/.github/pull_request_template.md)
+  and request owner review.
 
 ## Licensing, tests, and documentation
 
@@ -136,13 +137,20 @@ Add table-driven unit tests, error cases, race coverage, and bounded parser fuzz
 with each implementation. Keep protocol attack cases mapped to named tests and
 report unimplemented cases honestly. Never use production identities or secrets.
 
-Update the canonical document, linking to it rather than repeating explanations:
-API changes -> `docs/api.md` and OpenAPI; security changes -> threat model and cryptography;
-storage changes -> database and migration docs; UI changes -> design and screenshots;
-operator changes -> deployment; public compatibility -> versioning and changelog.
-Every `docs/` file states its audience. Cite primary sources where they support a
-requirement, with access dates for external observations. Scope wire/parameter changes as breaking
-unless a documented compatibility mechanism exists.
+Update canonical references and link instead of repeating explanations:
+
+| Change | Update |
+| --- | --- |
+| API | `docs/api.md` and OpenAPI |
+| Security | Threat model and cryptography |
+| Storage | Database and migration docs |
+| UI | Design and screenshots |
+| Operations | Deployment |
+| Public compatibility | Versioning and changelog |
+
+Every `docs/` file states its audience. Cite primary sources supporting requirements;
+date external observations. Wire/parameter changes are breaking unless a documented
+compatibility mechanism exists.
 
 ## Never do
 

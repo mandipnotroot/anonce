@@ -5,15 +5,17 @@
 
 Audience: users and contributors seeking help.
 
-Read the [documentation index](docs/README.md) and [threat model](docs/threat-model.md).
-The application is not implemented. Questions about intended behavior should link
-the relevant reference document or [roadmap item](docs/roadmap.md).
+The application is not implemented. Start with the [docs](docs/README.md) and
+[threat model](docs/threat-model.md).
 
-Open a [GitHub issue](https://github.com/mandipnotroot/anonce/issues/new/choose) for
-reproducible defects, documentation corrections, or scoped feature proposals. Include
-your revision and non-sensitive environment details. Use dummy examples and redact
-personal information. Do not attach private enrollment material or submission data.
+| Need | Channel |
+| --- | --- |
+| Reproducible defect, docs correction, scoped feature proposal | [GitHub issue](https://github.com/mandipnotroot/anonce/issues/new/choose) |
+| Security report | [Private disclosure](SECURITY.md), never public support |
+| Conduct report | [Code of Conduct](CODE_OF_CONDUCT.md) |
 
-Security issues use [private disclosure](SECURITY.md), not public support. Conduct
-reports follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Support is voluntary and
-does not include operational guarantees or legal advice.
+Include revision, non-sensitive environment details, and dummy examples. For intended
+behavior, link the reference or [roadmap item](docs/roadmap.md). Redact personal data;
+never attach private enrollment material or submissions.
+
+Support is voluntary, without operational guarantees or legal advice.

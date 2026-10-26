@@ -5,10 +5,8 @@
 
 Audience: contributors choosing work and reviewers assessing scope.
 
-The repository contains documentation, checks, and local Go HTTP infrastructure,
-not a working submission product.
-Now / Next / Later express focus, not delivery promises. Use issues for individual
-tasks and keep technical requirements in the linked reference documents.
+No working submission product yet. Now / Next / Later indicate focus, not delivery
+promises. Track tasks in issues and requirements in the linked references.
 
 ## Now
 
@@ -22,14 +20,11 @@ tasks and keep technical requirements in the linked reference documents.
   the required security operations exist. Add browser, screenshot, and manual
   accessibility evidence under [UI design](ui-design.md#demonstration-and-evidence).
 
-Implemented infrastructure consists of separate CA, issuer, and submission commands,
-loopback-only listeners, liveness/status/source endpoints, and bounded shutdown.
-Readiness remains unavailable. Protocol routes fail explicitly without reading
-request bodies; no protocol or storage security property is claimed.
-The submission process also serves an embedded, read-only overview and about page,
-with a development style guide behind `-dev-styleguide`. Rendered markup, local CSS,
-asset integrity, and HTTP delivery checks are available through `make web-lint`;
-browser and accessibility evidence remains unavailable.
+**Available:** separate loopback CA/issuer/submission commands, liveness/status/source,
+bounded shutdown, embedded read-only pages, and an opt-in style guide. `make web-lint`
+checks markup, CSS, asset integrity, and delivery. Readiness is unavailable;
+protocol routes reject without reading bodies. No protocol/storage security claims
+or browser/accessibility evidence. See [deployment](deployment.md#local-development).
 
 ## Next
 
@@ -46,9 +41,8 @@ browser and accessibility evidence remains unavailable.
 
 ## Later
 
-The following extensions are optional, not replacements for required baseline
-controls. Independent security review is required before real use, regardless of
-whether an extension is implemented.
+Optional extensions do not replace baseline controls. Independent security review
+is required before real use, with or without extensions.
 
 | Extension | Required safeguards if introduced |
 | --- | --- |
@@ -73,5 +67,4 @@ whether an extension is implemented.
 - Specify trusted checkpoint discovery, consistency checking, and split-view response.
 - Bound aggregate filtering and ensure backup restoration cannot reactivate expired keys.
 
-Resolve each question in its owning reference and tests, rather than relying on an
-undocumented implementation assumption.
+Resolve questions in their owning references and tests before relying on assumptions.

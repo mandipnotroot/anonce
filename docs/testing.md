@@ -7,61 +7,46 @@ Audience: contributors and security reviewers.
 
 ## Current executable checks
 
-The [command reference](../AGENTS.md#commands) lists available repository,
-documentation, and Go infrastructure checks. Installation is in
-[CONTRIBUTING.md](../CONTRIBUTING.md). None tests a working submission protocol.
+See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
+**No current check tests a working submission protocol.**
 
-`make build` builds every current Go command with Go 1.27.3. `make test` runs race
-detection and writes `coverage/out`, then prints statement coverage. The complete
-Go module, including thin command wrappers and process signal handling, is included
-in that report without exclusions. Process signal handling also needs manual
-execution checks; unit coverage alone is not lifecycle evidence.
+| Target | Current checks |
+| --- | --- |
+| `make build` | All Go commands with Go 1.27.3 |
+| `make test` | Race detection, `coverage/out`, statement coverage report; whole module, no exclusions, including wrappers and signal handling |
+| `make lint` | vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
+| `make fuzz` | `FuzzConfig` and `FuzzLookup`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
+| `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 
-`make lint` runs vet, pinned gofumpt and golangci-lint, tidy diff, and module
-verification. `make fuzz` runs `FuzzConfig` and `FuzzLookup` with two workers for
-15 seconds each by default; `FUZZTIME` changes each time budget. Inputs are capped at 8192 bytes before
-configuration parsing, which separately caps listen and source-URL lengths.
-Go retains failures under `internal/service/testdata/fuzz/FuzzConfig`; review and
-license any retained corpus before committing it. The shell's retained corpus
-belongs under `internal/web/testdata/fuzz/FuzzLookup` with the same review rules.
+- Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
+- Fuzz configuration input is capped at 8192 bytes before parsing, with separate
+  listen/source-URL limits. Retained failures belong in
+  `internal/service/testdata/fuzz/FuzzConfig` or `internal/web/testdata/fuzz/FuzzLookup`.
+  Review and license corpora before committing.
+- `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
+  There are no third-party runtime modules. Inventory supports manual review, not
+  automatic license approval. See [dependencies](dependencies.md) for pins/admission.
 
-`make vuln` runs govulncheck, gosec, module verification/inventory, and redacted
-Gitleaks scanning of current files. Only Git internals and disposable tool/build
-outputs are excluded by `.gitleaks.toml`. The module currently has no third-party
-runtime dependencies. Module inventory is evidence for manual dependency review,
-not automated license approval. Tool versions and admission are in
-[dependencies](dependencies.md).
+### Implemented test mapping
 
-Infrastructure cases map to `TestConfig`, `TestConfigSourceURL`,
-`TestInfrastructureRoutes`, `TestInfrastructureMethods`,
-`TestUnavailableRoutesRespectServiceBoundary`,
-`TestInfrastructureDoesNotReadOrReflectRequestData`, `TestServeRejectsBodyBeforeContinue`,
-`TestServeLifecycle`, `TestServePropagatesCancellationToRequests`,
-`TestServeClosesUnresponsiveRequests`,
-`TestServeListenerFailureClosesRequests`,
-`TestConnectionLimitAndClose`, `TestServerBounds`, and `TestRunFailures`.
-These do not establish database isolation, anonymity, or any protocol attack result.
+| Area | Tests |
+| --- | --- |
+| Configuration | `TestConfig`, `TestConfigSourceURL`, `TestRunFailures` |
+| Routing and input isolation | `TestInfrastructureRoutes`, `TestInfrastructureMethods`, `TestUnavailableRoutesRespectServiceBoundary`, `TestInfrastructureDoesNotReadOrReflectRequestData`, `TestServeRejectsBodyBeforeContinue` |
+| Lifecycle and limits | `TestServeLifecycle`, `TestServePropagatesCancellationToRequests`, `TestServeClosesUnresponsiveRequests`, `TestServeListenerFailureClosesRequests`, `TestConnectionLimitAndClose`, `TestServerBounds` |
+| Shell paths, development gate, SRI, headers, methods, HEAD, no body reads/reflection | `TestSite`, `TestStylesheetIntegrity`, `TestSiteRejectsBrokenAssets`, `TestWebServiceBoundary`, `TestWebDelivery`, `TestDevelopmentStyleGuideFlag` |
+| Rejection of scripts, handlers, remote assets, active controls, malformed markup, wrong asset hashes | `scripts/test_web_check.py` |
 
-The read-only shell maps to `TestSite`, `TestStylesheetIntegrity`, `TestSiteRejectsBrokenAssets`,
-`TestWebServiceBoundary`, `TestWebDelivery`, and `TestDevelopmentStyleGuideFlag`.
-They check exact path ownership, the opt-in development gate, SRI, security headers,
-method rejection, HEAD behavior, and no request-body reads or reflection.
-
-`make web-lint` builds the commands, starts the submission process on loopback with
-and without the development flag, and checks rendered inert HTML, headings,
-landmarks, fragment/description targets, local links, CSS restrictions, embedded
-asset hashes, delivery headers, unavailable protocol/readiness, and bounded process
-shutdown. `scripts/test_web_check.py` tests rejection of injected scripts, handlers,
-remote assets, active controls, malformed markup, and mismatched asset hashes.
-These are allowlist and delivery checks, not full HTML/CSS validation or browser
-execution. No JavaScript is present. Browser screenshots, actual CSP enforcement,
-keyboard, assistive technology, contrast, and print rendering remain untested.
+These establish neither database isolation, anonymity, nor protocol attack results.
+Web checks validate allowlists/delivery, not full HTML/CSS grammar or browser execution.
+No JavaScript exists. Screenshots, actual CSP enforcement, keyboard access, assistive
+technology, contrast, and print rendering remain untested.
 
 ## Required runtime command contract
 
-Build, test, lint, fuzz, and vulnerability targets below are implemented for the
-current infrastructure only. The web-lint target is implemented for the inert shell.
-All other rows remain requirements, not available commands. See the [roadmap](roadmap.md).
+Build/test/lint/fuzz/vuln cover infrastructure only; web-lint covers the inert shell.
+**All other targets below are required but unavailable.** See [roadmap](roadmap.md).
 
 | Target | Required behavior |
 | --- | --- |
@@ -82,37 +67,32 @@ All other rows remain requirements, not available commands. See the [roadmap](ro
 
 ## Test layers and gates
 
-Use table-driven unit tests, boundary and failure cases, race detection, real-database
-integration, browser interaction, and process-level smoke tests. A proposed runtime
-coverage floor is 80% of executable first-party Go statements, with explicit scope
-and a reviewed rationale for exclusions. Do not lower it merely to pass a change.
-Coverage is not evidence that an invariant was actually tested.
-
-Browser tests cover all routes, dark/light and mobile/desktop layouts, keyboard
-navigation, accessibility rules, print styles, source links, CSP, SRI, and prohibited
-outbound requests. Manual assistive-technology testing remains required.
-Map administrative controls to versioned ASVS requirements and test factor
-enrollment, recovery, session rotation, and expiry as well as ordinary login.
-Measure native/WASM interoperability, bundle size, startup time, cryptographic
-latency, and memory use on supported desktop and mobile browsers.
+- Use table-driven unit, boundary/failure, race, real-database, browser, and process smoke tests.
+- Proposed coverage floor: 80% of executable first-party Go statements, with explicit
+  scope and reviewed exclusions. Do not lower it to pass. Coverage does not prove invariants.
+- Browser tests: all routes, light/dark, mobile/desktop, keyboard, accessibility,
+  print, source links, CSP, SRI, and prohibited outbound requests. Manual
+  assistive-technology testing is still required.
+- Map admin controls to versioned [ASVS](https://owasp.org/www-project-application-security-verification-standard/)
+  requirements. Test login, factor enrollment,
+  recovery, session rotation, and expiry.
+- Measure native/WASM interoperability, bundle size, startup, cryptographic latency,
+  and memory on supported desktop/mobile browsers.
 
 ## Multi-user simulation
 
-Run at least 24 dummy members across multiple cohorts and rounds, with separate
-certificate keys and independent device state. Include valid, revoked, expired,
-ineligible, non-participating, and duplicate-requesting members. Exercise multiple
-reviewers, role boundaries, threshold policies, encrypted replies, and retention.
-Do not reuse a single credential under several labels.
-Include rounds with a limit of `1` and rounds with limits greater than `1`. For
-each member, test unused, partially reserved, and exhausted allowances, parallel
-devices, interrupted signing/delivery, and certificate replacement. Each valid
-token must remain single-use, and distinct tokens from one member must not carry
-shared identity-side slot metadata. Check that response counts are not reported
-as distinct participant counts or used to claim a stronger release guarantee.
-
-The readable report records revision, dummy population, actual cases executed,
-pass/fail/unimplemented status, timing bounds, and non-sensitive evidence locations.
-An empty suite or simulated success must never be published as a passing attack suite.
+- At least 24 dummy members across multiple cohorts/rounds, each with separate
+  certificate keys and device state. Never relabel one credential as several members.
+- Member cases: valid, revoked, expired, ineligible, non-participating, duplicate-requesting.
+- Exercise multiple reviewers, role boundaries, thresholds, encrypted replies, and retention.
+- Include rounds with limits of `1` and greater than `1`. For each member, test
+  unused/partial/exhausted allowances, parallel devices, interrupted signing/delivery,
+  and replacement certificates.
+- Verify single-use tokens, no shared identity-side slot metadata, and no response-count
+  claims of distinct participation or stronger release guarantees.
+- Report revision, population, executed cases, pass/fail/unimplemented status,
+  timing bounds, and non-sensitive evidence locations. Never report empty suites
+  or simulated success as passing attack tests.
 
 ## Attack-simulation matrix
 
@@ -165,10 +145,9 @@ All named protocol tests below are **planned**, not present.
 
 ## Fuzz plan
 
-Fuzz enrollment CSV, form-schema decoding, bounded keystore headers, certificate/CRL
-parsing wrappers, token/envelope decoding, bulletin canonicalization, and receipt
-proof parsing. Native and WASM clients must share decoding tests. Bound allocations,
-recursion, input size, and work factors. Keep synthetic regression inputs licensed;
-never retain real secrets in a crash corpus.
+- Fuzz enrollment CSV, form schemas, keystore headers, certificate/CRL wrappers,
+  tokens/envelopes, bulletin canonicalization, and receipt proofs.
+- Share native/WASM decoding tests. Bound allocation, recursion, input size, and work.
+- License synthetic regression inputs. Never retain real secrets in crash corpora.
 
 CI durations and publication rules are owned by [CI/CD](ci-cd.md).

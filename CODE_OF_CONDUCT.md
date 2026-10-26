@@ -49,17 +49,14 @@ Instances, threats, and promotion of these behaviors violate this Code of Conduc
 
 ## Reporting an issue
 
-Mandip moderates project spaces. A dedicated confidential conduct-reporting address
-has not been published. Use the contact options on the
-[maintainer profile](https://github.com/mandipnotroot) to request a private channel
-without disclosing incident details publicly. If none is available, do not post
-sensitive details in an issue. GitHub's platform reporting mechanisms remain
-available for abuse on that platform.
-
-Moderators take reports seriously and aim to respond promptly. They may review
-relevant messages, logs, recordings, and witness accounts. Confidentiality and safety
-take priority over public detail. Enforcement is normally communicated privately to
-the people involved; a public statement may form part of an agreed resolution.
+- Mandip moderates project spaces. No dedicated confidential reporting address is published.
+- Request a private channel through the [maintainer profile](https://github.com/mandipnotroot).
+  Do not disclose incident details publicly, even if no private channel is available.
+  GitHub's reporting mechanisms remain available for platform abuse.
+- Moderators take reports seriously and aim to respond promptly. They may review
+  relevant messages, logs, recordings, and witness accounts.
+- Confidentiality and safety take priority. Enforcement is normally private;
+  an agreed resolution may include a public statement.
 
 ## Addressing and repairing harm
 
@@ -73,10 +70,9 @@ Moderators may use any of the following remedies without a mandatory ordering:
 | Temporary suspension | Remove participation for a defined period with clear conditions for reintegration. |
 | Permanent ban | Remove access when continued participation cannot be reconciled with community safety. |
 
-Remedies should have clear reasons and be proportionate to the harm. An appeal may
-be requested privately. Where the sole maintainer is personally involved, seek an
-independent moderator if one is available and agreeable to the affected parties.
-The project cannot promise independent adjudication while it has only one maintainer.
+Remedies should have clear reasons and be proportionate. Appeals may be requested privately.
+If the sole maintainer is involved, seek an independent moderator available and
+agreeable to affected parties. One maintainer cannot promise independent adjudication.
 
 ## Scope
 
