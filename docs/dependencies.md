@@ -5,9 +5,11 @@
 
 Audience: maintainers, redistributors, and license reviewers.
 
-Accessed: 2026-10-26. Versions below are observations, not a transitive license or
-vulnerability audit. Runtime uses only the Go standard library; proposed modules/assets
-are not imported or vendored. Recheck exact artifacts, hashes, licenses, and advisories before import.
+Accessed: 2026-10-26. Proposed versions below are observations, not a transitive
+license or vulnerability audit. HTTP commands use only the standard library;
+the shared device-backup package imports the admitted modules below. No runtime
+dependencies or assets are vendored. Recheck artifacts, hashes, licenses, and
+advisories before further imports.
 
 ## Current materials
 
@@ -21,7 +23,9 @@ are not imported or vendored. Recheck exact artifacts, hashes, licenses, and adv
 | REUSE 6.2.0 | GPL-3.0-or-later upstream tool | External compliance check; [REUSE 3.3 specification](https://reuse.software/spec-3.3/) |
 | [mdBook 0.5.4](https://github.com/rust-lang/mdBook/releases/tag/v0.5.4) | MPL-2.0 | Documentation-only tool; official release archives and asset notices pinned in `scripts/mdbook.toml` |
 | pip-tools 7.6.2 | BSD-3-Clause | External documentation lock compiler |
-| [Go 1.27.3](https://go.dev/dl/?mode=json) | BSD-3-Clause | Pinned standard-library runtime and external compiler; no third-party runtime modules |
+| [Go 1.27.3](https://go.dev/dl/?mode=json) | BSD-3-Clause | Pinned standard-library runtime and external compiler |
+| [x/crypto 0.58.0](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/argon2) | BSD-3-Clause | Admitted Argon2id and its BLAKE2b dependency for device-backup profile 1; exact hashes in `go.sum` |
+| [x/sys 0.49.0](https://pkg.go.dev/golang.org/x/sys@v0.49.0/cpu) | BSD-3-Clause | Indirect CPU-feature detection for x/crypto; exact hashes in `go.sum` |
 | [gofumpt 0.12.0](https://github.com/mvdan/gofumpt) | BSD-3-Clause | External Go formatter |
 | [golangci-lint 2.15.0](https://github.com/golangci/golangci-lint) | GPL-3.0-only | External Go lint aggregator |
 | [govulncheck 1.9.0](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) | BSD-3-Clause | External Go vulnerability check |
@@ -34,6 +38,22 @@ are not imported or vendored. Recheck exact artifacts, hashes, licenses, and adv
   Go checksum verification. These external tools are not copied project files.
   Review transitive graphs before redistribution.
 - Future binaries must include applicable Go runtime notices alongside the project license.
+- The imported x/crypto and x/sys package graph was inspected for its Argon2id,
+  BLAKE2b, and CPU-detection purpose. Both pinned module `LICENSE` files carry the
+  same BSD-3-Clause terms and original Go copyright holder; their `PATENTS` grants
+  remain upstream. No library source is copied or relicensed. Distributing a client
+  binary must preserve those notices and terms, including the upstream holder.
+  See the pinned [x/crypto license](https://cs.opensource.google/go/x/crypto/+/v0.58.0:LICENSE)
+  and [x/sys license](https://cs.opensource.google/go/x/sys/+/v0.49.0:LICENSE).
+- These are the Go project's maintained cryptographic/system libraries; they
+  avoid a new KDF implementation. `make vuln` checks the used package graph for
+  known advisories, not correctness or an independent audit. Review upgrades
+  through the same admission process; removal requires a reviewed replacement
+  backup profile and compatibility plan, never a silent KDF fallback.
+- The admission scan reports [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932)
+  against x/crypto's unmaintained OpenPGP package, with no fixed version. That
+  package is not imported or reachable here; only Argon2id/BLAKE2b and CPU
+  detection are admitted. Do not introduce OpenPGP through this dependency.
 - mdBook setup verifies official release-API digests and individually reviewed notice
   hashes. Generated docs keep unchanged holders/licenses in `assets/upstream-licenses/`.
   No upstream executable or asset is checked in.
@@ -62,7 +82,6 @@ bundled fonts; no font binaries are published. Docs assets are separate from pro
 | [pgx](https://github.com/jackc/pgx) | 5.11.0 | MIT | Native PostgreSQL driver |
 | [Goose](https://github.com/pressly/goose) | 3.29.0 | MIT | Separate SQL migration histories |
 | [CIRCL](https://github.com/cloudflare/circl) | 1.6.5 | BSD-3-Clause | Blind RSA implementation |
-| [x/crypto](https://pkg.go.dev/golang.org/x/crypto/argon2) | 0.58.0 | BSD-3-Clause | Argon2id |
 | [x/mod](https://pkg.go.dev/golang.org/x/mod/sumdb/tlog) | 0.42.0 | BSD-3-Clause | Tree/proof and signed-note routines |
 | [go-webauthn](https://pkg.go.dev/github.com/go-webauthn/webauthn) | 0.18.2 | BSD-3-Clause | Passkey verification |
 | [otp](https://pkg.go.dev/github.com/pquerna/otp) | 1.5.0 | Apache-2.0 | TOTP fallback |

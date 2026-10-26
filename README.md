@@ -67,6 +67,10 @@ source, including local modifications. There is no default.
 See [deployment](docs/deployment.md#local-development) for flags and limits and
 [API](docs/api.md) for endpoint behavior.
 
+Shared [device-backup encryption](docs/cryptography.md#device-backup-profile-1)
+is implemented as an internal Go package, with no CLI/browser integration yet.
+It requires independent review before use with real keys.
+
 ## Architecture at a glance
 
 ```text

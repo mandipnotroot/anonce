@@ -15,7 +15,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make build` | All Go commands with Go 1.27.3 |
 | `make test` | Race detection, `coverage/out`, statement coverage report; whole module, no exclusions, including wrappers and signal handling |
 | `make lint` | vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig` and `FuzzLookup`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make fuzz` | `FuzzConfig`, `FuzzLookup`, and `FuzzBackup`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 
@@ -24,9 +24,19 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
   listen/source-URL limits. Retained failures belong in
   `internal/service/testdata/fuzz/FuzzConfig` or `internal/web/testdata/fuzz/FuzzLookup`.
   Review and license corpora before committing.
+- Backup fuzzing caps input at the maximum backup size plus one byte, exercises
+  only the allocation-free structural parser, and never invokes Argon2id. Retain
+  licensed synthetic failures in `internal/client/keystore/testdata/fuzz/FuzzBackup`.
+  Unit tests use real profile costs and synthetic non-key payloads; no private
+  key fixtures or reduced-cost test profiles exist.
+- The keystore's single `G407` annotation documents a scanner false positive:
+  `NewGCMWithRandomNonce` requires an empty nonce argument and generates the nonce
+  itself. `TestKeystoreFreshRandomness` and `TestKeystoreLibraryCompatibility`
+  check this API's nonce-prefix behavior; ordinary fixed-nonce GCM is not used
+  in production code.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
-  There are no third-party runtime modules. Inventory supports manual review, not
-  automatic license approval. See [dependencies](dependencies.md) for pins/admission.
+  Module inventory supports manual review, not automatic license approval.
+  See [dependencies](dependencies.md) for device-backup modules and pins/admission.
 
 ### Implemented test mapping
 
@@ -37,15 +47,29 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Lifecycle and limits | `TestServeLifecycle`, `TestServePropagatesCancellationToRequests`, `TestServeClosesUnresponsiveRequests`, `TestServeListenerFailureClosesRequests`, `TestConnectionLimitAndClose`, `TestServerBounds` |
 | Shell paths, development gate, SRI, headers, methods, HEAD, no body reads/reflection | `TestSite`, `TestStylesheetIntegrity`, `TestSiteRejectsBrokenAssets`, `TestWebServiceBoundary`, `TestWebDelivery`, `TestDevelopmentStyleGuideFlag` |
 | Rejection of scripts, handlers, remote assets, active controls, malformed markup, wrong asset hashes | `scripts/test_web_check.py` |
+| Device-backup size, purpose, version/profile, reserved-byte and length validation before KDF work | `TestKeystoreRejectsInvalidInputs`, `TestKeystoreRejectsUnsafeParameters`, `FuzzBackup` |
+| Backup round trips, owned buffers, fresh salt/nonce, wrong passwords, header/ciphertext tampering, independent library composition | `TestKeystoreRoundTrip`, `TestKeystoreFreshRandomness`, `TestKeystoreRejectsTampering`, `TestKeystoreLibraryCompatibility` |
+| Backup cancelled/queued calls, cancellation at admission/derivation/output boundaries, and concurrent derivation admission | `TestKeystoreCancellation`, `TestKeystoreCancellationBoundaries`, `TestKeystoreConcurrent` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
 Web checks validate allowlists/delivery, not full HTML/CSS grammar or browser execution.
 No JavaScript exists. Screenshots, actual CSP enforcement, keyboard access, assistive
 technology, contrast, and print rendering remain untested.
 
+Native backup costs can be measured with:
+
+```sh
+go test ./internal/client/keystore -run='^$' -bench=BenchmarkKeystore -benchmem
+```
+
+This measures the full 64 MiB, three-pass profile, not a weakened test substitute.
+Browser costs, native/WASM compatibility, independent cryptographic review,
+file custody, and end-to-end device confidentiality remain untested.
+
 ## Required runtime command contract
 
-Build/test/lint/fuzz/vuln cover infrastructure only; web-lint covers the inert shell.
+Build/test/lint/fuzz/vuln cover infrastructure and the shared backup foundation;
+web-lint covers the inert shell.
 **All other targets below are required but unavailable.** See [roadmap](roadmap.md).
 
 | Target | Required behavior |
@@ -139,7 +163,6 @@ All named protocol tests below are **planned**, not present.
 | Unauthorized review or plaintext export upload | Access denied; decrypted data stays local | `TestReviewPreservesDeviceBoundary` |
 | Wrong, expired, replayed, or cross-round reply capability | Rejected without an identity or mailbox existence oracle | `TestReplyEnforcesCapabilityPolicy` |
 | Unauthorized or cross-round abuse action | No flag/block change or identity lookup | `TestAbuseEnforcesRoundScope` |
-| Corrupted or expensive keystore | Bounded reject with no partial plaintext | `TestKeystoreRejectsUnsafeParameters` |
 | Native/WASM format or vector mismatch | Compatibility gate fails | `TestClientNativeWASMCompatibility` |
 | Restored expired round key | Controlled backup restoration rejects active reuse | `TestRetentionRejectsExpiredKeyRestore` |
 

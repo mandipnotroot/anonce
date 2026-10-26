@@ -26,6 +26,11 @@ must use `/vN` module/import paths for breaking v2+ releases, even in a monorepo
 are unreleased, not stable wire profiles or a product. Future crypto formats need
 explicit breaking review.
 
+**Device-backup compatibility:** profile 1 introduces an unreleased cryptographic
+file format and requires breaking-impact review. There is no previous format or
+legacy decoder to migrate. Unknown versions/profiles fail closed; future format
+or parameter changes require breaking review and an explicit migration plan.
+
 **Shell compatibility:** submission `/` changed from JSON `404` to HTML `200`,
 breaking HTTP behavior even before release. Consumers expecting root errors must
 use explicit infrastructure endpoints. `/about`, hashed CSS, and opt-in

@@ -17,6 +17,14 @@ The read-only shell serves public HTML/local CSS without forms or browser execut
 Mocks require explicit development mode. See [UI design](ui-design.md#current-local-shell)
 for checks and missing browser/manual evidence. None establishes the protocol properties below.
 
+The isolated device-backup package authenticates bounded opaque secrets and their
+headers under [profile 1](cryptography.md#device-backup-profile-1). It is not used by
+HTTP services. Malformed imports cannot select expensive work factors, but even
+well-formed invalid imports cost one full KDF. Serialized derivation does not bound
+caller queues, total RSS, repeated guessing, or hostile client execution. Encrypted
+backups permit offline password guessing and do not prevent rollback or expired-key
+reuse. See [custody limits](key-management.md#device-keystores).
+
 ## Assets and principals
 
 - **Assets:** membership identities, eligibility, keys, answers, token unlinkability,

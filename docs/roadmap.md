@@ -16,6 +16,7 @@ promises. Track tasks in issues and requirements in the linked references.
   client, container, and browser checks from [testing](testing.md).
 - Implement local key generation, bounded encrypted backups, CA signing, enrollment,
   and revocation under [key management](key-management.md) and [protocol](protocol.md).
+  Connect the implemented in-memory device-backup package to reviewed device interfaces.
 - Extend the read-only local interface only with clearly marked mock data until
   the required security operations exist. Add browser, screenshot, and manual
   accessibility evidence under [UI design](ui-design.md#demonstration-and-evidence).
@@ -25,6 +26,10 @@ bounded shutdown, embedded read-only pages, and an opt-in style guide. `make web
 checks markup, CSS, asset integrity, and delivery. Readiness is unavailable;
 protocol routes reject without reading bodies. No protocol/storage security claims
 or browser/accessibility evidence. See [deployment](deployment.md#local-development).
+Shared device-backup encryption implements
+[profile 1](cryptography.md#device-backup-profile-1), with bounded parsing,
+authenticated headers, cancellation-aware admission, tests, and native benchmarks.
+It has no CLI/browser or persistence integration and needs independent review.
 
 ## Next
 
@@ -60,8 +65,9 @@ is required before real use, with or without extensions.
   the reservation unless a stronger reviewed recovery mechanism is introduced.
 - Fix the supported response-limit ceiling, quota/slot request encoding, and any
   stronger distinct-participant release mechanism before claiming those capabilities.
-- Finalize token encoding, domain separation, key validation, envelope bounds,
-  and keystore grammar before interoperable code. See [cryptography](cryptography.md).
+- Finalize token encoding, domain separation, key validation, and envelope bounds
+  before interoperable code. The device-backup grammar is fixed for profile 1;
+  independent review and native/WASM evidence remain outstanding. See [cryptography](cryptography.md).
 - Define payload-bound submission retries and crash recovery for log publication.
 - Define reviewer retrieval and reply-write authorization without membership cookies.
 - Specify trusted checkpoint discovery, consistency checking, and split-view response.

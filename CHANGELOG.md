@@ -10,6 +10,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Shared in-memory device-backup encryption with bounded Argon2id, AES-256-GCM,
+  authenticated key purposes and headers, cancellation-aware derivation admission,
+  tampering/concurrency tests, parser fuzzing, and native benchmarks. No device
+  interface or persistence integration is available yet.
 - A read-only local submission-service overview and about page, opt-in mock style
   guide, embedded content-addressed CSS with SRI, and rendered-shell checks.
 - Local-only Go CA, issuer, and submission commands with liveness, explicit
@@ -26,6 +30,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking cryptographic-format addition: define device-backup profile 1 with no
+  legacy decoder or parameter fallback. Independent review and native/WASM
+  interoperability evidence are still required before real-key use.
 - Shorten documentation, improve scanning, and link named standards without changing
   requirements or behavior.
 - Breaking HTTP behavior: the submission process now serves HTML at `/` instead

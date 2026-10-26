@@ -5,8 +5,9 @@
 
 Audience: implementers, reviewers, and operators evaluating system boundaries.
 
-Status: proposed application architecture. Only local HTTP infrastructure and a
-read-only web shell exist. No domain policy, device clients, storage, or cryptography.
+Status: proposed application architecture. Local HTTP infrastructure, a read-only
+web shell, and shared device-backup encryption exist. No domain policy, device
+entry points, storage, or working submission protocol.
 
 ## Components and ownership
 
@@ -61,6 +62,7 @@ validly signed forms served to different members.
 | `internal/app`, `internal/service` | Implemented command configuration, bounded local HTTP, and unavailable-operation responses |
 | `cmd/cli`, `cmd/wasm` | Device-side entry points |
 | `internal/client` | Shared composition, validation, and local state |
+| `internal/client/keystore` | Implemented in-memory device-backup encryption; no transport or persistence |
 | `internal/membership`, `internal/issuer` | Identity-side policy and issuance |
 | `internal/submission` | Ciphertext acceptance and atomic spending |
 | `internal/transparency`, `internal/audit` | Distinct public and administrative logs |
@@ -74,10 +76,13 @@ validly signed forms served to different members.
 - Domain code must not depend on HTTP handlers. Clients must not import server
   storage or database drivers. No command may silently connect to both databases.
 
-**Current implementation:** no databases or domain packages. `internal/web`
+**Current implementation:** no databases or membership/issuance/submission domain
+packages. `internal/web`
 pre-renders fixed pages at startup using escaped templates and first-party CSS
 embedded in `web/`. Request data never enters templates. Only submission serves
-these pages; there is no executable browser code or device client.
+these pages; there is no executable browser code or device entry point. The
+standalone shared keystore package is not imported by HTTP services. Its profile
+and limits are defined in [cryptography](cryptography.md#device-backup-profile-1).
 
 ## Availability and failure
 

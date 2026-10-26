@@ -5,7 +5,8 @@
 
 Audience: implementers, reviewers, and operators responsible for secret custody.
 
-Status: custody design; no keystore or signing service is implemented.
+Status: shared in-memory device-backup encryption is implemented. Device key
+generation, file/browser custody, recovery workflows, and signing services are not.
 
 ## Inventory
 
@@ -34,6 +35,27 @@ Status: custody design; no keystore or signing service is implemented.
 - Dual control is [optional future work](roadmap.md#later).
 
 ## Device keystores
+
+The implemented `internal/client/keystore` package seals and opens bounded opaque
+secrets using [device-backup profile 1](cryptography.md#device-backup-profile-1).
+It is not connected to any command, browser interface, or HTTP service.
+
+- `Seal` and `Open` take a context, expected key purpose, and password bytes.
+  Inputs remain caller-owned and must not be mutated until the call returns.
+  Returned buffers are caller-owned; clear decrypted secrets after use.
+- Owned derived-key bytes and failed/cancelled output buffers are cleared.
+  Passwords and input secrets are neither copied unnecessarily nor cleared by the
+  package. Callers must clear them when no longer needed.
+- The library's Argon2 arena and expanded AES key cannot be cleared through their
+  public APIs. Garbage collection, compiler/runtime copies, swap, and crash dumps
+  prevent complete-erasure guarantees. Bound concurrency and secure the device.
+- File permissions, atomic writes, password entry/confirmation, key serialization,
+  purpose selection, and browser persistence remain caller responsibilities and
+  are not implemented. Never store a raw key beside its encrypted backup.
+- The format neither detects a restored old backup nor enforces revocation or
+  reviewer-key expiry. Do not use it as evidence of safe retention/recovery.
+
+Remaining custody requirements:
 
 - Generate member/reviewer keys locally. Derive encryption keys from passwords
   with bounded Argon2id; authenticate the complete keystore header.

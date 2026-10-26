@@ -9,7 +9,7 @@ Audience: readers choosing the appropriate project reference.
 
 | Status | Scope |
 | --- | --- |
-| Implemented | Hooks, wording/identity checks, commit lint, REUSE, docs checks, local HTTP infrastructure, read-only shell; checks in [testing](testing.md) |
+| Implemented | Hooks, wording/identity checks, commit lint, REUSE, docs checks, local HTTP infrastructure, read-only shell, shared in-memory device-backup encryption; checks in [testing](testing.md) |
 | Designed | Application, cryptography, product UI, database boundaries, releases |
 | Unavailable | Working protocol/product, screenshots, production deployment, protocol security results |
 
