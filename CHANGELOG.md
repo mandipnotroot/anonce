@@ -10,6 +10,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A read-only local submission-service overview and about page, opt-in mock style
+  guide, embedded content-addressed CSS with SRI, and rendered-shell checks.
 - Local-only Go CA, issuer, and submission commands with liveness, explicit
   demonstration status, source discovery, bounded connections, and graceful shutdown.
 - Go build, race/coverage, lint, bounded configuration fuzzing, vulnerability, and
@@ -24,6 +26,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking HTTP behavior: the submission process now serves HTML at `/` instead
+  of the previous JSON `404`. CA and issuer routes and the status JSON are unchanged.
 - Align public status with the demonstration infrastructure, include Go module
   dependency updates, document publication prerequisites, and reject padded commit
   descriptions.

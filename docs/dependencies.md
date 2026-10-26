@@ -15,6 +15,7 @@ vendored. Recheck each exact artifact, checksum, license, and advisory before im
 | Material | License | Treatment |
 | --- | --- | --- |
 | Original code, documentation, and repository checks | AGPL-3.0-only | SPDX headers; [license](../LICENSE) |
+| Read-only shell templates and CSS | AGPL-3.0-only | Original embedded assets; device fonts, no third-party product assets or browser packages |
 | Contributor Covenant 3.0 adaptation | CC-BY-SA-4.0 | Upstream attribution and separate document license retained |
 | Python standard library | PSF-2.0 | External interpreter, not copied into the project |
 | Git and GNU Make | GPL-2.0-only / GPL-3.0-or-later upstream tools | External development tools, not project relicensing |

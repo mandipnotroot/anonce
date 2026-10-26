@@ -38,6 +38,27 @@ configuration are in [deployment](deployment.md#local-development).
 Malformed HTTP or oversized headers can be rejected by Go's transport parser
 before the application handler runs, without application JSON or headers.
 
+## Implemented read-only shell
+
+Only the submission process serves HTML at `/` and `/about`. With the explicit
+`-dev-styleguide` flag it also serves `/dev/styleguide`; otherwise that path is
+JSON `404`. CA and issuer expose none of these pages or assets. The shell does not
+change the status JSON capability inventory, which describes infrastructure only.
+
+Each page links a single embedded stylesheet at
+`/assets/shell.{sha256}.css`, where `{sha256}` is the full lowercase hexadecimal
+SHA-256 digest of its bytes. Only the exact current asset path is available; there
+is no directory listing, unhashed alias, or template download. Its SRI value is
+included in the page. Page and asset paths accept `GET` and `HEAD`; other methods
+return JSON `405` with `Allow: GET, HEAD`. Responses use `no-store`, no cookies or
+CORS, and the shell CSP in [deployment](deployment.md#transport-and-headers).
+No request data enters templates, and body-bearing requests close without reading
+or draining the body. The shell offers no forms, authentication, or protocol calls.
+
+Serving HTML `200` instead of JSON `404` at the submission root is a breaking HTTP
+change; see [versioning](versioning.md#public-api-boundary). It is not a stable
+cryptographic profile or product interface.
+
 ## Endpoint ownership
 
 | Origin | Planned endpoints | Input boundary |

@@ -5,11 +5,35 @@
 
 Audience: front-end contributors, accessibility reviewers, and product reviewers.
 
-Status: design specification. No UI, screenshot, or accessibility result exists yet.
+Status: a read-only local shell is implemented. The product interface below remains
+a design specification. Browser screenshots and accessibility results are not yet
+available.
+
+## Current local shell
+
+Only the submission process serves `/` and `/about`, plus `/dev/styleguide` when
+explicitly enabled by `-dev-styleguide`. The style guide contains a synthetic draft
+summary, an unavailable publication button, and empty-state/status examples. It is
+not an administrative interface. Public pages contain no mock response metrics,
+input forms, private data, or executable scripts. All pages have a development
+warning, a source footer, semantic landmarks, and a skip link.
+
+The minimal shell uses original CSS and device fonts rather than vendoring the
+proposed product dependencies before their review. It includes responsive layout,
+visible keyboard focus, system-selected light/dark colors, and print rules. It has
+no animation. The stylesheet is content-addressed and SRI-linked; delivery controls
+are in [deployment](deployment.md#transport-and-headers).
+
+`make web-lint` checks rendered inert markup, fragment references, local links,
+asset hashes, CSS loading restrictions, headers, methods, and the development gate.
+It does not run a browser, validate full HTML/CSS grammar, measure contrast, establish
+WCAG conformance, or replace keyboard and assistive-technology review. Actual
+desktop/mobile, light/dark screenshots and browser/manual checks remain required;
+no substitute images are supplied as evidence of rendering.
 
 ## Visual language
 
-Use Pico CSS 2.1.1 with custom layout tokens, locally served Inter 4.1 fonts, a small
+For the future product interface, use Pico CSS 2.1.1 with custom layout tokens, locally served Inter 4.1 fonts, a small
 licensed SVG icon selection, and SVG charts. Only public or mock chart data may be
 server-rendered; decrypted results must be rendered on the reviewer device. Prefer calm surfaces,
 clear hierarchy, and meaningful whitespace over decorative security imagery.

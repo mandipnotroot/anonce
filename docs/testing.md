@@ -18,11 +18,12 @@ in that report without exclusions. Process signal handling also needs manual
 execution checks; unit coverage alone is not lifecycle evidence.
 
 `make lint` runs vet, pinned gofumpt and golangci-lint, tidy diff, and module
-verification. `make fuzz` runs `FuzzConfig` with two workers for 15 seconds by
-default; `FUZZTIME` changes the time budget. Inputs are capped at 8192 bytes before
+verification. `make fuzz` runs `FuzzConfig` and `FuzzLookup` with two workers for
+15 seconds each by default; `FUZZTIME` changes each time budget. Inputs are capped at 8192 bytes before
 configuration parsing, which separately caps listen and source-URL lengths.
 Go retains failures under `internal/service/testdata/fuzz/FuzzConfig`; review and
-license any retained corpus before committing it.
+license any retained corpus before committing it. The shell's retained corpus
+belongs under `internal/web/testdata/fuzz/FuzzLookup` with the same review rules.
 
 `make vuln` runs govulncheck, gosec, module verification/inventory, and redacted
 Gitleaks scanning of current files. Only Git internals and disposable tool/build
@@ -41,11 +42,26 @@ Infrastructure cases map to `TestConfig`, `TestConfigSourceURL`,
 `TestConnectionLimitAndClose`, `TestServerBounds`, and `TestRunFailures`.
 These do not establish database isolation, anonymity, or any protocol attack result.
 
+The read-only shell maps to `TestSite`, `TestStylesheetIntegrity`, `TestSiteRejectsBrokenAssets`,
+`TestWebServiceBoundary`, `TestWebDelivery`, and `TestDevelopmentStyleGuideFlag`.
+They check exact path ownership, the opt-in development gate, SRI, security headers,
+method rejection, HEAD behavior, and no request-body reads or reflection.
+
+`make web-lint` builds the commands, starts the submission process on loopback with
+and without the development flag, and checks rendered inert HTML, headings,
+landmarks, fragment/description targets, local links, CSS restrictions, embedded
+asset hashes, delivery headers, unavailable protocol/readiness, and bounded process
+shutdown. `scripts/test_web_check.py` tests rejection of injected scripts, handlers,
+remote assets, active controls, malformed markup, and mismatched asset hashes.
+These are allowlist and delivery checks, not full HTML/CSS validation or browser
+execution. No JavaScript is present. Browser screenshots, actual CSP enforcement,
+keyboard, assistive technology, contrast, and print rendering remain untested.
+
 ## Required runtime command contract
 
 Build, test, lint, fuzz, and vulnerability targets below are implemented for the
-current infrastructure only. All other rows remain requirements, not available
-commands. See the [roadmap](roadmap.md).
+current infrastructure only. The web-lint target is implemented for the inert shell.
+All other rows remain requirements, not available commands. See the [roadmap](roadmap.md).
 
 | Target | Required behavior |
 | --- | --- |
@@ -56,7 +72,7 @@ commands. See the [roadmap](roadmap.md).
 | `make db-test` | Migrations, privileges, concurrency, backup/restore on real PostgreSQL |
 | `make fuzz` | Bounded parser fuzzing with retained failing inputs |
 | `make wasm` | Shared Go client build for `js/wasm`, matching loader, hash and size gate |
-| `make web-lint` | HTML, CSS, JS, and asset-integrity checks |
+| `make web-lint` | Implemented inert HTML/CSS and asset-delivery checks; extend for future JS and full syntax validation |
 | `make e2e` | Headless browser checks against the Compose stack |
 | `make up` | `docker compose up --build --wait` with loopback-only demo exposure |
 | `make smoke` | Health/readiness checks and service isolation checks |

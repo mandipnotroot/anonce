@@ -64,6 +64,27 @@ func TestHelp(t *testing.T) {
 	}
 }
 
+func TestDevelopmentStyleGuideFlag(t *testing.T) {
+	t.Parallel()
+	for _, role := range []service.Role{service.CA, service.Issuer, service.Submission} {
+		t.Run(string(role), func(t *testing.T) {
+			t.Parallel()
+			cfg, err := parse(role, []string{"-source-url", sourceArg, "-dev-styleguide"}, io.Discard)
+			if role == service.Submission {
+				if err != nil || !cfg.DevStyleGuide {
+					t.Fatalf("style-guide flag not accepted: %v", err)
+				}
+			} else if err == nil {
+				t.Fatal("identity command accepted a submission-only flag")
+			}
+		})
+	}
+	cfg, err := parse(service.Submission, []string{"-source-url", sourceArg, "-dev-styleguide=false"}, io.Discard)
+	if err != nil || cfg.DevStyleGuide {
+		t.Fatal("explicit false enabled the style guide")
+	}
+}
+
 func TestRunRejectsConfigurationBeforeBinding(t *testing.T) {
 	t.Parallel()
 	if err := run(context.Background(), service.Submission, nil, io.Discard); err == nil {

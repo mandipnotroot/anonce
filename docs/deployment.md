@@ -5,7 +5,7 @@
 
 Audience: operators, maintainers, and organizations planning a demo or deployment.
 
-Status: local Go HTTP infrastructure is available. No Dockerfile, Compose stack,
+Status: local Go HTTP infrastructure and a read-only web shell are available. No Dockerfile, Compose stack,
 production image, or working protocol exists. Do not collect real data.
 
 ## Local development
@@ -22,8 +22,10 @@ including modifications and build/install material:
 
 These commands are long-running; use separate terminals or a process supervisor.
 The shell variable is an operator convenience, not an application environment
-setting. A missing value fails startup. Only `-listen`, `-source-url`, and `-help`
-are supported; positional arguments and unknown flags fail.
+setting. A missing value fails startup. All commands support only `-listen`,
+`-source-url`, and `-help`; the submission command also accepts `-dev-styleguide`.
+Positional arguments and unknown flags fail. The development flag defaults to false
+and is rejected by the identity-side commands and configuration validation.
 
 | Command | Default bind |
 | --- | --- |
@@ -40,7 +42,10 @@ not fetched or verified by the process; source completeness remains an operator 
 `GET /healthz` reports process liveness. `/api/v1/status` explicitly reports
 demonstration mode. `/readyz` always fails with `503` because storage, migrations,
 and protocol controls do not exist. Owned protocol routes return `501`; other
-routes return `404`. There are no UI pages or input forms. See [API](api.md).
+routes return `404`, except the submission process's read-only `/`, `/about`, and
+content-addressed stylesheet. `-dev-styleguide` additionally enables
+`/dev/styleguide` with clearly labelled mock data and a disabled publication button.
+There are no input forms or working administrative controls. See [API](api.md).
 
 Each process bounds accepted connections at 64, headers at 8 KiB plus the Go HTTP
 parser's fixed read allowance, header reads at 5 seconds, full reads and writes at
@@ -77,6 +82,14 @@ cross-service trace IDs, or identity-bearing error context. Document the actual
 infrastructure behavior; application code alone cannot ensure this policy.
 
 ## Transport and headers
+
+The local shell permits only same-origin styles using `style-src 'self'` alongside
+`default-src 'none'`, `frame-ancestors 'none'`, `base-uri 'none'`, and
+`form-action 'none'`. Other responses retain `default-src 'none'` without the style
+exception. No scripts, fonts, images, network APIs, inline styles, or input forms
+are delivered. Every page links to `/source`. CSS is embedded, named by its full
+SHA-256 digest, and linked with matching SRI. These same-origin hashes are not an
+independent trust anchor. All responses remain uncached with `no-store`.
 
 Terminate TLS with maintained open-source software and an organization-appropriate
 certificate process. Enable HSTS on verified HTTPS origins, deny framing, set

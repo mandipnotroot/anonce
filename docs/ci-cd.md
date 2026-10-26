@@ -28,7 +28,8 @@ do not infer complete dependency coverage from the update configuration.
 
 `make workflow-lint` runs pinned actionlint with the pinned Go toolchain.
 The `runtime` job builds all three demonstration commands and runs race/coverage,
-lint, 15-second bounded configuration fuzzing, and vulnerability/secret checks.
+lint, 15-second bounded configuration and shell-lookup fuzzing, vulnerability/secret
+checks, and rendered-shell/asset delivery validation through `make web-lint`.
 It does not exercise a protocol, database, browser, container, or WASM client.
 
 PR policy validation covers the current files and full reachable history, PR text,

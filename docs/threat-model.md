@@ -13,6 +13,10 @@ binds, does not read request bodies, and discards HTTP diagnostics that could
 include peer addresses or panic values. These are limited infrastructure controls,
 not the protocol properties below. Other local users, browser-initiated requests,
 host compromise, and externally configured proxies remain outside that isolation.
+The read-only shell adds public HTML and an embedded local stylesheet, but no
+credentials, input forms, browser execution, or protocol operations. Only explicitly
+enabled development mode exposes mock style-guide content. Its checks and outstanding
+browser/manual evidence are described in [UI design](ui-design.md#current-local-shell).
 
 ## Assets and principals
 
@@ -53,6 +57,10 @@ traffic. A malicious reviewer can retain any answer or key they have obtained.
 | Global observer | Can correlate flows despite database isolation; not covered by an unconditional anonymity claim |
 
 ## Browser delivery trust
+
+The current inert shell uses escaped templates, restrictive CSP, and a same-origin
+content-addressed stylesheet with SRI. No request values enter templates. These
+controls and their tests are not evidence of protocol or client confidentiality.
 
 CSP, self-hosted assets, SRI, pinned WASM hashes, and reproducible builds reduce
 accidental compromise and support inspection. A hostile origin can replace both

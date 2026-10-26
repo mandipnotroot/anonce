@@ -63,7 +63,9 @@ The submission process binds `127.0.0.1:8080`; `bin/issuer` and `bin/ca` use por
 8081 and 8082. `/healthz` reports liveness, `/api/v1/status` lists only implemented
 infrastructure, and `/source` redirects to the configured source. `/readyz` always
 returns `503`; owned protocol routes return `501` without reading request bodies.
-There is no UI, database, signing, enrollment, or submission support yet.
+The submission process serves a read-only overview at `/` and `/about`. Add
+`-dev-styleguide` to preview explicitly labelled mock components. There are no
+input forms, database, signing, enrollment, or submission operations.
 See [deployment](docs/deployment.md#local-development) for flags and limits.
 
 ## Architecture at a glance

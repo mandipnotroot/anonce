@@ -18,13 +18,18 @@ tasks and keep technical requirements in the linked reference documents.
   client, container, and browser checks from [testing](testing.md).
 - Implement local key generation, bounded encrypted backups, CA signing, enrollment,
   and revocation under [key management](key-management.md) and [protocol](protocol.md).
-- Keep any initial interface read-only, locally bound, and clearly marked as mock
-  data. Unimplemented security operations must fail without accepting real secrets.
+- Extend the read-only local interface only with clearly marked mock data until
+  the required security operations exist. Add browser, screenshot, and manual
+  accessibility evidence under [UI design](ui-design.md#demonstration-and-evidence).
 
 Implemented infrastructure consists of separate CA, issuer, and submission commands,
 loopback-only listeners, liveness/status/source endpoints, and bounded shutdown.
 Readiness remains unavailable. Protocol routes fail explicitly without reading
 request bodies; no protocol or storage security property is claimed.
+The submission process also serves an embedded, read-only overview and about page,
+with a development style guide behind `-dev-styleguide`. Rendered markup, local CSS,
+asset integrity, and HTTP delivery checks are available through `make web-lint`;
+browser and accessibility evidence remains unavailable.
 
 ## Next
 

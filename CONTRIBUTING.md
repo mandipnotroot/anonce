@@ -31,7 +31,7 @@ Add new files to Git before index, link, and site validation includes them. The
 site build uses tracked documents directly; do not maintain separate site copies.
 
 Go infrastructure uses the pinned Go 1.27.3 toolchain. `make check` includes build,
-race/coverage, lint, bounded parser fuzzing, and security checks. The tools are
+race/coverage, lint, bounded parser fuzzing, security, and rendered-shell checks. The tools are
 pinned in `Makefile` and downloaded through the Go module proxy/checksum service.
 Local process flags are in [deployment](docs/deployment.md#local-development),
 with evidence limits in [testing](docs/testing.md). No container or database setup

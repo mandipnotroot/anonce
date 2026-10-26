@@ -6,7 +6,8 @@
 Audience: implementers, reviewers, and operators evaluating system boundaries.
 
 Status: application architecture is proposed. Local HTTP infrastructure is
-implemented; domain policy, clients, persistence, and cryptography are absent.
+implemented alongside a read-only web shell; domain policy, device clients,
+persistence, and cryptography are absent.
 
 ## Components and ownership
 
@@ -78,6 +79,10 @@ listed in [dependencies](dependencies.md).
 Domain code must not depend on HTTP handlers. Client packages must not import server
 storage or database drivers. No command may silently connect to both databases.
 The current processes connect to neither database and do not contain domain packages.
+The implemented shell uses escaped Go templates and first-party CSS embedded in
+`web/`. `internal/web` pre-renders fixed public pages at startup; request data is
+never passed into templates. Only the submission process exposes these pages.
+There is no executable browser code or device-side client yet.
 
 ## Availability and failure
 

@@ -8,9 +8,10 @@ Audience: readers choosing the appropriate project reference.
 ## Project status
 
 **Implemented:** Git hooks, repository wording and identity inspection, commit grammar
-checks, REUSE licensing, documentation checks, and local Go HTTP infrastructure with
-race, lint, fuzz, and security checks described in [testing](testing.md).
-**Designed:** the application, cryptographic composition, UI, database boundaries,
+checks, REUSE licensing, documentation checks, local Go HTTP infrastructure, and a
+read-only web shell with race, lint, fuzz, delivery, and security checks described
+in [testing](testing.md).
+**Designed:** the application, cryptographic composition, product UI, database boundaries,
 and release infrastructure. **Unavailable:** any live protocol, usable submission product,
 screenshots, production deployment, or protocol security test results.
 

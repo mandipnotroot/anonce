@@ -10,7 +10,7 @@ Audience: contributors and automated tooling.
 anonce designs anonymous submissions from verified members with administrator-set
 per-member response limits for each round.
 This checkout contains documentation, repository checks, and demonstration-only Go
-HTTP infrastructure, not a working submission product.
+HTTP infrastructure and a read-only local web shell, not a working submission product.
 Keep implemented behavior distinct from intended behavior.
 
 - `docs/`: architecture, security, operations, and contributor reference.
@@ -20,7 +20,8 @@ Keep implemented behavior distinct from intended behavior.
 - `.githooks/`: local enforcement, installed through `make setup`.
 - `.github/`: collaboration templates and supported CI workflows.
 - `cmd/`, `internal/`: local CA, issuer, and submission HTTP infrastructure.
-- Planned runtime layout also includes `migrations/` and `web/`.
+- `web/`: embedded read-only demonstration templates and first-party CSS.
+- Planned runtime layout also includes `migrations/`.
 
 ## Authorship and wording
 
@@ -61,8 +62,9 @@ make workflow-lint    # pinned actionlint; requires Go
 make build            # build the local demonstration commands
 make test             # race tests and coverage report
 make lint             # Go analysis, formatting, and module checks
-make fuzz             # bounded configuration-parser fuzzing
+make fuzz             # bounded configuration and shell-route fuzzing
 make vuln             # Go vulnerability, static security, and secret checks
+make web-lint         # rendered inert markup, local CSS, SRI, and HTTP delivery checks
 ```
 
 The remaining runtime command contract is recorded in [testing](docs/testing.md).

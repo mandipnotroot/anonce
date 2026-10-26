@@ -22,11 +22,17 @@ If public Go modules are later introduced, breaking releases at v2 and above mus
 use the required `/vN` module path, including matching import paths. A monorepo tag
 does not excuse Go module compatibility rules.
 
-The current commands identify themselves as `development` and expose only the
-infrastructure contract in [API](api.md#implemented-infrastructure) and
+The current commands identify themselves as `development` and expose the
+infrastructure and read-only shell contracts in [API](api.md) and
 [deployment](deployment.md#local-development). This is an additive, unreleased
 feature, not a stable wire profile or a released product. Future cryptographic
 formats still require explicit breaking-change review.
+
+The shell changes the submission process's root from JSON `404` to HTML `200`.
+This is a breaking HTTP behavior change even before release; consumers expecting
+the old root error must use an explicit infrastructure endpoint instead. `/about`,
+content-addressed CSS, and the opt-in `-dev-styleguide` flag are new interfaces.
+CA and issuer roots remain JSON `404`; existing infrastructure JSON is unchanged.
 
 ## Change classification
 
