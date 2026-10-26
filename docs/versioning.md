@@ -39,6 +39,14 @@ not a change to the outer backup format or generic keystore API. The typed impor
 does not accept arbitrary opaque member-purpose payloads; no prior typed key format
 or migration exists. HTTP and CLI contracts are unchanged.
 
+**Reviewer-key compatibility:** the unreleased
+[reviewer-key payload profile 1](cryptography.md#reviewer-key-payload-profile-1)
+defines canonical X25519 PKCS #8 plaintext inside existing reviewer-purpose backups.
+This is a breaking cryptographic-payload addition requiring `semver:major` review.
+The outer backup format, generic keystore, HTTP, and CLI contracts are unchanged.
+Opaque, wrong-algorithm, and noncanonical payloads are not accepted by this typed
+importer. There is no prior typed reviewer format or migration.
+
 **Shell compatibility:** submission `/` changed from JSON `404` to HTML `200`,
 breaking HTTP behavior even before release. Consumers expecting root errors must
 use explicit infrastructure endpoints. `/about`, hashed CSS, and opt-in

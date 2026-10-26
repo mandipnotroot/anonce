@@ -14,8 +14,8 @@ promises. Track tasks in issues and requirements in the linked references.
   the boundaries in [architecture](architecture.md) and [deployment](deployment.md).
 - Extend the implemented build, race, lint, fuzz, and security targets with database,
   client, container, and browser checks from [testing](testing.md).
-- Connect the implemented in-memory device-backup and member-key packages to
-  reviewed device interfaces. Implement reviewer-key generation, CA signing,
+- Connect the implemented in-memory device-backup and member/reviewer-key packages to
+  reviewed device interfaces. Implement reviewer round binding, CA signing,
   enrollment, and revocation under [key management](key-management.md) and
   [protocol](protocol.md).
 - Extend the read-only local interface only with clearly marked mock data until
@@ -35,6 +35,10 @@ Local member-key generation, encrypted PKCS #8 export, and validated import now
 use this backup foundation under the
 [member-key payload profile](cryptography.md#member-key-payload-profile-1).
 They have no enrollment, signing-service, or device-interface integration.
+Local X25519 reviewer-key generation and validated encrypted PKCS #8 backups use
+the same backup foundation under the
+[reviewer-key payload profile](cryptography.md#reviewer-key-payload-profile-1).
+They have no round-binding, expiry, device-interface, or decryption integration.
 
 ## Next
 

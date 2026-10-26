@@ -10,7 +10,7 @@ Audience: contributors and automated tooling.
 anonce is designed for anonymous submissions from verified members with
 administrator-set per-member/round limits. Docs, checks, local demo HTTP
 infrastructure, a read-only shell, shared device-backup encryption, and local
-member-key generation/import/export exist.
+member/reviewer-key generation/import/export exist.
 Distinguish implemented from planned behavior.
 
 - `docs/`: architecture, security, operations, and contributor reference.
@@ -24,6 +24,8 @@ Distinguish implemented from planned behavior.
   connected to a CLI, browser, or service.
 - `internal/client/memberkey`: local Ed25519 member keys and validated encrypted
   backups; no device-interface or enrollment integration.
+- `internal/client/reviewerkey`: local X25519 reviewer keys and validated encrypted
+  backups; no device-interface, round-binding, or decryption integration.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
 

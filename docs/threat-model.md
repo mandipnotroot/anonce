@@ -32,7 +32,17 @@ and authenticated non-key payloads. No keys enter HTTP services. The package doe
 not verify identity, authorization, revocation, expiry, or backup freshness, and
 does not protect returned private keys from callers or compromised devices.
 The same password-guessing and runtime-erasure limits apply. No reviewed
-password-entry, file/browser custody, enrollment, or reviewer-key workflow exists.
+password-entry, file/browser custody, enrollment, or integrated reviewer workflow exists.
+
+The isolated reviewer-key package generates local X25519 keys and validates
+canonical reviewer-purpose encrypted backups under the
+[reviewer-key profile](cryptography.md#reviewer-key-payload-profile-1). It rejects
+member-purpose backups, wrong algorithms, noncanonical DER, and authenticated
+non-key payloads without returning private bytes. It neither binds keys to rounds
+nor enforces reviewer authorization, expiry, or restoration policy. Raw returned
+buffers are caller-owned, while library-internal key copies cannot be explicitly
+erased. Offline guessing and compromised-device risks remain. No round-publication,
+envelope-decryption, or reviewed device-custody workflow exists.
 
 ## Assets and principals
 

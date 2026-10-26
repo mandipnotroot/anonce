@@ -68,8 +68,8 @@ See [deployment](docs/deployment.md#local-development) for flags and limits and
 [API](docs/api.md) for endpoint behavior.
 
 Shared [device-backup encryption](docs/cryptography.md#device-backup-profile-1)
-and [local member keys](docs/key-management.md#device-keystores) are implemented as
-internal Go packages, including encrypted member-key export and validated import.
+and [local member/reviewer keys](docs/key-management.md#device-keystores) are implemented
+as internal Go packages, including typed encrypted export and validated import.
 They have no CLI/browser integration and require independent review before real-key use.
 
 ## Architecture at a glance

@@ -10,9 +10,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Shared local X25519 reviewer-key generation, validated encrypted PKCS #8 backups,
+  purpose-isolation and cancellation/concurrency tests, and bounded payload fuzzing.
+  Device interfaces, round binding, and submission decryption remain unavailable.
 - Shared local Ed25519 member-key generation, validated encrypted PKCS #8 backups,
   strict import validation, cancellation/concurrency tests, and bounded payload
-  fuzzing. CLI/browser custody, reviewer keys, and enrollment remain unavailable.
+  fuzzing. CLI/browser custody and enrollment remain unavailable.
 - Shared in-memory device-backup encryption with bounded Argon2id, AES-256-GCM,
   authenticated key purposes and headers, cancellation-aware derivation admission,
   tampering/concurrency tests, parser fuzzing, and native benchmarks. No device
@@ -33,6 +36,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking cryptographic-payload addition: define reviewer-key payload profile 1
+  inside the unchanged device-backup format. Only canonical X25519 PKCS #8 is
+  accepted by the typed importer. Independent review is still required.
 - Breaking cryptographic-payload addition: define member-key payload profile 1
   inside the unchanged device-backup format. The typed importer rejects opaque,
   wrong-algorithm, and noncanonical payloads. Independent review is still required.

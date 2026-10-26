@@ -6,7 +6,7 @@
 Audience: implementers, reviewers, and operators evaluating system boundaries.
 
 Status: proposed application architecture. Local HTTP infrastructure, a read-only
-web shell, shared device-backup encryption, and local member-key generation and
+web shell, shared device-backup encryption, and local member/reviewer-key generation and
 encrypted import/export exist. No domain policy, device entry points, storage,
 or working submission protocol.
 
@@ -65,6 +65,7 @@ validly signed forms served to different members.
 | `internal/client` | Shared composition, validation, and local state |
 | `internal/client/keystore` | Implemented in-memory device-backup encryption; no transport or persistence |
 | `internal/client/memberkey` | Implemented local Ed25519 member-key generation and typed encrypted backups; no transport or persistence |
+| `internal/client/reviewerkey` | Implemented local X25519 reviewer-key generation and typed encrypted backups; no transport, persistence, or round binding |
 | `internal/membership`, `internal/issuer` | Identity-side policy and issuance |
 | `internal/submission` | Ciphertext acceptance and atomic spending |
 | `internal/transparency`, `internal/audit` | Distinct public and administrative logs |
@@ -83,7 +84,7 @@ packages. `internal/web`
 pre-renders fixed pages at startup using escaped templates and first-party CSS
 embedded in `web/`. Request data never enters templates. Only submission serves
 these pages; there is no executable browser code or device entry point. The
-shared keystore and member-key packages are not imported by HTTP services. Their
+shared keystore and member/reviewer-key packages are not imported by HTTP services. Their
 profiles and limits are defined in [cryptography](cryptography.md#keystore-composition).
 
 ## Availability and failure

@@ -5,8 +5,8 @@
 
 Audience: cryptographic reviewers and client implementers.
 
-Status: device-backup encryption and local member-key generation/import/export are
-implemented as shared Go packages. Submission, membership, and public-proof
+Status: device-backup encryption and local member/reviewer-key generation/import/export
+are implemented as shared Go packages. Submission, membership, and public-proof
 protocols remain prospective.
 
 ## Chosen implementation boundaries
@@ -59,6 +59,41 @@ protocols remain prospective.
 - Apply [compatibility review](versioning.md) to wire and parameter changes.
 
 ## Keystore composition
+
+### Reviewer-key payload profile 1
+
+`internal/client/reviewerkey` generates device-local X25519 keys through
+`crypto/ecdh.X25519().GenerateKey` with `crypto/rand`. Private keys are serialized
+only inside [device-backup profile 1](#device-backup-profile-1), with reviewer-key
+purpose `2`. This adds no HPKE envelope, round publication, or decryption workflow.
+
+- The encrypted plaintext is exactly 48 bytes of canonical, unencrypted PKCS #8
+  DER produced by `crypto/x509.MarshalPKCS8PrivateKey`: version zero, the RFC 8410
+  X25519 OID `1.3.101.110` with absent parameters, and a nested OCTET STRING
+  containing the 32-byte private key. Attributes, embedded public keys, PEM, raw
+  scalars, other algorithms, and trailing data are not accepted on import.
+- Imports bound ASN.1 input to 48 bytes, use `crypto/x509.ParsePKCS8PrivateKey`,
+  require an X25519 `*ecdh.PrivateKey`, and compare re-encoded canonical DER in
+  constant time. Authentication success alone does not establish payload validity.
+  Wrong passwords, wrong purposes, and invalid payloads return the same invalid
+  backup error without key output. There is no algorithm or format fallback.
+- Generation and import return caller-owned 32-byte private-key buffers. Export
+  accepts only the 32-byte encoding accepted by `ecdh.X25519().NewPrivateKey`.
+  X25519 scalar processing belongs to the library; equivalent private encodings
+  are not normalized or used as round identifiers. Callers may construct library
+  keys in memory but must never persist or transmit private bytes unencrypted.
+- Each export uses fresh backup salt and nonce. Owned DER and temporary byte
+  buffers are cleared; the library's opaque `ecdh.PrivateKey` storage cannot be
+  cleared through its API. Callers must clear returned private bytes and passwords.
+  Cancellation is checked at entry and before returning key bytes, in addition to
+  the backup package's checks. Runtime copies prevent complete-erasure guarantees.
+
+The encrypted backup is 108 bytes. The outer format and opaque keystore API are
+unchanged. The typed importer has no prior payload format or migration and requires
+breaking-impact and independent review. It enforces no round binding, expiry,
+revocation, restoration policy, or separation between rounds. Device interfaces,
+native/WASM compatibility, and submission/reply encryption remain unimplemented or
+untested. Generate a fresh key for each round when those workflows are introduced.
 
 ### Member-key payload profile 1
 
@@ -171,6 +206,8 @@ Primary sources, accessed 2026-10-26:
 - [RFC 5280: certificates and CRLs](https://www.rfc-editor.org/rfc/rfc5280).
 - [RFC 8410: Ed25519 key encoding](https://www.rfc-editor.org/rfc/rfc8410.html#section-7)
   and [Go PKCS #8 parsing](https://pkg.go.dev/crypto/x509#ParsePKCS8PrivateKey).
+- [RFC 8410: X25519 private-key encoding](https://www.rfc-editor.org/rfc/rfc8410.html#section-7)
+  and [Go X25519 key generation and validation](https://pkg.go.dev/crypto/ecdh#X25519).
 - [RFC 9474: RSA blind signatures](https://www.rfc-editor.org/rfc/rfc9474).
 - [RFC 9578: Privacy Pass issuance protocols](https://www.rfc-editor.org/rfc/rfc9578).
 - [RFC 9180: HPKE](https://www.rfc-editor.org/rfc/rfc9180).

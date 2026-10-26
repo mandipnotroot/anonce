@@ -15,7 +15,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make build` | All Go commands with Go 1.27.3 |
 | `make test` | Race detection, `coverage/out`, statement coverage report; whole module, no exclusions, including wrappers and signal handling |
 | `make lint` | vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, and `FuzzMemberKeyPayload`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, and `FuzzReviewerKeyPayload`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 
@@ -35,6 +35,12 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
   retaining them in `internal/client/memberkey/testdata/fuzz/FuzzMemberKeyPayload`.
   Member-key unit tests generate keys at runtime, clear accessible owned buffers,
   and use real backup costs. No private key fixtures are retained.
+- Reviewer-key fuzzing applies the same 49-byte input cap and 48-byte ASN.1 bound,
+  without KDF work. Seeds contain only malformed non-key data and public DER
+  structure. Review and license synthetic failures before retaining them in
+  `internal/client/reviewerkey/testdata/fuzz/FuzzReviewerKeyPayload`. Unit tests
+  generate keys at runtime, clear accessible private bytes, and use real backup
+  costs. Opaque library key copies cannot be cleared through their public API.
 - The keystore's single `G407` annotation documents a scanner false positive:
   `NewGCMWithRandomNonce` requires an empty nonce argument and generates the nonce
   itself. `TestKeystoreFreshRandomness` and `TestKeystoreLibraryCompatibility`
@@ -59,6 +65,9 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Fresh member keys, usable signatures, backup round trips, buffer ownership, fresh exports, independent library encoding | `TestMemberKeyGenerate`, `TestMemberKeyRoundTrip`, `TestMemberKeyLibraryCompatibility` |
 | Invalid member keys/passwords, authenticated non-key or wrong-algorithm payloads, noncanonical DER, wrong purpose/password, ciphertext tampering | `TestMemberKeyRejectsInvalidInputs`, `TestMemberKeyRejectsInvalidPayloads`, `TestMemberKeyRejectsUnauthenticatedBackup`, `FuzzMemberKeyPayload` |
 | Member-key cancellation at entry/output and concurrent shared-key export/import | `TestMemberKeyCancellation`, `TestMemberKeyConcurrent` |
+| Fresh reviewer keys, library key agreement, backup ownership, fresh exports, independent PKCS #8 composition, preserved private encoding | `TestReviewerKeyGenerate`, `TestReviewerKeyRoundTrip`, `TestReviewerKeyLibraryCompatibility`, `TestReviewerKeyPreservesEncoding` |
+| Invalid reviewer inputs, authenticated wrong-algorithm/non-key payloads, noncanonical DER, wrong passwords/purposes, ciphertext tampering, cross-wrapper purpose isolation | `TestReviewerKeyRejectsInvalidInputs`, `TestReviewerKeyRejectsInvalidPayloads`, `TestReviewerKeyRejectsUnauthenticatedBackup`, `TestReviewerKeyPurposeIsolation`, `FuzzReviewerKeyPayload` |
+| Reviewer-key cancellation at entry/output and concurrent shared-key export/import | `TestReviewerKeyCancellation`, `TestReviewerKeyConcurrent` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
 Web checks validate allowlists/delivery, not full HTML/CSS grammar or browser execution.
@@ -74,11 +83,12 @@ go test ./internal/client/keystore -run='^$' -bench=BenchmarkKeystore -benchmem
 This measures the full 64 MiB, three-pass profile, not a weakened test substitute.
 Browser costs, native/WASM compatibility, independent cryptographic review,
 file custody, certificate/enrollment integration, and end-to-end device
-confidentiality remain untested. Reviewer-key generation is not implemented.
+confidentiality remain untested. Reviewer round binding, expiry enforcement, and
+envelope-decryption workflows are not implemented.
 
 ## Required runtime command contract
 
-Build/test/lint/fuzz/vuln cover infrastructure and the shared backup/member-key foundation;
+Build/test/lint/fuzz/vuln cover infrastructure and the shared backup/member/reviewer-key foundation;
 web-lint covers the inert shell.
 **All other targets below are required but unavailable.** See [roadmap](roadmap.md).
 

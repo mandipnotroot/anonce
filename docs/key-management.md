@@ -5,8 +5,8 @@
 
 Audience: implementers, reviewers, and operators responsible for secret custody.
 
-Status: shared in-memory device-backup encryption and local member-key generation,
-encrypted export, and validated import are implemented. Reviewer-key generation,
+Status: shared in-memory device-backup encryption and local member/reviewer-key
+generation, encrypted export, and validated import are implemented. Round binding,
 file/browser custody, recovery workflows, and signing services are not.
 
 ## Inventory
@@ -51,10 +51,21 @@ returns no key on failed import. No raw serialization API, signing endpoint,
 identity/round binding, or certificate operations are provided. These functions
 are library interfaces, not an operational device workflow.
 
-Both packages follow these custody boundaries:
+The shared `internal/client/reviewerkey` package adds X25519 reviewer-key generation
+and typed encrypted backups under
+[reviewer-key payload profile 1](cryptography.md#reviewer-key-payload-profile-1).
+`Generate` returns fresh caller-owned private bytes; `Seal` validates the library's
+32-byte private encoding and encrypts canonical PKCS #8; `Open` decrypts and
+validates that payload. The wrapper fixes the reviewer-key purpose and returns no
+key on failed import. Library `ecdh.PrivateKey` objects can be constructed from
+these bytes in memory, but their opaque internal copies cannot be explicitly
+cleared. No round binding, expiry, public-key publication, or HPKE decryption is
+implemented. Future round workflows must generate a fresh key for each round.
+
+All three packages follow these custody boundaries:
 
 - `Seal` and `Open` take a context and password bytes. The generic keystore also
-  takes the expected purpose; the member-key wrapper fixes it to member keys.
+  takes the expected purpose; each typed wrapper fixes it to its own key purpose.
   Inputs remain caller-owned and must not be mutated until the call returns.
   Returned buffers are caller-owned; clear decrypted secrets after use.
 - Owned derived-key bytes and failed/cancelled output buffers are cleared.
@@ -65,15 +76,15 @@ Both packages follow these custody boundaries:
   prevent complete-erasure guarantees. Bound concurrency and secure the device.
 - File permissions, atomic writes, password entry/confirmation, and browser
   persistence remain unimplemented caller responsibilities. The generic keystore
-  also leaves serialization and purpose selection to callers; the member-key
-  wrapper fixes both. Never store a raw key beside its encrypted backup.
+  also leaves serialization and purpose selection to callers; the typed wrappers
+  fix both. Never store a raw key beside its encrypted backup.
 - The format neither detects a restored old backup nor enforces revocation or
   reviewer-key expiry. Do not use it as evidence of safe retention/recovery.
 
 Remaining custody requirements:
 
-- Generate reviewer keys locally and connect member-key generation to reviewed
-  device interfaces. Derive encryption keys from passwords
+- Connect member/reviewer-key generation to reviewed device interfaces and enforce
+  reviewer round binding and retention. Derive encryption keys from passwords
   with bounded Argon2id; authenticate the complete keystore header.
 - Treat imports as untrusted. Enforce memory, iteration, size, and version limits.
   Wrong passwords or corrupt files must expose no partial plaintext.
