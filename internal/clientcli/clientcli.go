@@ -30,11 +30,13 @@ Usage:
   client generate -kind member|reviewer -out PATH
   client inspect -kind member|reviewer -in PATH
   client rewrap -kind member|reviewer -in PATH -out PATH
+  client csr -kind member -in PATH
   client -help
 
 Passwords come only from a pipe or regular file on stdin, never a terminal.
 Generate requires two matching LF-terminated password lines and EOF.
 Inspect requires one LF-terminated password line and EOF.
+CSR requires one LF-terminated password line and EOF.
 Rewrap requires current, replacement, and matching replacement password lines and EOF.
 Each password is 1-1024 bytes, excluding LF; no trimming is performed.
 Use a trusted password manager, not literal passwords in shell commands.
@@ -42,6 +44,7 @@ Backup parents must already exist with owner-only permissions.
 Generate publishes an encrypted backup without overwriting any existing path.
 Rewrap preserves the key in a new backup; it neither replaces nor revokes old copies.
 Inspect validates the backup and prints only its public key, not authorization.
+CSR prints a signed identity-free DER request, not a certificate or enrollment.
 No enrollment, round binding, expiry enforcement, or network operations exist.
 `
 
@@ -81,7 +84,7 @@ func parse(args []string) (config, error) {
 	if len(args) == 1 && (args[0] == "-help" || args[0] == "-h") {
 		return config{}, flag.ErrHelp
 	}
-	if len(args) == 0 || (args[0] != "generate" && args[0] != "inspect" && args[0] != "rewrap") {
+	if len(args) == 0 || (args[0] != "generate" && args[0] != "inspect" && args[0] != "rewrap" && args[0] != "csr") {
 		return config{}, errArguments
 	}
 	cfg := config{operation: args[0]}
@@ -89,7 +92,7 @@ func parse(args []string) (config, error) {
 	// The flag package's errors can reflect arbitrary argument contents.
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&cfg.kind, "kind", "", "key kind")
-	if cfg.operation != "inspect" {
+	if cfg.operation == "generate" || cfg.operation == "rewrap" {
 		flags.StringVar(&cfg.output, "out", "", "new encrypted backup output")
 	}
 	if cfg.operation != "generate" {
@@ -102,10 +105,11 @@ func parse(args []string) (config, error) {
 		return config{}, errArguments
 	}
 	if flags.NArg() != 0 || (cfg.kind != "member" && cfg.kind != "reviewer") ||
+		(cfg.operation == "csr" && cfg.kind != "member") ||
 		strings.ContainsRune(cfg.input+cfg.output, 0) {
 		return config{}, errArguments
 	}
-	if cfg.operation != "inspect" && cfg.output == "" ||
+	if (cfg.operation == "generate" || cfg.operation == "rewrap") && cfg.output == "" ||
 		cfg.operation != "generate" && cfg.input == "" {
 		return config{}, errArguments
 	}
@@ -147,6 +151,9 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 		return err
 	}
 	defer clear(backup)
+	if cfg.operation == "csr" {
+		return writeCSR(ctx, password, backup, output)
+	}
 	public, err := inspect(ctx, cfg.kind, password, backup)
 	if err != nil {
 		return fmt.Errorf("inspect backup: %w", err)

@@ -1,0 +1,33 @@
+// SPDX-FileCopyrightText: 2026 Anonce Contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package clientcli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+
+	"github.com/mandipnotroot/anonce/internal/client/membercsr"
+	"github.com/mandipnotroot/anonce/internal/client/memberkey"
+)
+
+func writeCSR(ctx context.Context, password, backup []byte, output io.Writer) error {
+	key, err := memberkey.Open(ctx, password, backup)
+	if err != nil {
+		return fmt.Errorf("member request: %w", err)
+	}
+	defer clear(key)
+	der, err := membercsr.Create(ctx, key)
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("member request: %w", err)
+	}
+	if n, err := output.Write(der); err != nil || n != len(der) {
+		return errors.New("member request: write public request")
+	}
+	return nil
+}

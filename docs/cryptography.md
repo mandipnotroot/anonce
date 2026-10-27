@@ -5,9 +5,9 @@
 
 Audience: cryptographic reviewers and client implementers.
 
-Status: device-backup encryption and local member/reviewer-key generation/import/export
-are implemented as shared Go packages. Submission, membership, and public-proof
-protocols remain prospective.
+Status: device-backup encryption, local member/reviewer-key generation/import/export,
+and identity-free member certificate requests are implemented as shared Go packages.
+Submission, enrollment, and public-proof protocols remain prospective.
 
 ## Chosen implementation boundaries
 
@@ -22,6 +22,8 @@ protocols remain prospective.
 
 ## Membership and authorization
 
+- Local requests use [member CSR profile 1](#member-csr-profile-1). This is not
+  certificate issuance or an enrollment transport.
 - Generate keys and CSRs on the device. The CA checks proof of possession and
   membership, issues bounded-lifetime certificates, and publishes signed CRLs.
 - Fix extensions, chain rules, serial handling, and revocation freshness before
@@ -35,6 +37,37 @@ protocols remain prospective.
   anonymity. Bind tokens to the common bulletin/profile through reviewed encoding.
 - Use independent single-use tokens with fresh randomness, not repeat spends.
   Never encode identity-side slots, counters, or member IDs in tokens.
+
+### Member CSR profile 1
+
+The offline request profile uses RSA Security Inc. Public-Key Cryptography
+Standards (PKCS) #10 version 1.7, as published in
+[RFC 2986](https://www.rfc-editor.org/rfc/rfc2986), and the Ed25519 identifiers
+in [RFC 8410](https://www.rfc-editor.org/rfc/rfc8410.html#section-6)
+(sources accessed 2026-10-27). It requires independent review before real use.
+
+- `internal/client/membercsr` creates requests through `crypto/x509` using an
+  existing, internally consistent Ed25519 member key. Callers cannot supply a
+  subject, attributes, extensions, arbitrary signed message, or another algorithm.
+- Output is exactly 129 bytes of canonical DER: version zero, empty subject
+  (`30 00`), Ed25519 SubjectPublicKeyInfo, and an empty mandatory attributes field
+  (`a0 00`). Both algorithm identifiers are `1.3.101.112` with absent parameters.
+  The signature is pure Ed25519 over the DER CertificationRequestInfo, with no
+  prehash or additional context. No PEM, trailing data, or alternate encoding is accepted.
+- Parsing checks size before ASN.1 work, uses `x509.ParseCertificateRequest`,
+  compares the complete request with the canonical empty-subject/attribute encoding,
+  and verifies with `CertificateRequest.CheckSignature`. Failures return no public
+  key. Returned public bytes are independently owned.
+- Cancellation is checked at generation entry and before returning output. Inputs
+  remain caller-owned and must not be mutated during a call. Owned derived private
+  buffers are cleared; library/runtime copies cannot be completely erased.
+- Requests contain only a public key and its signature, but are linkable to that
+  membership key. Never send them to the anonymous submission origin. Deterministic
+  repeated requests do not establish freshness, identity, eligibility, or authority.
+
+The profile adds no certificate policy, CA trust, enrollment-code handling, replay
+protection, or HTTP route. Future enrollment must separately authenticate the
+member and atomically consume a code. See [compatibility](versioning.md).
 
 ## Encryption and public proofs
 

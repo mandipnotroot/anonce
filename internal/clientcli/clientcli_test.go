@@ -36,6 +36,13 @@ func TestClientArguments(t *testing.T) {
 		{"rewrap member", []string{"rewrap", "-kind", "member", "-in", "old", "-out", "new"}, nil},
 		{"rewrap reviewer", []string{"rewrap", "-kind=reviewer", "-in=old", "-out=new"}, nil},
 		{"rewrap help", []string{"rewrap", "-help"}, flag.ErrHelp},
+		{"csr member", []string{"csr", "-kind=member", "-in=backup"}, nil},
+		{"csr help", []string{"csr", "-help"}, flag.ErrHelp},
+		{"csr missing input", []string{"csr", "-kind=member"}, errArguments},
+		{"csr missing kind", []string{"csr", "-in=backup"}, errArguments},
+		{"csr reviewer", []string{"csr", "-kind=reviewer", "-in=backup"}, errArguments},
+		{"csr output flag", []string{"csr", "-kind=member", "-in=backup", "-out=result"}, errArguments},
+		{"csr subject flag", []string{"csr", "-kind=member", "-in=backup", "-subject=synthetic"}, errArguments},
 		{"help", []string{"-help"}, flag.ErrHelp},
 		{"operation help", []string{"generate", "-h"}, flag.ErrHelp},
 		{"empty", nil, errArguments},
@@ -356,6 +363,7 @@ func FuzzClientArguments(f *testing.F) {
 	f.Add("generate\x00-kind\x00member\x00-out\x00backup")
 	f.Add("inspect\x00-kind=reviewer\x00-in=backup")
 	f.Add("rewrap\x00-kind=member\x00-in=old\x00-out=new")
+	f.Add("csr\x00-kind=member\x00-in=backup")
 	f.Add("-help")
 	f.Fuzz(func(t *testing.T, input string) {
 		if len(input) > maxArgumentBytes+1 {
@@ -363,8 +371,10 @@ func FuzzClientArguments(f *testing.F) {
 		}
 		cfg, err := parse(strings.Split(input, "\x00"))
 		if err == nil && (cfg.kind != "member" && cfg.kind != "reviewer" ||
-			cfg.operation != "generate" && cfg.operation != "inspect" && cfg.operation != "rewrap" ||
-			cfg.operation != "generate" && cfg.input == "" || cfg.operation != "inspect" && cfg.output == "") {
+			cfg.operation != "generate" && cfg.operation != "inspect" && cfg.operation != "rewrap" && cfg.operation != "csr" ||
+			cfg.operation == "csr" && cfg.kind != "member" ||
+			cfg.operation != "generate" && cfg.input == "" ||
+			(cfg.operation == "generate" || cfg.operation == "rewrap") && cfg.output == "") {
 			t.Fatal("parser accepted unsupported configuration")
 		}
 	})

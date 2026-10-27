@@ -28,7 +28,10 @@ Distinguish implemented from planned behavior.
   backups; offline CLI integration, no browser, round-binding, or decryption integration.
 - `internal/clientcli`, `cmd/client`: offline backup generation and public-only
   inspection plus password rewrapping; bounded stdin passwords and no-replace
-  encrypted files, with no old-backup revocation or key rotation.
+  encrypted files, plus identity-free member CSR output, with no old-backup
+  revocation, key rotation, or enrollment.
+- `internal/client/membercsr`: local Ed25519 certificate requests and bounded
+  profile validation; no identity claims, certificate issuance, or transport.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
 

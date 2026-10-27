@@ -58,6 +58,11 @@ properties described below.
   establish freshness or expiry. Retained copies remain open to password guessing.
 - Passwords and private bytes enter the local process. Compromised-device risks
   remain, and independent device-workflow review is still required.
+- [Member requests](cryptography.md#member-csr-profile-1) sign only a fixed,
+  identity-free PKCS #10 structure. Bounded validation rejects extra claims and
+  invalid signatures. Requests are public but linkable and replayable; they do not
+  authenticate enrollment or belong on the anonymous submission path. HTTP
+  services still perform no signing or request handling.
 
 ## Assets and principals
 

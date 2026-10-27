@@ -72,7 +72,8 @@ Local key tools are also available:
 - Shared Go packages for [backup encryption](docs/cryptography.md#device-backup-profile-1)
   and [member/reviewer-key generation, encrypted export, and validated import](docs/key-management.md#device-keystores).
 - An [offline CLI](docs/key-management.md#local-key-cli) for encrypted backup
-  generation, public-key-only inspection, and backup password changes.
+  generation, public-key-only inspection, backup password changes, and local member
+  certificate requests. Requests do not enroll a member or issue a certificate.
 
 Browser integration is unavailable. Independent review is required before real-key use.
 

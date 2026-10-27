@@ -39,6 +39,7 @@ supported format or legacy migration.
 | [Device-backup profile 1](cryptography.md#device-backup-profile-1) | Defines the outer encrypted file. Unknown versions/profiles fail closed; future format or parameter changes require breaking review and an explicit migration plan |
 | [Member-key payload profile 1](cryptography.md#member-key-payload-profile-1) | Canonical Ed25519 PKCS #8 inside member-purpose backups |
 | [Reviewer-key payload profile 1](cryptography.md#reviewer-key-payload-profile-1) | Canonical X25519 PKCS #8 inside reviewer-purpose backups |
+| [Member CSR profile 1](cryptography.md#member-csr-profile-1) | Fixed identity-free Ed25519 PKCS #10 DER; no legacy decoder, alternate claims, or enrollment transport |
 
 Typed key importers reject opaque, wrong-algorithm, and noncanonical payloads.
 Their addition does not change the outer format, generic opaque keystore API,
@@ -63,6 +64,11 @@ breaking-impact or independent-review requirements for those unreleased formats.
 `client rewrap` is an additive opt-in command requiring `semver:minor` review.
 Its three-line password framing applies only to that command. Existing commands,
 password framing, backup/payload formats, and HTTP behavior remain unchanged.
+
+`client csr` adds an opt-in member-only command with one-line password framing and
+binary DER stdout. The new cryptographic request profile requires `semver:major`
+review under the format policy above. Existing commands, encrypted backups, and
+HTTP behavior are unchanged. No certificate or enrollment compatibility is claimed.
 
 ## Change classification
 

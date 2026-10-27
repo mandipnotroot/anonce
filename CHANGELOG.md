@@ -10,6 +10,10 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Offline `client csr` for identity-free member certificate requests using existing
+  encrypted backups, bounded password input, and public-only binary DER output.
+  Shared validation and race/fuzz tests reject invalid signatures and extra claims.
+  No enrollment, certificate issuance, or network operation is implemented.
 - Offline `client rewrap` for validated member/reviewer backup password changes,
   confirmed bounded stdin input, fresh encryption, preserved key bytes, and
   no-replace output. Old backups are unchanged and remain valid; this is not key
@@ -44,6 +48,9 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking cryptographic-format addition: define member CSR profile 1 as fixed,
+  canonical Ed25519 PKCS #10 DER. Existing backups and HTTP behavior are unchanged;
+  independent review is required before real use.
 - Link conventions and standards to their official, project-adopted versions
   instead of repeating their rules. Preserve project-specific requirements and
   identify standards whose versions remain unselected.

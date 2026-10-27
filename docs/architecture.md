@@ -65,6 +65,7 @@ validly signed forms served to different members.
 | `internal/client` | Shared composition, validation, and local state |
 | `internal/client/keystore` | Implemented in-memory device-backup encryption; no transport or persistence |
 | `internal/client/memberkey` | Implemented local Ed25519 member-key generation and typed encrypted backups; no transport or persistence |
+| `internal/client/membercsr` | Implemented local, identity-free member certificate requests and bounded validation; no enrollment or transport |
 | `internal/client/reviewerkey` | Implemented local X25519 reviewer-key generation and typed encrypted backups; no transport, persistence, or round binding |
 | `internal/membership`, `internal/issuer` | Identity-side policy and issuance |
 | `internal/submission` | Ciphertext acceptance and atomic spending |

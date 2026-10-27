@@ -35,7 +35,8 @@ Available foundations:
   encrypted PKCS #8 backups.
 - **Offline CLI:** [generation, public-key inspection, and password changes](key-management.md#local-key-cli)
   with bounded password input and no-replace encrypted files. Rewrapping preserves
-  the key and does not revoke old backups.
+  the key and does not revoke old backups. Local member CSR generation and bounded
+  validation use an identity-free profile; enrollment and certificate issuance remain unavailable.
 
 These foundations do not establish protocol or storage security. Browser custody,
 enrollment, signing-service integration, reviewer round binding, expiry, submission

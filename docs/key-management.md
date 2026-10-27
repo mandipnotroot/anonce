@@ -7,7 +7,8 @@ Audience: implementers, reviewers, and operators responsible for secret custody.
 
 Status: shared in-memory device-backup encryption and local member/reviewer-key
 generation, encrypted export, validated import, and an offline backup CLI are
-implemented. Browser custody, round binding, recovery, and signing services are not.
+implemented, along with local member certificate requests. Browser custody, round
+binding, recovery, enrollment, and signing services are not.
 
 ## Inventory
 
@@ -93,14 +94,16 @@ Remaining custody requirements:
 `make build` builds `bin/client`, a development-only offline command using the
 shared key profiles. Independent review is required before real-key use.
 
-The CLI performs no network calls, enrollment, signing, reviewer round binding,
-expiry checks, or submission decryption. It does not make a key trusted or authorized.
+The CLI performs no network calls, enrollment, general-purpose signing, reviewer
+round binding, expiry checks, or submission decryption. A local CSR signature does
+not make a key trusted or authorized.
 
 | Command | Required flags | Result |
 | --- | --- | --- |
 | `client generate` | `-kind member\|reviewer -out PATH` | Fresh key, encrypted backup file; no stdout |
 | `client inspect` | `-kind member\|reviewer -in PATH` | Validated backup; public key only on stdout |
 | `client rewrap` | `-kind member\|reviewer -in PATH -out PATH` | Validated existing key, freshly encrypted backup under the replacement password; no stdout |
+| `client csr` | `-kind member -in PATH` | Validated member backup; signed identity-free request as binary DER on stdout |
 | `client -help` | None | Static help on stdout; no password read |
 
 - `inspect` prints exactly `member:<hex>\n` or `reviewer:<hex>\n`, using the
@@ -126,6 +129,7 @@ Each line must end in LF, and the final line must be followed by EOF. Extra byte
 | --- | --- | --- |
 | `generate` | Password, matching confirmation | 2051 bytes |
 | `inspect` | Password | 1026 bytes |
+| `csr` | Password | 1026 bytes |
 | `rewrap` | Current password, replacement, matching replacement confirmation | 3076 bytes |
 
 - A replacement may equal the current password; fresh salt and nonce are still generated.
@@ -199,6 +203,24 @@ with their old password; no secure-deletion claim is made.
 
 See [testing](testing.md#implemented-test-mapping) for executable evidence and
 [threat model](threat-model.md) for remaining device and offline-guessing risks.
+
+### Local member certificate requests
+
+`csr` opens a member-purpose backup through `memberkey` and uses the shared
+`membercsr` package to create [member CSR profile 1](cryptography.md#member-csr-profile-1).
+Stdout contains exactly 129 bytes of binary DER without a label, PEM armor, or
+additional newline. Only `-kind member` is accepted; subject, extension, password,
+and output-path flags are unavailable. Existing backup files are unchanged.
+
+The command uses the same bounded one-line stdin and trusted-file import rules as
+`inspect`. Validation or cancellation before writing produces no stdout; an output
+failure can leave a partial public request, which must be discarded. Password and
+owned private buffers are cleared on return, subject to the runtime limits above.
+
+A request is not a certificate, fresh challenge, enrollment proof, or authorization.
+It includes no identity, cohort, enrollment code, or requested privileges. It is
+linkable to the membership public key and must not reach the anonymous submission
+origin. No CA transport or code-consumption workflow exists.
 
 ## Retention and destruction
 

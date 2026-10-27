@@ -17,6 +17,9 @@ and must reject requests rather than simulate success.
 
 Enrollment controls:
 
+- Local [member request generation](key-management.md#local-member-certificate-requests)
+  exists, but no CA, certificate policy, code consumption, or enrollment transport
+  is implemented. A valid request signature alone does not authorize enrollment.
 - Bound and rate-limit attempts without revealing enrollment status.
 - Imports: minimal columns, bounded CSV parsing, duplicate/error preview, transactional writes.
 - Delivery: private printing; optional identity-side SMTP without raw-code logging.
