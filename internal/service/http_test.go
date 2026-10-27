@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -44,6 +45,12 @@ func TestInfrastructureRoutes(t *testing.T) {
 					t.Parallel()
 					response := httptest.NewRecorder()
 					handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
+					if role == Submission && tc.path == "/" {
+						if response.Code != http.StatusOK || !strings.HasPrefix(response.Header().Get("Content-Type"), "text/html;") {
+							t.Fatal("submission process did not serve the read-only shell")
+						}
+						return
+					}
 					if response.Code != tc.status {
 						t.Fatalf("status = %d, want %d", response.Code, tc.status)
 					}
@@ -124,10 +131,7 @@ func TestUnavailableRoutesRespectServiceBoundary(t *testing.T) {
 		for _, tc := range cases {
 			t.Run(string(role)+tc.path, func(t *testing.T) {
 				t.Parallel()
-				owned := false
-				for _, owner := range tc.roles {
-					owned = owned || owner == role
-				}
+				owned := slices.Contains(tc.roles, role)
 				for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut} {
 					response := httptest.NewRecorder()
 					handlerFor(t, role).ServeHTTP(response, httptest.NewRequest(method, tc.path, nil))
@@ -194,9 +198,14 @@ func TestHandlerRejectsInvalidConfig(t *testing.T) {
 
 func assertHeaders(t *testing.T, headers http.Header) {
 	t.Helper()
+	assertHeadersWithCSP(t, headers, "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+}
+
+func assertHeadersWithCSP(t *testing.T, headers http.Header, csp string) {
+	t.Helper()
 	for key, want := range map[string]string{
 		"Cache-Control":           "no-store",
-		"Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+		"Content-Security-Policy": csp,
 		"X-Content-Type-Options":  "nosniff",
 		"X-Frame-Options":         "DENY",
 		"Referrer-Policy":         "no-referrer",

@@ -5,15 +5,27 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"slices"
 	"strings"
+
+	"github.com/mandipnotroot/anonce/internal/web"
 )
 
-// NewHandler returns only infrastructure endpoints and unavailable protocol routes.
+// NewHandler returns infrastructure, a submission-only read-only shell, and unavailable protocol routes.
 // No handler reads request bodies, authenticates users, or accepts protocol data.
 func NewHandler(cfg Config) (http.Handler, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
+	}
+	var site *web.Site
+	if cfg.Role == Submission {
+		var err error
+		site, err = web.New(cfg.DevStyleGuide)
+		if err != nil {
+			return nil, fmt.Errorf("initialize web shell: %w", err)
+		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -28,6 +40,22 @@ func NewHandler(cfg Config) (http.Handler, error) {
 		if r.Body != nil && r.Body != http.NoBody {
 			w.Header().Set("Connection", "close")
 			r.Close = true
+		}
+		if site != nil {
+			if response, ok := site.Lookup(r.URL.Path); ok {
+				if r.Method != http.MethodGet && r.Method != http.MethodHead {
+					w.Header().Set("Allow", "GET, HEAD")
+					writeError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET or HEAD.")
+					return
+				}
+				w.Header().Set("Content-Security-Policy", web.ContentSecurityPolicy)
+				w.Header().Set("Content-Type", response.ContentType)
+				w.WriteHeader(http.StatusOK)
+				if r.Method != http.MethodHead {
+					_, _ = w.Write([]byte(response.Body))
+				}
+				return
+			}
 		}
 
 		switch r.URL.Path {
@@ -78,12 +106,9 @@ func unavailable(role Role, path string) bool {
 	case Submission:
 		prefixes = []string{"/api/v1/rounds", "/api/v1/submissions", "/api/v1/receipts", "/api/v1/log", "/api/v1/reply-mailboxes"}
 	}
-	for _, prefix := range prefixes {
-		if path == prefix || strings.HasPrefix(path, prefix+"/") {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(prefixes, func(prefix string) bool {
+		return path == prefix || strings.HasPrefix(path, prefix+"/")
+	})
 }
 
 func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string) {

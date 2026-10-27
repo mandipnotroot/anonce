@@ -5,52 +5,52 @@
 
 Audience: protocol implementers and security reviewers.
 
-Status: design only. Field names below communicate intent, not a frozen wire format.
-All protocol APIs remain unimplemented and must reject rather than simulate success.
+Status: design only, not a frozen wire format. All protocol APIs are unimplemented
+and must reject requests rather than simulate success.
 
 ## Enrollment and authentication
 
-The manager creates a cohort and unpredictable, expiring, single-use enrollment
-codes. The member device generates its key and CSR locally. The CA validates proof
-of possession, code use, membership, and CSR policy before issuing a certificate.
-Codes are consumed atomically; raw codes are not retained after delivery. The device
-may export an encrypted backup.
-Bound and rate-limit enrollment attempts without revealing whether an identity is
-enrolled. Cohort imports use minimal columns, bounded CSV parsing, duplicate/error
-preview, and transactional writes. Printed delivery is private; optional SMTP
-remains identity-side and must not log raw codes.
-Regenerating a code must atomically invalidate the old unused code without changing
-the member's eligibility or allowing concurrent reuse. Certificate revocation needs
-a recorded reason, recent reauthentication, and fresh signed revocation publication.
+1. The manager creates a cohort and unpredictable, expiring, single-use codes.
+2. The device generates its key and CSR locally; encrypted backup export is optional.
+3. The CA checks proof of possession, code use, membership, and CSR policy, then
+   issues a certificate and atomically consumes the code. Retain no raw code after delivery.
 
-Token authentication uses a fresh, bounded-lifetime challenge bound to the issuer,
-round, certificate, and requested operation. The issuer checks signature, chain,
-expiry, revocation, cohort, schedule, and issuance eligibility. A consumed challenge
-cannot be replayed. Authentication credentials never reach the submission origin.
+Enrollment controls:
+
+- Local [member request generation](key-management.md#local-member-certificate-requests)
+  exists, but no CA, certificate policy, code consumption, or enrollment transport
+  is implemented. A valid request signature alone does not authorize enrollment.
+- Bound and rate-limit attempts without revealing enrollment status.
+- Imports: minimal columns, bounded CSV parsing, duplicate/error preview, transactional writes.
+- Delivery: private printing; optional identity-side SMTP without raw-code logging.
+- Regeneration: atomically invalidate the old unused code without changing eligibility
+  or permitting concurrent reuse.
+- Revocation: record a reason, require recent reauthentication, publish fresh signed revocations.
+
+Token authentication requires a fresh, bounded-lifetime challenge bound to issuer,
+round, certificate, and operation. Check signature, chain, expiry, revocation, cohort,
+schedule, and issuance eligibility. Consumed challenges cannot be replayed.
+Credentials must never reach the submission origin.
 
 ## Round response limit
 
-An authorized administrator sets `response_limit`, the maximum number of responses
-each eligible member may authorize in that round. A value of `1` supports a
-single-response ballot; a larger value allows multiple responses. This is not a
-round-wide response cap. The limit is a positive integer within a documented,
-resource-bounded supported range. Reject missing, zero, negative, fractional,
-overflowing, or unsupported values. There is no unlimited mode.
+`response_limit` is the maximum responses each eligible member may authorize per
+round, not a round-wide cap. `1` allows one response; larger values allow several.
 
-The draft UI may suggest `1`, but publication requires explicit administrator
-confirmation. Publish one common signed limit for all eligible members. Do not use
-per-member overrides. The limit is immutable after publication under that round ID;
-changing it requires a new round ID and independently scoped keys and authorization.
+- Require a positive integer in a documented, resource-bounded range. Reject missing,
+  zero, negative, fractional, overflowing, or unsupported values. No unlimited mode.
+- An authorized administrator sets the limit. The draft may suggest `1`, but
+  publication requires explicit confirmation.
+- Sign one common limit for all eligible members, without overrides. After
+  publication, changes require a new round ID and independently scoped keys and authorization.
+- Each response has an independent blind token, spend identity, ciphertext, receipt,
+  and reply capability. Each token permits one submission.
+- The issuer enforces the allowance. Submission must not learn identities to count responses.
+- Reservation slots stay identity-side, never in anonymous requests, tokens,
+  receipts, or public commitments.
 
-Each permitted response uses an independent blind token, spend identity, ciphertext,
-receipt, and reply capability. Tokens remain single-use. The issuer caps issuance
-at the published allowance; the submission service never learns a member identity
-to count that person's responses. Reservation slots exist only on the identity side
-and must not appear in anonymous requests, tokens, receipts, or public commitments.
-
-The response limit is distinct from the minimum response threshold for releasing
-results. Multiple responses do not establish participation by distinct members. See
-the [threshold limits](threat-model.md#small-cohorts-and-content).
+The limit is not the result-release threshold. Response counts do not prove distinct
+participation. See [threshold limits](threat-model.md#small-cohorts-and-content).
 
 ## Issuance and submission
 
@@ -74,48 +74,44 @@ sequenceDiagram
   M->>M: Verify receipt against trusted checkpoint
 ```
 
-Issuance stores only identity-side quota usage and reservation status, never blinded
-or unblinded token transcripts or their signatures. A fresh challenge binds the
-requested slot and common bulletin digest as well as the authentication context.
-Reserve a slot atomically before signing; concurrent requests must not reserve it
-twice or exceed the published limit across slots, sessions, devices, or replacement
-certificates for the same membership record.
+**Issuer rules:**
 
-A reservation consumes allowance even if signing or delivery fails. Lost responses
-must not trigger automatic refunds or another signing operation for that slot.
-Members may use other unreserved slots within the published allowance. Safe recovery
-remains an [open question](roadmap.md#open-implementation-questions): it must neither
-retain token transcripts nor produce another usable token for an already-reserved
-slot. The client must explain that interruption can reduce the usable allowance.
+- Store only identity-side quota usage and reservation status, never blinded or
+  unblinded token transcripts or signatures.
+- Bind the requested slot and common bulletin digest to the fresh authentication challenge.
+- Reserve atomically before signing. Prevent duplicate reservation and quota overflow
+  across slots, sessions, devices, and replacement certificates for one membership.
+- Failed signing or delivery still consumes the reservation. No automatic refund
+  or re-signing; other unreserved slots remain usable within the allowance.
+- [Recovery is unresolved](roadmap.md#open-implementation-questions). It must not
+  retain transcripts or create another usable token for a reserved slot. Clients
+  must warn that interruption can reduce usable allowance.
 
-Round-scoped keys prevent using a token authorized for one round in another. The
-submission service validates the expected key and profile, token structure, round
-window, size limits, and ciphertext envelope. The spend digest is derived from the
-canonical token input, not its signature bytes, so alternate signature representations
-cannot create another spend. Database uniqueness must arbitrate concurrent requests.
-Accept several distinct valid tokens for a multi-response round, but never a second
-submission under the same token.
+**Submission rules:**
 
-Whether a retry returns an existing receipt requires a documented payload-binding
-rule. The server must never accept a replacement ciphertext under a consumed token.
+- Use round-scoped keys. Validate the expected key/profile, token structure, round
+  window, size limits, and ciphertext envelope.
+- Derive the spend digest from canonical token input, not signature bytes.
+  Alternate signature representations must not permit another spend.
+- Use database uniqueness to arbitrate concurrency. Accept distinct valid tokens
+  in multi-response rounds, never a second submission with the same token.
+- Never replace ciphertext under a consumed token. Returning an existing receipt
+  on retry requires a documented payload-binding rule.
 
 ## Review and replies
 
-The reviewer downloads ciphertext only through the authorized review interface,
-then decrypts locally. The encrypted answer envelope contains a fresh reply public
-key and unpredictable mailbox capability. Replies are encrypted to that key. Define
-capability entropy, expiry, replay policy, and round-scoped write authorization
-before implementation. Mailbox queries must avoid identity authentication and
-distinguishable error behavior. Exports remain local and need spreadsheet-safe
-handling and a warning about identifying content.
-
-Token blacklisting can block further anonymous interactions associated with an
-abusive token. It cannot reveal the member, revoke a person's already-issued tokens,
-or retroactively retract plaintext seen by a reviewer.
-Flags and blocking are round-scoped, require reviewer authorization, record a reason
-category and auditable changes, and follow explicit retention and appeal policies.
-Do not query the member directory or identity database to resolve abuse. Review
-already-spent-token and mailbox-blocking semantics before implementation.
+- Reviewers retrieve ciphertext through an authorized interface and decrypt locally.
+- Each encrypted answer envelope carries a fresh reply public key and unpredictable
+  mailbox capability. Encrypt replies to that key.
+- Define capability entropy, expiry, replay policy, and round-scoped write authorization
+  before implementation. Mailbox queries must not use identity authentication or
+  distinguishable errors.
+- Keep exports local, spreadsheet-safe, and labelled with an identifying-content warning.
+- Token blacklisting can block further interactions for that token. It cannot reveal
+  a member, revoke their other issued tokens, or retract plaintext already seen.
+- Flags/blocks require round-scoped reviewer authorization, reason categories,
+  auditable changes, and explicit retention/appeal policies. Never query identity
+  storage to resolve abuse. Review spent-token and mailbox-blocking semantics before implementation.
 
 ## Round state machine
 
@@ -131,22 +127,19 @@ stateDiagram-v2
   Scheduled --> Cancelled: Publish cancellation notice
 ```
 
-Support rating, choice, free-text, and ballot questions with accessible labels,
-instructions, validation, and previews. The bulletin binds the round ID, cohort
-policy, versioned form digest, encryption and token keys, profile, schedule,
-`response_limit`, release threshold, and retention policy. Forms bound question
-count, text, options, nesting, and total size; unknown versions fail closed. Do not
-personalize forms or keys for individual members.
-
-Open and close operations cannot silently change the signed schedule. Bulletin
-changes need an explicit revision, client validation, and a compatibility policy.
-Cancelled rounds cannot accept submissions. Destroyed round keys cannot be restored
-from routine server backups; device exports remain an operator/reviewer limitation.
+- Support rating, choice, free-text, and ballot questions with accessible labels,
+  instructions, validation, and previews.
+- Bind round ID, cohort policy, versioned form digest, encryption/token keys, profile,
+  schedule, `response_limit`, release threshold, and retention policy in the bulletin.
+- Bound question count, text, options, nesting, and total form size. Reject unknown
+  versions. Do not personalize forms or keys.
+- Opening/closing cannot silently change the signed schedule. Bulletin changes require
+  an explicit revision, client validation, and compatibility policy.
+- Cancelled rounds reject submissions. Routine backups must not restore destroyed
+  round keys; device exports remain an operator/reviewer limitation.
 
 ## Cryptographic and wire decisions
 
-The [cryptography reference](cryptography.md) owns algorithm profiles. The
-[API reference](api.md) owns HTTP behavior. Profile identifiers, maximum lengths,
-canonical encoding, domain separation, and version negotiation must be fixed through
-review before interoperable wire code is written. No example here authorizes a new
-cryptographic construction.
+See [cryptography](cryptography.md) for profiles and [API](api.md) for HTTP behavior.
+Review and fix profile IDs, maximum lengths, canonical encoding, domain separation,
+and version negotiation before wire code. These examples do not authorize new constructions.

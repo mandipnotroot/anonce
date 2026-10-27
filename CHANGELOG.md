@@ -3,13 +3,45 @@
 
 # Changelog
 
-Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Notable changes follow [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/)
+and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
 
+- Public-only Go WASM member request verifier using the existing CSR profile and
+  parser, with bounded input, explicit shutdown, reviewed loader hashes/notices,
+  an artifact size gate, and native/WASM compatibility checks. No page integration,
+  private-key access, enrollment, or certificate trust is implemented.
+- Offline `client verify-csr` for bounded member request and signature validation,
+  with public-key-only output, owner-only file imports, and no stdin or private-key
+  access. Existing cryptographic formats and commands are unchanged. Verification
+  does not authorize enrollment or establish certificate trust.
+- Offline `client csr` for identity-free member certificate requests using existing
+  encrypted backups, bounded password input, and public-only binary DER output.
+  Shared validation and race/fuzz tests reject invalid signatures and extra claims.
+  No enrollment, certificate issuance, or network operation is implemented.
+- Offline `client rewrap` for validated member/reviewer backup password changes,
+  confirmed bounded stdin input, fresh encryption, preserved key bytes, and
+  no-replace output. Old backups are unchanged and remain valid; this is not key
+  rotation, revocation, or secure deletion. Existing formats are unchanged.
+- Offline `client generate` and `client inspect` commands for encrypted member and
+  reviewer backups, bounded confirmed stdin passwords, owner-only no-replace files,
+  and public-key-only inspection. Existing backup formats are unchanged; browser,
+  enrollment, round binding, and independent security review remain outstanding.
+- Shared local X25519 reviewer-key generation, validated encrypted PKCS #8 backups,
+  purpose-isolation and cancellation/concurrency tests, and bounded payload fuzzing.
+  Browser interfaces, round binding, and submission decryption remain unavailable.
+- Shared local Ed25519 member-key generation, validated encrypted PKCS #8 backups,
+  strict import validation, cancellation/concurrency tests, and bounded payload
+  fuzzing. Browser custody and enrollment remain unavailable.
+- Shared in-memory device-backup encryption with bounded Argon2id, AES-256-GCM,
+  authenticated key purposes and headers, cancellation-aware derivation admission,
+  tampering/concurrency tests, parser fuzzing, and native benchmarks. See
+  [key management](docs/key-management.md#device-keystores) for custody limits.
+- A read-only local submission-service overview and about page, opt-in mock style
+  guide, embedded content-addressed CSS with SRI, and rendered-shell checks.
 - Local-only Go CA, issuer, and submission commands with liveness, explicit
   demonstration status, source discovery, bounded connections, and graceful shutdown.
 - Go build, race/coverage, lint, bounded configuration fuzzing, vulnerability, and
@@ -24,6 +56,30 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking cryptographic-format addition: define member CSR profile 1 as fixed,
+  canonical Ed25519 PKCS #10 DER. Existing backups and HTTP behavior are unchanged;
+  independent review is required before real use.
+- Link conventions and standards to their official, project-adopted versions
+  instead of repeating their rules. Preserve project-specific requirements and
+  identify standards whose versions remain unselected.
+- Clarify documentation with focused sections, shorter summaries, and canonical
+  links while preserving requirements and safety guidance. Correct outdated
+  component-status descriptions and require professional, concise, complete prose.
+- Breaking cryptographic-payload addition: define reviewer-key payload profile 1
+  inside the unchanged device-backup format. Only canonical X25519 PKCS #8 is
+  accepted by the typed importer. Independent review is still required.
+- Breaking cryptographic-payload addition: define member-key payload profile 1
+  inside the unchanged device-backup format. The typed importer rejects opaque,
+  wrong-algorithm, and noncanonical payloads. Independent review is still required.
+- Modernize internal Go cleanup, slice searches, and test contexts without changing
+  HTTP responses, command interfaces, or device-backup formats.
+- Breaking cryptographic-format addition: define device-backup profile 1 with no
+  legacy decoder or parameter fallback. Independent review and native/WASM
+  interoperability evidence are still required before real-key use.
+- Shorten documentation, improve scanning, and link named standards without changing
+  requirements or behavior.
+- Breaking HTTP behavior: the submission process now serves HTML at `/` instead
+  of the previous JSON `404`. CA and issuer routes and the status JSON are unchanged.
 - Align public status with the demonstration infrastructure, include Go module
   dependency updates, document publication prerequisites, and reject padded commit
   descriptions.

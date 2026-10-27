@@ -1,0 +1,110 @@
+<!-- SPDX-FileCopyrightText: 2026 Anonce Contributors -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+{{define "shell"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{{.Title}} | anonce</title>
+  <link rel="stylesheet" href="{{.CSSPath}}" integrity="{{.CSSIntegrity}}" crossorigin="anonymous">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="/">anonce</a>
+    <nav aria-label="Main navigation">
+      <a href="/"{{if eq .Page "home"}} aria-current="page"{{end}}>Overview</a>
+      <a href="/about"{{if eq .Page "about"}} aria-current="page"{{end}}>About</a>
+      {{if .StyleGuide}}<a href="/dev/styleguide"{{if eq .Page "styleguide"}} aria-current="page"{{end}}>Development style guide</a>{{end}}
+    </nav>
+  </header>
+  <aside class="notice" aria-label="Development warning">
+    <strong>Development only. No working submission protocol.</strong>
+    Do not enter sensitive information or use this demonstration for an election.
+  </aside>
+  <main id="main" tabindex="-1">
+    <h1>{{.Title}}</h1>
+    {{if eq .Page "home"}}{{template "home" .}}{{end}}
+    {{if eq .Page "about"}}{{template "about" .}}{{end}}
+    {{if eq .Page "styleguide"}}{{template "styleguide" .}}{{end}}
+  </main>
+  <footer>
+    <p>Development build. <a href="/source">Corresponding source</a> for this running version.</p>
+    <p>This read-only interface does not provide authentication, anonymity, or submission security.</p>
+  </footer>
+</body>
+</html>
+{{end}}
+
+{{define "home"}}
+<p class="lead">Anonymous submissions from verified members, with a common response limit for each round, are the intended product. They are not available in this build.</p>
+<section aria-labelledby="now-title">
+  <h2 id="now-title">Now</h2>
+  <div class="cards">
+    <article>
+      <h3>Local infrastructure</h3>
+      <p>Separate CA, issuer, and submission processes provide liveness, development status, and source discovery.</p>
+      <p><a href="/api/v1/status">Inspect infrastructure status (JSON)</a></p>
+    </article>
+    <article>
+      <h3>No rounds or responses</h3>
+      <p>No database is connected. No members, rounds, responses, or results are loaded or accepted.</p>
+      <p>Readiness remains unavailable. Protocol requests fail without reading their bodies.</p>
+    </article>
+  </div>
+</section>
+<section aria-labelledby="next-title">
+  <h2 id="next-title">Next</h2>
+  <p>Reviewed device-side keys, enrollment, signed round bulletins, blind issuance, and ciphertext-only submissions require implementation and security testing.</p>
+</section>
+<section aria-labelledby="later-title">
+  <h2 id="later-title">Later</h2>
+  <p>Optional extensions cannot replace baseline controls or independent security review before real use.</p>
+</section>
+{{end}}
+
+{{define "about"}}
+<section aria-labelledby="boundaries-title">
+  <h2 id="boundaries-title">Intended boundaries</h2>
+  <p>The identity side verifies membership. A separately deployed submission service is intended to receive anonymous authorization and ciphertext, never membership credentials or plaintext answers.</p>
+  <p>Members and reviewers must retain their private keys on their own devices. This build has no key generation, import, signing, encryption, or decryption operations.</p>
+</section>
+<section aria-labelledby="limits-title">
+  <h2 id="limits-title">Important limits</h2>
+  <p>The intended design cannot protect compromised devices, identifying answers, all operator collusion, or global traffic observation. It is not a coercion-resistant voting system.</p>
+  <p>Loopback binding is not authentication. Other users and processes on this computer may reach the local services. Do not expose them through an external proxy.</p>
+</section>
+<section aria-labelledby="source-title">
+  <h2 id="source-title">Review the design and implementation</h2>
+  <p>The <a href="/source">corresponding source</a> includes the roadmap, threat model, protocol design, and evidence requirements. A source link is not independent verification of the code delivered by a server.</p>
+</section>
+{{end}}
+
+{{define "styleguide"}}
+<p class="lead">Explicit development preview. All data below is synthetic mock data, not a live round, account, or response count.</p>
+<section aria-labelledby="mock-title">
+  <h2 id="mock-title">Mock round summary</h2>
+  <article>
+    <h3>Example feedback round</h3>
+    <p><span class="badge">Mock draft</span> Not published. No signed bulletin exists.</p>
+    <dl>
+      <dt>Response limit per eligible member</dt><dd>3 (mock only)</dd>
+      <dt>Minimum responses for release</dt><dd>10 (mock only, not distinct participants)</dd>
+      <dt>Authentication</dt><dd>Unavailable</dd>
+      <dt>Submission</dt><dd>Unavailable</dd>
+    </dl>
+    <button type="button" disabled aria-describedby="publish-reason">Publish round (unavailable)</button>
+    <p id="publish-reason">Administration, authorization, signing, and persistence are not implemented. This control cannot perform an operation.</p>
+  </article>
+</section>
+<section aria-labelledby="empty-title">
+  <h2 id="empty-title">Empty state</h2>
+  <p>No responses are available. No results, turnout, or privacy-threshold guarantee can be inferred from this preview.</p>
+</section>
+<section aria-labelledby="status-title">
+  <h2 id="status-title">Status language</h2>
+  <p class="notice"><strong>Unavailable:</strong> an unimplemented security operation must fail, not simulate success.</p>
+  <p>Use text as well as color to communicate state. Keyboard focus must remain visible, and content must reflow at narrow widths.</p>
+</section>
+{{end}}

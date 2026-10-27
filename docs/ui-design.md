@@ -5,14 +5,31 @@
 
 Audience: front-end contributors, accessibility reviewers, and product reviewers.
 
-Status: design specification. No UI, screenshot, or accessibility result exists yet.
+Status: read-only local shell implemented; product UI is design only. No browser
+screenshots or accessibility results yet.
+
+## Current local shell
+
+- **Pages:** submission-only `/` and `/about`; `/dev/styleguide` requires
+  `-dev-styleguide`. The guide has a synthetic draft, unavailable publication button,
+  and empty/status examples, not administration.
+- **Content:** no public mock response metrics, forms, private data, or scripts.
+  Every page has a development warning, source footer, landmarks, and skip link.
+- **Style:** original CSS/device fonts pending product-dependency review. Responsive
+  layout, visible focus, system light/dark colors, print rules, no animation.
+  See [deployment](deployment.md#transport-and-headers) for hashed CSS/SRI delivery.
+- **Evidence:** `make web-lint` checks inert markup, fragments, links, hashes,
+  CSS loading, headers, methods, and development gating. It does not validate full
+  HTML/CSS, run browsers, measure contrast, establish WCAG conformance, or replace
+  keyboard/assistive review. Actual desktop/mobile and light/dark screenshots plus
+  browser/manual checks remain required; no substitute rendering images are provided.
 
 ## Visual language
 
-Use Pico CSS 2.1.1 with custom layout tokens, locally served Inter 4.1 fonts, a small
-licensed SVG icon selection, and SVG charts. Only public or mock chart data may be
-server-rendered; decrypted results must be rendered on the reviewer device. Prefer calm surfaces,
-clear hierarchy, and meaningful whitespace over decorative security imagery.
+Future product: Pico CSS 2.1.1, custom layout tokens, local Inter 4.1, selected
+licensed SVG icons, and SVG charts. Server-render only public/mock charts;
+render decrypted results on the reviewer device. Use calm surfaces, clear hierarchy,
+and useful whitespace, not decorative security imagery.
 
 | Token | Proposed value or rule |
 | --- | --- |
@@ -26,15 +43,15 @@ clear hierarchy, and meaningful whitespace over decorative security imagery.
 | Width | Readable prose at about 70 characters; responsive data panels |
 | Motion | Short functional transitions; respect `prefers-reduced-motion` |
 
-These values are candidates, not a conformance assertion. Verify every foreground,
-background, focus, disabled, chart, and error combination against WCAG 2.2 AA.
+Values are candidates. Test all foreground/background, focus, disabled, chart, and
+error combinations against [WCAG 2.2 AA](https://www.w3.org/TR/WCAG22/).
 
 ## Layout and navigation
 
-Administrative views use a collapsible sidebar, meaningful page titles, breadcrumbs,
-and a visible role/round context. Member views use a simpler header and a narrow
-content column. Mobile navigation must work with keyboard and screen reader input.
-Preserve visible focus, skip links, logical heading order, and a single main landmark.
+- Admin: collapsible sidebar, meaningful titles, breadcrumbs, visible role/round context.
+- Member: simple header and narrow content column.
+- Mobile: keyboard and screen-reader navigation.
+- All views: visible focus, skip links, logical headings, one main landmark.
 
 | Area | Planned paths |
 | --- | --- |
@@ -50,35 +67,30 @@ Preserve visible focus, skip links, logical heading order, and a single main lan
 
 ## Component contract
 
-Provide consistent buttons, labelled forms, validation summaries, cards, badges,
-responsive tables, pagination, lifecycle indicators, charts with text equivalents,
-toasts announced through a live region, loading indicators, and useful empty states.
-Errors must identify what the person can safely do without disclosing internal data.
-
-Destructive dialogs name the action and affected resource, default to cancellation,
-trap focus correctly, and return focus to the trigger. Actual sensitive operations
-also require recent server-side reauthentication. A visual confirmation is not that
-security control.
-
-Print styles for enrollment codes omit navigation, avoid unnecessary member data,
-and show expiry and handling instructions. Prevent accidental printing of entire
-member directories. Charts always have a table or accessible text equivalent.
+- Provide consistent buttons, labelled forms, validation summaries, cards, badges,
+  responsive tables, pagination, lifecycle indicators, accessible charts,
+  live-region toasts, loading indicators, and useful empty states.
+- Errors give safe next actions without exposing internal data.
+- Destructive dialogs name the action/resource, default to cancel, trap focus,
+  and restore trigger focus. Sensitive operations also require recent server-side
+  reauthentication; dialogs do not replace it.
+- Printed codes omit navigation/unnecessary member data and show expiry/handling
+  instructions. Prevent accidental printing of entire directories.
+- Every chart needs a table or accessible text equivalent.
 
 ## Round response policy
 
-An authorized round manager selects the per-member `response_limit` in the draft
-round. Label it separately from the minimum response threshold for releasing
-results. Suggest `1` for single-response ballots, allow supported larger values for
-other rounds, validate the range, and require explicit confirmation on publication.
-Show the published limit in the round summary and member submission flow. Lock the
-control after publication; changing it requires a new round, not a hidden override.
+Follow the [protocol rules](protocol.md#round-response-limit). An authorized manager
+sets a validated `response_limit` and explicitly confirms it at publication.
+Suggest `1` for ballots and support larger permitted values. Changes after
+publication require a new round.
 
-The identity-side member view may show remaining unreserved allowance. A local
-client must distinguish reserved slots, locally held tokens, and verified accepted
-receipts; an interrupted issuance can consume allowance without delivering a usable
-token. Do not fetch identity-side quota state from anonymous submission pages
-or attach it to submission requests. Charts and exports count responses, not
-distinct respondents or turnout without separate reviewed evidence.
+- Label the limit separately from the release threshold. Show it in round summaries
+  and submission flows; lock after publication.
+- Identity-side views may show unreserved allowance. Distinguish reserved slots,
+  held tokens, and verified receipts; warn that interrupted issuance can consume allowance.
+- Never fetch quota from anonymous pages or attach it to submissions.
+- Count responses, not distinct respondents/turnout without separately reviewed evidence.
 
 ## Privacy and assets
 
@@ -88,13 +100,11 @@ Serve embedded, integrity-hashed assets with no third-party requests under the
 
 ## Demonstration and evidence
 
-Keep an initial shell read-only and bound to loopback by default. Require explicit
-development configuration for admin previews. Label mock metrics, disabled
-authentication, and unavailable actions visibly. Unimplemented security operations
-must fail without accepting plaintext, private keys, or real enrollment data; never
-use shared demo passwords or simulated cryptographic success.
-
-Capture desktop/mobile, light/dark screenshots from the actual tested shell in CI.
-Strip metadata, verify it is empty, cover images through REUSE, and publish artifacts.
-Manual keyboard, screen-reader, zoom, contrast, and print reviews supplement automated
-axe checks. Do not claim full WCAG conformance from a clean automated scan alone.
+- Initial shell: read-only, loopback by default; explicit development config for
+  admin previews. Visibly label mocks, disabled authentication, and unavailable actions.
+- Unimplemented security operations fail without accepting plaintext, private keys,
+  or real enrollment data. No shared demo passwords or simulated cryptographic success.
+- Capture actual tested desktop/mobile, light/dark screenshots in CI. Strip/verify
+  empty metadata, cover images with REUSE, and publish artifacts.
+- Supplement axe checks with manual keyboard, screen-reader, zoom, contrast, and
+  print reviews. Automated scans alone cannot establish full WCAG conformance.

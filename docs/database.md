@@ -10,10 +10,9 @@ PostgreSQL 18 with pgx is the accepted target.
 
 ## Storage boundary
 
-Use independent identity and ciphertext PostgreSQL instances under the
-[deployment separation contract](deployment.md#production-separation). No shared
-identity key, database link, foreign data wrapper, or cross-service query is allowed.
-Infrastructure administrators remain inside the [collusion analysis](threat-model.md).
+Use [independent identity and ciphertext instances](deployment.md#production-separation).
+No shared identity key, database link, foreign data wrapper, or cross-service query.
+Infrastructure administrators remain a [collusion risk](threat-model.md).
 
 ## Identity database
 
@@ -29,10 +28,9 @@ Infrastructure administrators remain inside the [collusion analysis](threat-mode
 | `issuance_slots` | Identity-side reservation status; unique member/round/slot; slot index within the published allowance; no token or signature |
 | `audit_events` | Minimal action record, predecessor commitment, checkpoint publication status |
 
-Apply a declared retention policy to identities, delivery addresses, consumed codes,
-challenges, sessions, and issuance participation. A round ID may be common public
-context; a member or per-request identity reference may not appear in the ciphertext
-database.
+Declare retention for identities, delivery addresses, consumed codes, challenges,
+sessions, and issuance participation. A round ID may be shared public context;
+member or per-request identity references must not enter ciphertext storage.
 
 ## Submission database
 
@@ -45,46 +43,41 @@ database.
 | `reply_mailboxes`, `encrypted_replies` | Random capabilities/digests and ciphertext only |
 | `abuse_flags` | Anonymous token reference, reason category, reviewer authorization evidence |
 
-Do not store identity fields, authentication sessions, IP addresses, user agents,
-fine-grained activity analytics, or issuer correlation identifiers. Retain arrival
-time only at the minimum precision and duration justified by scheduling and abuse
-policy; do not expose precise per-record times publicly.
+Never store identity fields, authentication sessions, IPs, user agents, fine-grained
+activity analytics, or issuer correlation IDs. Minimize arrival-time precision and
+retention to scheduling/abuse needs. Never publish precise per-record times.
 
 ## Privileges and transactions
 
-Each database has a non-login schema owner, a migration login allowed to assume
-that owner, and a non-owner runtime login. Runtime roles have no superuser,
-`CREATEDB`, `CREATEROLE`, `BYPASSRLS`, extension-installation, or public-schema write
-privileges. Revoke unnecessary database `CONNECT`, schema `CREATE`, and default
-function privileges. Do not place administrator passwords in Compose files.
+**Privileges:**
 
-RLS may help isolate administrative cohorts, but policy predicates must be tested
-under the actual runtime role. Owners and privileged roles can bypass RLS. It does
-not replace service/database isolation.
+- Per database: non-login schema owner, migration login allowed to assume ownership,
+  and non-owner runtime login.
+- Runtime roles: no superuser, `CREATEDB`, `CREATEROLE`, `BYPASSRLS`, extension
+  installation, or public-schema writes. Revoke unnecessary `CONNECT`, schema `CREATE`,
+  and default function privileges. No administrator passwords in Compose files.
+- Optional cohort RLS must be tested as the actual runtime role. Owners/privileged
+  roles can bypass it; RLS does not replace service/database isolation.
 
-Reserve an issuance slot and increment the member/round reserved count in one
-transaction under a lock or equivalent proven concurrency control. Enforce a unique
-member/round/slot and a reserved count no greater than the published limit; a unique
-member/round row alone does not enforce that limit. Reservation records and counts
-must agree after failures and recovery. Refuse reuse or refund of a reserved slot
-without a reviewed recovery mechanism. Track quota by membership, not by certificate
-or session, so re-enrollment and concurrent devices cannot reset the allowance.
+**Transactions:**
 
-Do not copy slot indices, member quota counters, or issuance-operation identifiers
-into submission storage. Consume each token and persist its bound ciphertext plus
-log outbox record in one transaction. Use bounded transactions and explicit retry
-rules; do not retry a partial issuance blindly.
+- Atomically reserve an issuance slot and increment the member/round count using
+  a lock or equivalent proven concurrency control.
+- Enforce unique member/round/slot and count ≤ published limit. A unique member/round
+  row alone is insufficient. Counts and reservations must agree after failure/recovery.
+- No reserved-slot reuse/refund without reviewed recovery. Track quota by membership,
+  not certificate/session, so re-enrollment and parallel devices cannot reset it.
+- Never copy slots, member quota counters, or issuance-operation IDs into submission storage.
+- Atomically consume a token and persist bound ciphertext plus log outbox record.
+  Bound transactions and define retries; never blindly retry partial issuance.
 
 ## Migration and restoration contract
 
-Use separate Goose SQL directories and version tables. Published migrations are
-immutable. New schema changes use additive migrations where possible and document
-rollback feasibility, lock duration, data retention, and compatibility. Reject a
-database newer than the supported application range. Dangerous down migrations are
-not an automatic recovery mechanism.
-
-Tests must apply each database's migrations from empty state, validate expected
-privileges, reject cross-service access, and restore an encrypted backup into an
-isolated disposable environment. Follow [deployment](deployment.md) for operational
-backup separation. Database encryption cannot substitute for device-side content
-encryption.
+- Separate Goose SQL directories and version tables. Published migrations are immutable.
+- Prefer additive changes. Document rollback feasibility, lock duration, retention,
+  and compatibility. Reject databases newer than the supported range.
+- Do not use dangerous down migrations as automatic recovery.
+- Test migrations from empty state, grants, cross-service rejection, and encrypted
+  backup restoration in an isolated disposable environment.
+- Follow [deployment](deployment.md) for backup separation. Database encryption
+  does not replace device-side content encryption.

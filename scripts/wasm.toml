@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+go_version = "go1.27.3"
+node_version = "v22.23.3"
+max_wasm_bytes = 8388608
+loader_sha256 = "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14"
+license_sha256 = "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+patents_sha256 = "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc"

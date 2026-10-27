@@ -6,10 +6,14 @@ info:
   title: anonce infrastructure API
   version: 0.0.0
   description: >-
-    Local demonstration processes implement liveness, status, source discovery,
-    and always-unavailable readiness. Protocol/discovery routes return 501 on
-    their owning process; their successful responses below remain proposed.
-    Cryptographic request formats are not published or stable. Round bulletins
+    Local demonstration processes implement liveness, status, and source discovery.
+    Readiness always returns 503. Only submission serves the read-only HTML shell.
+
+    Protocol/discovery routes return 501 on their owning process; successful
+    responses below remain proposed. Cryptographic request formats are not
+    published or stable.
+
+    Round bulletins
     must bind an administrator-set per-member response_limit. Each authorization
     token remains single-use; identity-side allowance slots are never public.
   license:
@@ -19,6 +23,103 @@ servers:
   - url: https://service.example.invalid
     description: Non-routable documentation example
 paths:
+  /:
+    get:
+      operationId: demonstrationOverview
+      x-implementation-state: implemented
+      summary: Read-only overview on the submission process only
+      description: Replaces the submission root JSON 404; identity processes still return 404.
+      responses:
+        '200':
+          $ref: '#/components/responses/ShellPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    head:
+      operationId: demonstrationOverviewHeaders
+      responses:
+        '200':
+          description: Overview headers only on the submission process
+        '404':
+          description: No page on identity processes; no response body
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+  /about:
+    get:
+      operationId: demonstrationAbout
+      x-implementation-state: implemented
+      summary: Development limits and intended boundaries on the submission process
+      responses:
+        '200':
+          $ref: '#/components/responses/ShellPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    head:
+      operationId: demonstrationAboutHeaders
+      responses:
+        '200':
+          description: About headers only on the submission process
+        '404':
+          description: No page on identity processes; no response body
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+  /dev/styleguide:
+    get:
+      operationId: developmentStyleGuide
+      x-implementation-state: implemented
+      summary: Read-only mock components only with explicit submission development flag
+      responses:
+        '200':
+          $ref: '#/components/responses/ShellPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    head:
+      operationId: developmentStyleGuideHeaders
+      responses:
+        '200':
+          description: Style-guide headers only when enabled on the submission process
+        '404':
+          description: Style guide disabled or different process; no response body
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+  /assets/{asset}:
+    parameters:
+      - name: asset
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^shell\.[a-f0-9]{64}\.css$'
+    get:
+      operationId: demonstrationStylesheet
+      x-implementation-state: implemented
+      summary: Exact current embedded stylesheet on the submission process only
+      description: Full lowercase SHA-256 digest in the filename; matching SRI in each page. No cache or directory listing.
+      responses:
+        '200':
+          description: Original embedded stylesheet with restrictive shell delivery headers
+          content:
+            text/css:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    head:
+      operationId: demonstrationStylesheetHeaders
+      responses:
+        '200':
+          description: Current stylesheet headers only on the submission process
+        '404':
+          description: Asset unavailable or different process; no response body
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
   /healthz:
     get:
       operationId: liveness
@@ -176,6 +277,18 @@ components:
         message:
           type: string
   responses:
+    ShellPage:
+      description: Inert demonstration HTML with development warning, local SRI stylesheet, and corresponding-source footer
+      content:
+        text/html:
+          schema:
+            type: string
+    NotFound:
+      description: Path unavailable on this process or development feature not enabled
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     SourceRedirect:
       description: Bodyless redirect to the configured source URL
       headers:

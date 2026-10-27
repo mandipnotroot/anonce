@@ -39,9 +39,10 @@ func (r Role) DefaultListen() string {
 
 // Config describes a local demonstration process. There are no secret settings.
 type Config struct {
-	Role      Role
-	Listen    string
-	SourceURL string
+	Role          Role
+	Listen        string
+	SourceURL     string
+	DevStyleGuide bool
 }
 
 // Validate rejects public binds and missing source locations. Errors deliberately
@@ -49,6 +50,9 @@ type Config struct {
 func (c Config) Validate() error {
 	if c.Role.DefaultListen() == "" {
 		return errors.New("unknown service role")
+	}
+	if c.DevStyleGuide && c.Role != Submission {
+		return errors.New("development style guide is available only on the submission process")
 	}
 	if len(c.Listen) > 128 {
 		return errors.New("listen address is too long")

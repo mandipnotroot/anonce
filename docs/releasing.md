@@ -5,9 +5,8 @@
 
 Audience: release maintainers and users verifying future downloads.
 
-Status: no release, tag, binary, container image, WASM artifact, signature, or SBOM
-has been published. Commands below define intended verification, not currently
-available release evidence.
+Status: no published releases, tags, binaries, images, WASM, signatures, or SBOMs.
+Commands below are planned verification, not available evidence.
 
 ## Maintainer release checklist
 
@@ -21,22 +20,23 @@ available release evidence.
 - Repeat builds in clean environments and compare unsigned artifact hashes.
 - Build Linux amd64/arm64 images from pinned base digests; scan before publication.
 - Produce checksums, a dependency SBOM, exact corresponding source, WASM manifest,
-  and SLSA-format provenance with source/toolchain/build inputs.
+  and [SLSA](https://slsa.dev/spec/)-format provenance with source/toolchain/build inputs.
 - Sign artifacts and images with keyless Cosign through a narrowly scoped OIDC job.
 - Publish the matching curated changelog section without rewriting CHANGELOG.md.
 - Independently verify the published assets before announcing availability.
 
-Provenance attestations must describe the real builder and inputs. Do not claim a
-SLSA assurance level without satisfying and documenting that level's requirements.
+Provenance must name the real builder and inputs. Claim a SLSA level only after
+satisfying and documenting its requirements. No SLSA specification or provenance
+schema version is selected yet; record both from official sources before
+implementing release publication.
 
 ## User verification
 
-Obtain the expected repository, tag, signing workflow identity, and trust-root
-material through a trusted channel. Download the checksum file, artifacts, signature
-bundle, provenance, and SBOM from the same reviewed release. Verify signatures
-before trusting checksums.
+1. Obtain repository, tag, signing workflow identity, and trust roots through a trusted channel.
+2. Download checksums, artifacts, signature bundle, provenance, and SBOM from one reviewed release.
+3. Verify signatures before trusting checksums.
 
-The planned artifact naming permits verification along these lines:
+Planned artifact names:
 
 ```sh
 cosign verify-blob \
@@ -47,23 +47,18 @@ cosign verify-blob \
 sha256sum --check checksums.txt
 ```
 
-For an image, verify its digest with the same exact workflow identity using
-`cosign verify`, then verify attached provenance and SBOM attestations against the
-expected source revision and subject digest. Do not use a broad identity regex that
-accepts arbitrary forks or workflow paths.
-
-For WASM, verify the signed manifest and bundle hash using the independent CLI or
-another trusted local verifier. Compare the hash with the independently trusted log
-checkpoint entry, not just a value shown by the serving web page. Rebuild with the
-recorded toolchain to compare hashes where reproducibility is claimed.
-
-An SBOM is an inventory, not proof of safety. Review component licenses and current
-advisories. A valid signature proves an authorized publication identity, not absence
-of vulnerabilities or correctness of the protocol.
+- **Images:** `cosign verify` the digest with the exact workflow identity, then check
+  provenance/SBOM attestations against expected source revision and subject digest.
+  No broad identity regex accepting arbitrary forks or workflows.
+- **WASM:** verify signed manifest/bundle hash with the independent CLI or trusted
+  local verifier. Compare against an independently trusted log checkpoint, not only
+  the serving page. Rebuild with the recorded toolchain where reproducibility is claimed.
+- **Limits:** SBOMs are inventories, not safety proofs; review licenses/advisories.
+  Signatures prove authorized publication identity, not security or protocol correctness.
 
 ## Withdrawal and compromise
 
-Mark withdrawn versions `[YANKED]`, retain their documented history, stop recommending
-affected artifacts, and publish actionable security guidance. Do not replace release
-bytes under an existing checksum/tag. Compromised signing or source credentials
-require trust-root recovery and an explicit incident notice.
+- Mark withdrawals `[YANKED]`, retain history, stop recommending affected artifacts,
+  and publish actionable security guidance.
+- Never replace bytes under an existing checksum/tag.
+- Compromised signing/source credentials require trust-root recovery and an incident notice.

@@ -45,6 +45,9 @@ func parse(role service.Role, args []string, output io.Writer) (service.Config, 
 	flags.SetOutput(output)
 	flags.StringVar(&cfg.Listen, "listen", cfg.Listen, "loopback IP literal and port (0 selects an available port)")
 	flags.StringVar(&cfg.SourceURL, "source-url", "", "required HTTPS URL for this build's exact corresponding source")
+	if role == service.Submission {
+		flags.BoolVar(&cfg.DevStyleGuide, "dev-styleguide", false, "enable the read-only mock development style guide")
+	}
 	if err := flags.Parse(args); err != nil {
 		return service.Config{}, err
 	}

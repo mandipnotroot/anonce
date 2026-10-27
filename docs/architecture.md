@@ -5,8 +5,10 @@
 
 Audience: implementers, reviewers, and operators evaluating system boundaries.
 
-Status: application architecture is proposed. Local HTTP infrastructure is
-implemented; domain policy, clients, persistence, and cryptography are absent.
+Status: proposed application architecture. Local HTTP services, a read-only shell,
+device-backup encryption, local member/reviewer keys, and an offline key CLI exist.
+A local public-only WASM request verifier exists without browser page integration.
+Domain policy, browser key custody, storage, and the submission protocol are unimplemented.
 
 ## Components and ownership
 
@@ -20,10 +22,9 @@ implemented; domain policy, clients, persistence, and cryptography are absent.
 | Public transparency log | Commitments, checkpoints, proofs, public artifact hashes | Identity records, bearer tokens, private replies |
 | Administrative audit service | Authorized actions and non-secret outcomes | Submission bodies, token values, private key material |
 
-The issuer and CA may share the identity-side administrative deployment, but their
-signing keys and permissions remain distinct. The submission service runs separately
-and never imports identity persistence packages. A reviewer is a device-side role,
-not a server that receives plaintext through a results endpoint.
+- CA and issuer may share an identity-side deployment, but not signing keys or permissions.
+- Submission runs separately and must not import identity persistence packages.
+- Reviewers decrypt on their devices, not through a server-side plaintext endpoint.
 
 ## Trust boundaries
 
@@ -44,17 +45,15 @@ for network, credential, backup, and metadata separation.
 
 ## Client and server contract
 
-Go serves embedded HTML templates, CSS, ES modules, fonts, and the compiled browser
-client. Shared device-side Go packages implement the future cryptographic composition
-for the CLI and WASM. HTTP handlers only receive ciphertext for submissions and
-replies. HTML result pages are containers for local rendering, never decrypted
-server-rendered reports.
+- Go serves embedded HTML templates, CSS, ES modules, fonts, and the compiled browser client.
+- CLI and WASM share device-side Go cryptographic composition.
+- Submission and reply handlers receive ciphertext only.
+- Result pages render decrypted data locally, never on the server.
 
-Signed round bulletins bind the form, schedule, administrator-set per-member response
-limit, round encryption key, token-verifier key, and protocol profile. Clients must
-validate the bulletin and compare a trusted checkpoint or independent copy. A valid
-signature alone cannot detect a dishonest
-publisher serving different signed forms to different people.
+Signed bulletins bind the form, schedule, per-member response limit, round encryption
+key, token-verifier key, and profile. Clients must validate the bulletin and compare
+a trusted checkpoint or independent copy. Signatures alone cannot detect different
+validly signed forms served to different members.
 
 ## Package boundaries
 
@@ -62,32 +61,48 @@ publisher serving different signed forms to different people.
 | --- | --- |
 | `cmd/server`, `cmd/issuer`, `cmd/ca` | Process configuration and lifecycle |
 | `internal/app`, `internal/service` | Implemented command configuration, bounded local HTTP, and unavailable-operation responses |
-| `cmd/cli`, `cmd/wasm` | Device-side entry points |
+| `cmd/client`, `internal/clientcli` | Implemented offline key CLI and file custody |
+| `cmd/wasm`, `internal/clientwasm` | Implemented public-only member-request verifier; no page integration or device-key access |
+| `cmd/cli` | Planned protocol CLI |
 | `internal/client` | Shared composition, validation, and local state |
+| `internal/client/keystore` | Implemented in-memory device-backup encryption; no transport or persistence |
+| `internal/client/memberkey` | Implemented local Ed25519 member-key generation and typed encrypted backups; no transport or persistence |
+| `internal/client/membercsr` | Implemented local, identity-free member certificate requests and bounded validation; no enrollment or transport |
+| `internal/client/reviewerkey` | Implemented local X25519 reviewer-key generation and typed encrypted backups; no transport, persistence, or round binding |
 | `internal/membership`, `internal/issuer` | Identity-side policy and issuance |
 | `internal/submission` | Ciphertext acceptance and atomic spending |
 | `internal/transparency`, `internal/audit` | Distinct public and administrative logs |
 | `internal/web`, `web/` | Templates, self-hosted assets, and UI composition |
 | `migrations/issuer`, `migrations/submission` | Independently applied SQL histories |
 
-Use the Go standard library for HTTP, templates, embedding, and cryptography where
-it meets the reviewed profile. Use native pgx pools with cancellation for database
-access and Goose for separately applied SQL migrations. Versions and licenses are
-listed in [dependencies](dependencies.md).
+- Use the standard library for HTTP, templates, embedding, and cryptography where
+  it meets the reviewed profile.
+- Use native pgx pools with cancellation and separately applied Goose SQL migrations.
+  See [dependencies](dependencies.md) for versions and licenses.
+- Domain code must not depend on HTTP handlers. Clients must not import server
+  storage or database drivers. No command may silently connect to both databases.
 
-Domain code must not depend on HTTP handlers. Client packages must not import server
-storage or database drivers. No command may silently connect to both databases.
-The current processes connect to neither database and do not contain domain packages.
+Current implementation limits:
+
+- No databases or membership, issuance, or submission domain packages exist.
+- `internal/web` pre-renders fixed pages at startup using escaped templates and
+  first-party CSS embedded in `web/`. Request data never enters templates.
+  Only the submission service serves these pages; they load no executable browser code.
+- The offline CLI uses the shared key packages; HTTP services do not import them.
+  See [cryptography](cryptography.md#keystore-composition) for their profiles and limits.
+- The separate [WASM artifact](key-management.md#local-wasm-request-verification)
+  shares member-request validation with the CLI. No HTTP service serves it.
 
 ## Availability and failure
 
-Keep liveness independent of dependencies and readiness dependent on the service's
-own database and migration version. Fail closed for unknown profiles, stale required
-revocation data, invalid signatures, or untrusted round keys. A submission is accepted
-only with a durable spend and log commitment; crash recovery must reconcile pending
-log publication without reopening the token. Spending, bound ciphertext, and the
-publication outbox commit in one database transaction. A retry must not replace the
-accepted payload. Resolve the remaining recovery rules before implementation.
+- Liveness is dependency-independent; readiness checks the service's own database
+  and migration version.
+- Fail closed on unknown profiles, stale required revocation data, invalid signatures,
+  or untrusted round keys.
+- Acceptance requires a durable spend and log commitment. Commit the spend, bound
+  ciphertext, and publication outbox in one transaction.
+- Recover pending log publication without reopening tokens. Retries cannot replace
+  accepted payloads. Resolve remaining recovery rules before implementation.
 
 ## Administrative access
 
@@ -99,16 +114,16 @@ accepted payload. Resolve the remaining recovery rules before implementation.
 | Reviewer | Local decryption of assigned rounds, replies, abuse flags | Member directory and enrollment delivery data |
 | Member | Enrollment, eligible issuance, submission, verification, replies | Administrative operations |
 
-Authorize each object and operation server-side. Use Argon2id passwords, passkeys
-with reviewed TOTP fallback/recovery, protected and rotated server-side sessions
-with explicit expiry, CSRF validation, rate limits, bounded lockout, and durable
-audit events. Recovery must not bypass the stronger factor. CA initialization,
-revocation, and key destruction require recent
-reauthentication. Hidden buttons and confirmation dialogs are not access controls.
-
-Audit initialization, enrollment/import, revocation, role changes, response-limit
-configuration and round publication, and destruction.
-Record only the authorized actor/role, target, action, outcome, and retention context,
-with externally anchored commitments. Test removed, reordered, and modified events.
+- Authorize every object and operation server-side. Hidden buttons and dialogs
+  are not access controls.
+- Use Argon2id passwords, passkeys with reviewed TOTP fallback/recovery, protected
+  and rotated server-side sessions with explicit expiry, CSRF validation, rate
+  limits, bounded lockout, and durable audit events.
+- Recovery must not bypass the stronger factor. CA initialization, revocation,
+  and key destruction require recent reauthentication.
+- Audit initialization, enrollment/import, revocation, role changes, response-limit
+  configuration, round publication, and destruction.
+- Record only authorized actor/role, target, action, outcome, and retention context.
+  Anchor commitments externally. Test removed, reordered, and modified events.
 
 The [threat model](threat-model.md) defines the limits of operational separation.

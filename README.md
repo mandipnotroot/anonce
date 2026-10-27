@@ -8,8 +8,8 @@
 [![License: AGPL-3.0-only](docs/images/license.svg)](LICENSE)
 [![Development status](docs/images/status.svg)](docs/README.md)
 
-anonce designs feedback, reports, and ballots from verified members without attaching
-their identities to their submissions.
+anonce is designed for feedback, reports, and ballots from verified members without
+linking identities to submissions.
 
 > **Development only.** Local Go services expose infrastructure endpoints, not a
 > working submission protocol. Do not collect sensitive information or run an election.
@@ -27,13 +27,12 @@ their identities to their submissions.
 See the [roadmap](docs/roadmap.md) and [threat model](docs/threat-model.md)
 for scope and required evidence.
 
-An administrator chooses the response limit before publishing a round: for example,
-one for a ballot or several for feedback. The same published limit applies to every
-eligible member; it cannot change after publication under the same round ID.
+The administrator sets one response limit for all eligible members before publishing
+a round. Changing the published limit requires a new round ID.
 
 ## Contribute now
 
-Use Go 1.27.3, Python 3.11 or newer, Git, GNU Make, and REUSE 6.2.0 for local checks.
+Use Go 1.27.3, Python 3.11 or newer, Node.js 22.23.3, Git, GNU Make, and REUSE 6.2.0 for local checks.
 The Go launcher can download the pinned toolchain. ExifTool is required when tracked
 binary images, fonts, or PDFs are added.
 
@@ -55,16 +54,30 @@ make build test
 ./bin/server -source-url "$ANONCE_SOURCE_URL"
 ```
 
-Set `ANONCE_SOURCE_URL` to the HTTPS location of the exact corresponding source,
-including local modifications, before running. It has no default or example value
-that silently claims to describe your build.
+Set `ANONCE_SOURCE_URL` to the HTTPS location of this build's exact corresponding
+source, including local modifications. There is no default.
 
-The submission process binds `127.0.0.1:8080`; `bin/issuer` and `bin/ca` use ports
-8081 and 8082. `/healthz` reports liveness, `/api/v1/status` lists only implemented
-infrastructure, and `/source` redirects to the configured source. `/readyz` always
-returns `503`; owned protocol routes return `501` without reading request bodies.
-There is no UI, database, signing, enrollment, or submission support yet.
-See [deployment](docs/deployment.md#local-development) for flags and limits.
+- Default binds: server `127.0.0.1:8080`, issuer port `8081`, CA port `8082`.
+- Infrastructure: `/healthz`, `/api/v1/status`, and `/source`.
+- Unavailable operations: `/readyz` always returns `503`; owned protocol routes
+  return `501` without reading request bodies.
+- Read-only server pages: `/` and `/about`. `-dev-styleguide` enables labelled mocks.
+- No forms, database, signing, enrollment, or submission operations.
+
+See [deployment](docs/deployment.md#local-development) for flags and limits and
+[API](docs/api.md) for endpoint behavior.
+
+Local key tools are also available:
+
+- Shared Go packages for [backup encryption](docs/cryptography.md#device-backup-profile-1)
+  and [member/reviewer-key generation, encrypted export, and validated import](docs/key-management.md#device-keystores).
+- An [offline CLI](docs/key-management.md#local-key-cli) for encrypted backup
+  generation, public-key-only inspection, backup password changes, and local member
+  certificate requests. Requests do not enroll a member or issue a certificate.
+- A [public-only WASM request verifier](docs/key-management.md#local-wasm-request-verification),
+  built with `make wasm` and checked with `make wasm-test`.
+
+Browser page and private-key integration are unavailable. Independent review is required before real-key use.
 
 ## Architecture at a glance
 
@@ -80,9 +93,9 @@ See [architecture](docs/architecture.md) for service boundaries and
 
 ## Security and scope
 
-The intended design does not protect against compromised devices, identifying
-answers, all operator collusion, or global traffic observation. It is not a
-coercion-resistant voting system. Read the [threat model](docs/threat-model.md).
+The design does not protect against compromised devices, identifying answers, all
+operator collusion, or global traffic observation. It is not coercion-resistant.
+See the [threat model](docs/threat-model.md).
 
 Report vulnerabilities privately using [SECURITY.md](SECURITY.md). For ordinary
 questions, see [SUPPORT.md](SUPPORT.md).

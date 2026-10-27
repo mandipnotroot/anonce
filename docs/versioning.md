@@ -5,64 +5,119 @@
 
 Audience: maintainers, integrators, and client authors.
 
-Use Semantic Versioning 2.0.0 and tags `vMAJOR.MINOR.PATCH`. The first release will
-be `v0.1.0`; no tag exists yet. Development versions `0.y.z` remain unstable, but
-changes still receive explicit compatibility review.
+Consult and follow the official [SemVer 2.0.0 specification](https://semver.org/spec/v2.0.0.html).
+The requirements below define its project-specific application, not a replacement
+for the specification. Use `vMAJOR.MINOR.PATCH` tags.
+First release: `v0.1.0`; no tag yet.
+Unstable `0.y.z` changes still require compatibility review.
 
 ## Public API boundary
 
-The compatibility contract includes CLI commands/flags and exit behavior; HTTP
-paths/statuses and schemas; wire/token/envelope formats; keystore and backup files;
-certificate profiles and trust rules; supported database migration ranges;
-configuration keys/environment variables; and versioned form schemas/bulletins.
-Documented client-visible asset hashes and receipt profiles are also public contracts.
+Public contracts include:
 
-Internal Go packages are not an invitation to import unstable implementation details.
-If public Go modules are later introduced, breaking releases at v2 and above must
-use the required `/vN` module path, including matching import paths. A monorepo tag
-does not excuse Go module compatibility rules.
+- CLI commands, flags, exits; HTTP paths, statuses, schemas.
+- Wire/token/envelope formats; keystores/backups; certificate profiles and trust rules.
+- Database migration ranges; configuration keys/environment variables.
+- Versioned forms/bulletins; documented client-visible asset hashes and receipt profiles.
 
-The current commands identify themselves as `development` and expose only the
-infrastructure contract in [API](api.md#implemented-infrastructure) and
-[deployment](deployment.md#local-development). This is an additive, unreleased
-feature, not a stable wire profile or a released product. Future cryptographic
-formats still require explicit breaking-change review.
+Internal Go packages are unstable implementation details. Future public modules
+must use `/vN` module/import paths for breaking v2+ releases, even in a monorepo.
+
+**Current interfaces:** commands report `development`; see [API](api.md) and
+[deployment](deployment.md#local-development). Infrastructure and shell additions
+are unreleased, not stable wire profiles or a product. Future crypto formats need
+explicit breaking review.
+
+### Cryptographic file compatibility
+
+The following formats are unreleased breaking additions requiring `semver:major`
+review and independent security review before real-key use. None has a prior
+supported format or legacy migration.
+
+| Contract | Compatibility boundary |
+| --- | --- |
+| [Device-backup profile 1](cryptography.md#device-backup-profile-1) | Defines the outer encrypted file. Unknown versions/profiles fail closed; future format or parameter changes require breaking review and an explicit migration plan |
+| [Member-key payload profile 1](cryptography.md#member-key-payload-profile-1) | Canonical Ed25519 PKCS #8 inside member-purpose backups |
+| [Reviewer-key payload profile 1](cryptography.md#reviewer-key-payload-profile-1) | Canonical X25519 PKCS #8 inside reviewer-purpose backups |
+| [Member CSR profile 1](cryptography.md#member-csr-profile-1) | Fixed identity-free Ed25519 PKCS #10 DER; no legacy decoder, alternate claims, or enrollment transport |
+
+Typed key importers reject opaque, wrong-algorithm, and noncanonical payloads.
+Their addition does not change the outer format, generic opaque keystore API,
+or HTTP/CLI contracts.
+
+### Shell compatibility
+
+Submission `/` changed from JSON `404` to HTML `200`,
+breaking HTTP behavior even before release. Consumers expecting root errors must
+use explicit infrastructure endpoints. `/about`, hashed CSS, and opt-in
+`-dev-styleguide` are new. CA/issuer roots remain JSON `404`; infrastructure JSON is unchanged.
+
+### Local key CLI compatibility
+
+`client generate` and `client inspect` are new
+opt-in commands requiring `semver:minor` review. Their flags, stdin framing, exits,
+file-custody rules, and public-key output are documented in
+[key management](key-management.md#local-key-cli). Existing HTTP commands and
+encrypted backup/payload formats are unchanged. This does not remove the existing
+breaking-impact or independent-review requirements for those unreleased formats.
+
+`client rewrap` is an additive opt-in command requiring `semver:minor` review.
+Its three-line password framing applies only to that command. Existing commands,
+password framing, backup/payload formats, and HTTP behavior remain unchanged.
+
+`client csr` adds an opt-in member-only command with one-line password framing and
+binary DER stdout. The new cryptographic request profile requires `semver:major`
+review under the format policy above. Existing commands, encrypted backups, and
+HTTP behavior are unchanged. No certificate or enrollment compatibility is claimed.
+
+`client verify-csr` is an additive opt-in command requiring `semver:minor` review.
+It reads an owner-only request file, does not read stdin, and prints the same
+public-key line as `inspect` after validating the existing CSR profile. Existing
+commands, password framing, cryptographic formats, and HTTP behavior are unchanged.
+
+### WASM verifier compatibility
+
+The [public-only WASM verifier](key-management.md#local-wasm-request-verification)
+is an additive opt-in development interface requiring `semver:minor` review. Its
+namespace, methods, bounded hex input, public-key output, rejection, and shutdown
+behavior are new contracts. Existing CLI commands, HTTP behavior, and cryptographic
+profiles are unchanged. No browser delivery or private-key compatibility is claimed.
 
 ## Change classification
 
-| Impact | Stable release behavior | Unstable release policy |
-| --- | --- | --- |
-| MAJOR | Incompatible public contract, removed flag/config, unsafe migration range, crypto/wire/parameter change without compatibility | Increase MINOR, document breaking impact and migration; use `!` or the standard breaking footer |
-| MINOR | Backward-compatible feature or new opt-in capability | Increase MINOR |
-| PATCH | Backward-compatible fix, clarification, hardening with no contract break | Increase PATCH |
+Use the official SemVer definitions for stable releases. During `0.y.z`, apply
+this project policy:
 
-A security fix is not automatically a PATCH. Rejecting previously accepted unsafe
-parameters or changing trust anchors may require a breaking release and operator
-action. Crypto parameters and wire formats are breaking unless an explicit reviewed
-compatibility mechanism exists. Never retain an insecure path solely for compatibility.
+| Impact | Project policy during `0.y.z` |
+| --- | --- |
+| MAJOR | Increase MINOR; document breaking impact and migration |
+| MINOR | Increase MINOR |
+| PATCH | Increase PATCH |
+
+Treat removed flags/configuration, unsafe migration ranges, and incompatible
+public contracts as breaking changes. Security fixes are not automatically PATCH:
+rejecting unsafe parameters or changing trust anchors may require operator action.
+Cryptographic, wire-format, and parameter changes are breaking without a reviewed
+compatibility mechanism. Never retain insecure paths for compatibility.
 
 ## Commit and PR mapping
 
-`feat` normally requests MINOR; `fix` and compatible `perf` normally request PATCH.
-Any type with `!` or `BREAKING CHANGE:` requests breaking review. Documentation,
-tests, CI, and maintenance types have no automatic release bump unless public
-behavior changes. Labels are an explicit review decision, not an inferred substitute
-for examining the diff.
+Follow the official [Conventional Commits 1.0.0 specification](https://www.conventionalcommits.org/en/v1.0.0/)
+for commit meaning and breaking-change notation. Project requirements:
 
-Every PR has exactly one `semver:major`, `semver:minor`, or `semver:patch` label.
-The `semver:major` label denotes breaking impact even during `0.y.z`, where the
-actual version policy above applies. Non-release changes may carry `semver:patch`
-with `changelog:not-needed` and a maintainer rationale.
+- Compatible `perf` changes normally have PATCH impact; all breaking changes require review.
+- Docs/tests/CI/maintenance: no automatic bump unless public behavior changes.
+- Review the diff; labels do not replace compatibility analysis.
+- Every PR needs exactly one `semver:major`, `semver:minor`, or `semver:patch`.
+  `semver:major` means breaking impact during `0.y.z` too; apply the unstable policy above.
+- Non-release work may use `semver:patch` plus `changelog:not-needed` with maintainer rationale.
 
 ## Changelog contract
 
-[CHANGELOG.md](../CHANGELOG.md) is human-curated using Keep a Changelog 1.1.0.
-Its newest section is `## [Unreleased]`; dated sections use
-`## [X.Y.Z] - YYYY-MM-DD`, newest first. Allowed groups are Added, Changed,
-Deprecated, Removed, Fixed, Security. Keep comparison references at the bottom.
-A withdrawn release keeps its entry with `[YANKED]` in the version heading.
+Consult and follow the official [Keep a Changelog 1.1.0 guidance](https://keepachangelog.com/en/1.1.0/)
+for format, categories, dates, links, and withdrawn releases. Project requirements:
 
-PRs must modify content inside Unreleased, not merely touch the file elsewhere,
-unless `changelog:not-needed` is applied by a maintainer. Automation extracts a
-reviewed release section; it must not turn commit messages into a replacement
-changelog or reformat curated prose.
+- Maintain the human-curated [CHANGELOG.md](../CHANGELOG.md).
+- PRs change content inside Unreleased unless a maintainer applies `changelog:not-needed`.
+- Automation extracts reviewed sections, never replaces the changelog with commit
+  messages or reformats curated prose.

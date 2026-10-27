@@ -113,22 +113,26 @@ func TestConfigSourceURL(t *testing.T) {
 }
 
 func FuzzConfig(f *testing.F) {
-	f.Add(string(Submission), "127.0.0.1:8080", testSource)
-	f.Add(string(CA), "[::1]:0", testSource)
-	f.Add(string(Issuer), "0.0.0.0:8081", "https://test:synthetic-input@source.example.invalid")
-	f.Add("unknown", "", "")
-	f.Add(string(Submission), "127.0.0.1:8080", "HTTPS://source.example.invalid/archive")
-	f.Fuzz(func(t *testing.T, role, listen, source string) {
+	f.Add(string(Submission), "127.0.0.1:8080", testSource, false)
+	f.Add(string(Submission), "127.0.0.1:8080", testSource, true)
+	f.Add(string(CA), "[::1]:0", testSource, true)
+	f.Add(string(Issuer), "0.0.0.0:8081", "https://test:synthetic-input@source.example.invalid", false)
+	f.Add("unknown", "", "", false)
+	f.Add(string(Submission), "127.0.0.1:8080", "HTTPS://source.example.invalid/archive", false)
+	f.Fuzz(func(t *testing.T, role, listen, source string, styleGuide bool) {
 		// Bound parser work and allocations independently of the corpus generator.
 		if len(role)+len(listen)+len(source) > 8192 {
 			return
 		}
-		cfg := Config{Role: Role(role), Listen: listen, SourceURL: source}
+		cfg := Config{Role: Role(role), Listen: listen, SourceURL: source, DevStyleGuide: styleGuide}
 		if err := cfg.Validate(); err != nil {
 			if len(err.Error()) > 128 {
 				t.Fatal("validation returned an unbounded error")
 			}
 			return
+		}
+		if styleGuide && cfg.Role != Submission {
+			t.Fatal("accepted identity-side development UI")
 		}
 		host, _, err := net.SplitHostPort(listen)
 		if err != nil {

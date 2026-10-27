@@ -7,11 +7,11 @@ Audience: contributors and automated tooling.
 
 ## Repository status and layout
 
-anonce designs anonymous submissions from verified members with administrator-set
-per-member response limits for each round.
-This checkout contains documentation, repository checks, and demonstration-only Go
-HTTP infrastructure, not a working submission product.
-Keep implemented behavior distinct from intended behavior.
+anonce is designed for anonymous submissions from verified members with
+administrator-set per-member/round limits. Docs, checks, local demo HTTP
+infrastructure, a read-only shell, shared device-backup encryption, local
+member/reviewer-key generation/import/export, and an offline encrypted-file CLI exist.
+Distinguish implemented from planned behavior.
 
 - `docs/`: architecture, security, operations, and contributor reference.
 - `docs/dependencies.md`: dependency choices, licensing, and review requirements.
@@ -20,7 +20,24 @@ Keep implemented behavior distinct from intended behavior.
 - `.githooks/`: local enforcement, installed through `make setup`.
 - `.github/`: collaboration templates and supported CI workflows.
 - `cmd/`, `internal/`: local CA, issuer, and submission HTTP infrastructure.
-- Planned runtime layout also includes `migrations/` and `web/`.
+- `internal/client/keystore`: bounded, in-memory device-backup encryption, used by
+  typed key wrappers; no browser or service integration.
+- `internal/client/memberkey`: local Ed25519 member keys and validated encrypted
+  backups; offline CLI integration, no browser or enrollment integration.
+- `internal/client/reviewerkey`: local X25519 reviewer keys and validated encrypted
+  backups; offline CLI integration, no browser, round-binding, or decryption integration.
+- `internal/clientcli`, `cmd/client`: offline backup generation and public-only
+  inspection plus password rewrapping; bounded stdin passwords and no-replace
+  encrypted files, plus identity-free member CSR output and password-free request
+  verification, with no old-backup
+  revocation, key rotation, or enrollment.
+- `internal/client/membercsr`: local Ed25519 certificate requests and bounded
+  profile validation; no identity claims, certificate issuance, or transport.
+- `cmd/wasm`, `internal/clientwasm`: public-only member request verification using
+  the shared parser; local WASM artifacts and Node compatibility checks, no page
+  integration, device-key access, or enrollment.
+- `web/`: embedded read-only demonstration templates and first-party CSS.
+- Planned runtime layout also includes `migrations/`.
 
 ## Authorship and wording
 
@@ -33,7 +50,9 @@ authors, committers, messages, trailers, branches, tags, and annotations.
 Do not attribute work to automated tooling, describe its involvement, or include
 its identifying names, models, vendors, signatures, or bot addresses. The person who
 commits must understand, review, and be able to explain the entire change. Human
-co-authors may receive ordinary credit. Recognized dependency-update identities are
+co-authors may receive ordinary credit.
+
+Recognized dependency-update identities are
 permitted only in PR identity fields under the [dependency-update rules](CONTRIBUTING.md#dependency-updates).
 Original third-party vendor text stays unchanged and receives a licensing review.
 Conventional reproducibility headers for approved ordinary build programs are allowed.
@@ -61,17 +80,22 @@ make workflow-lint    # pinned actionlint; requires Go
 make build            # build the local demonstration commands
 make test             # race tests and coverage report
 make lint             # Go analysis, formatting, and module checks
-make fuzz             # bounded configuration-parser fuzzing
+make fuzz             # bounded configuration, shell-route, backup, key, and CLI parser fuzzing
 make vuln             # Go vulnerability, static security, and secret checks
+make web-lint         # rendered inert markup, local CSS, SRI, and HTTP delivery checks
+make wasm             # public-only Go WASM verifier, matching loader, hashes, size gate
+make wasm-test        # native/WASM public-request compatibility and bridge checks
 ```
 
-The remaining runtime command contract is recorded in [testing](docs/testing.md).
-Database, WASM, container, browser, and protocol work is not present yet; its
-commands must have real Make targets when added.
-Do not add successful no-op checks or claim unavailable commands passed.
+See [testing](docs/testing.md) for required database, container, browser, and
+protocol targets, none available yet. WASM evidence covers request verification
+only. Add real Make targets with implementation.
+No successful no-op checks or claims that unavailable commands passed.
 
 ## Engineering boundaries
 
+- Follow the [Modern Go Guidelines](https://github.com/JetBrains/go-modern-guidelines)
+  for Go code, with the [project-specific rules](CONTRIBUTING.md#go-guidelines).
 - Keep command entry points thin; domain packages must not import transport packages.
 - Keep member/reviewer cryptography in shared device-side Go packages.
 - Never implement a primitive; choose reviewed libraries and document profiles in `docs/cryptography.md` before implementation.
@@ -98,49 +122,56 @@ Do not add successful no-op checks or claim unavailable commands passed.
 
 ## Git and review
 
-Use short feature names such as `docs/key-storage` and never rewrite shared history.
-Use Conventional Commits: `<type>[scope][!]: <description>`, lowercase imperative
-description, no trailing period. A breaking change needs `!` or the standard footer.
-
-Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.
-Scopes: repo, ca, issuer, server, reviewer, client, wasm, keystore, log, web, admin,
-db, docs, ci, deps, release. `scripts/commits.toml` is the machine-readable authority.
-
-Examples: `docs(ca): describe revocation checks`; `fix(web): preserve focus on errors`.
-Keep commits atomic. PR titles must also pass commit lint. Every PR needs a SemVer
-impact label and an Unreleased entry unless the documented exception label applies.
-Use the [PR template](https://github.com/mandipnotroot/anonce/blob/main/.github/pull_request_template.md)
-and request owner review.
+- Use short feature branches, such as `docs/key-storage`. Never rewrite shared history.
+- Consult the official [Conventional Commits 1.0.0 specification](https://www.conventionalcommits.org/en/v1.0.0/)
+  and follow it strictly for every commit and PR title.
+- Repository-specific types, scopes, and subject limits are defined in `scripts/commits.toml`.
+- Keep commits atomic; commit lint and hooks must pass without bypass.
+- Follow the official [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html) and
+  [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) guidance, with
+  project-specific requirements in [versioning](docs/versioning.md).
+- Every PR needs a [SemVer impact label](docs/versioning.md#commit-and-pr-mapping)
+  and Unreleased entry unless the documented
+  exception label applies.
+- Use the [PR template](https://github.com/mandipnotroot/anonce/blob/main/.github/pull_request_template.md)
+  and request owner review.
 
 ## Licensing, tests, and documentation
 
+Follow the official [REUSE 3.3 specification](https://reuse.software/spec-3.3/).
 Use AGPL-3.0-only for original work. Never relicense upstream files. Record binary,
 JSON, checksum, and font notices in `REUSE.toml` when headers cannot be carried.
 Use `Anonce Contributors` for original project notices. Preserve upstream holders.
-SPDX header examples:
-
-```text
-// SPDX-FileCopyrightText: 2026 Anonce Contributors
-// SPDX-License-Identifier: AGPL-3.0-only
-
-# SPDX-FileCopyrightText: 2026 Anonce Contributors
-# SPDX-License-Identifier: AGPL-3.0-only
-
-<!-- SPDX-FileCopyrightText: 2026 Anonce Contributors -->
-<!-- SPDX-License-Identifier: AGPL-3.0-only -->
-```
 
 Add table-driven unit tests, error cases, race coverage, and bounded parser fuzzing
 with each implementation. Keep protocol attack cases mapped to named tests and
 report unimplemented cases honestly. Never use production identities or secrets.
 
-Update the canonical document, linking to it rather than repeating explanations:
-API changes -> `docs/api.md` and OpenAPI; security changes -> threat model and cryptography;
-storage changes -> database and migration docs; UI changes -> design and screenshots;
-operator changes -> deployment; public compatibility -> versioning and changelog.
-Every `docs/` file states its audience. Cite primary sources where they support a
-requirement, with access dates for external observations. Scope wire/parameter changes as breaking
-unless a documented compatibility mechanism exists.
+Write professional documentation in plain, easy-to-understand language. Keep
+paragraphs short and focused. Avoid overexplaining, filler, unnecessary repetition,
+and jargon that does not help the intended audience. Be concise without omitting
+required information, essential context, prerequisites, limitations, or safety
+guidance.
+
+For external conventions and standards, consult the official source for the
+version adopted by the project instead of repeating its rules. Keep project-specific
+requirements explicit. Do not silently use a newer version; if none is selected,
+record that limitation and resolve it before implementation.
+
+Update canonical references and link instead of repeating explanations:
+
+| Change | Update |
+| --- | --- |
+| API | `docs/api.md` and OpenAPI |
+| Security | Threat model and cryptography |
+| Storage | Database and migration docs |
+| UI | Design and screenshots |
+| Operations | Deployment |
+| Public compatibility | Versioning and changelog |
+
+Every `docs/` file states its audience. Cite primary sources supporting requirements;
+date external observations. Wire/parameter changes are breaking unless a documented
+compatibility mechanism exists.
 
 ## Never do
 

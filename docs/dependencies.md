@@ -5,44 +5,84 @@
 
 Audience: maintainers, redistributors, and license reviewers.
 
-Verified access date: 2026-10-26. Version observations are not a completed transitive
-license or vulnerability audit. The Go infrastructure uses only the standard
-library; proposed third-party runtime modules and assets are not imported or
-vendored. Recheck each exact artifact, checksum, license, and advisory before import.
+Accessed: 2026-10-26. Proposed versions below are observations, not a transitive
+license or vulnerability audit. HTTP commands use only the standard library;
+the shared device-backup package imports the admitted modules below. No runtime
+dependencies or assets are vendored. Recheck artifacts, hashes, licenses, and
+advisories before further imports.
 
 ## Current materials
 
 | Material | License | Treatment |
 | --- | --- | --- |
 | Original code, documentation, and repository checks | AGPL-3.0-only | SPDX headers; [license](../LICENSE) |
+| Read-only shell templates and CSS | AGPL-3.0-only | Original embedded assets; device fonts, no third-party product assets or browser packages |
 | Contributor Covenant 3.0 adaptation | CC-BY-SA-4.0 | Upstream attribution and separate document license retained |
 | Python standard library | PSF-2.0 | External interpreter, not copied into the project |
 | Git and GNU Make | GPL-2.0-only / GPL-3.0-or-later upstream tools | External development tools, not project relicensing |
-| REUSE 6.2.0 | GPL-3.0-or-later upstream tool | External compliance check; REUSE 3.3 specification |
+| REUSE 6.2.0 | GPL-3.0-or-later upstream tool | External compliance check; [REUSE 3.3 specification](https://reuse.software/spec-3.3/) |
 | [mdBook 0.5.4](https://github.com/rust-lang/mdBook/releases/tag/v0.5.4) | MPL-2.0 | Documentation-only tool; official release archives and asset notices pinned in `scripts/mdbook.toml` |
 | pip-tools 7.6.2 | BSD-3-Clause | External documentation lock compiler |
-| [Go 1.27.3](https://go.dev/dl/?mode=json) | BSD-3-Clause | Pinned standard-library runtime and external compiler; no third-party runtime modules |
+| [Go 1.27.3](https://go.dev/dl/?mode=json) | BSD-3-Clause | Pinned standard-library runtime and external compiler; WASM build copies the matching loader and original notices unchanged |
+| [Node.js 22.23.3](https://nodejs.org/dist/v22.23.3/) | MIT with bundled third-party notices | External development-only WASM test runtime; no npm dependencies or Node product build |
+| [x/crypto 0.58.0](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/argon2) | BSD-3-Clause | Admitted Argon2id and its BLAKE2b dependency for device-backup profile 1; exact hashes in `go.sum` |
+| [x/sys 0.49.0](https://pkg.go.dev/golang.org/x/sys@v0.49.0/cpu) | BSD-3-Clause | Indirect CPU-feature detection for x/crypto; exact hashes in `go.sum` |
 | [gofumpt 0.12.0](https://github.com/mvdan/gofumpt) | BSD-3-Clause | External Go formatter |
 | [golangci-lint 2.15.0](https://github.com/golangci/golangci-lint) | GPL-3.0-only | External Go lint aggregator |
 | [govulncheck 1.9.0](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) | BSD-3-Clause | External Go vulnerability check |
 | [gosec 2.30.0](https://github.com/securego/gosec) | Apache-2.0 | External static security check; no hosted analysis configured |
 | [Gitleaks 8.30.1](https://github.com/gitleaks/gitleaks) | MIT | External current-file secret scanner |
 
-Upstream tool licenses do not change the project's AGPL-3.0-only grant. The project
-does not offer dual licensing. Every redistributed upstream file must keep its own
-notice and have the applicable license text under `LICENSES/`.
-The module directive declares the minimum Go version and Make targets pin the
-toolchain; tool invocations pin module versions and use Go's checksum verification.
-These are external development tools, not copied project files. Their transitive
-graphs still require review before redistribution. Any future binary distribution
-must retain the Go runtime's applicable copyright and license notices alongside
-the project license.
+- No dual licensing: tool licenses do not change the project's AGPL-3.0-only grant.
+- Redistributed upstream files keep their notices and license texts under `LICENSES/`.
+- The module directive sets minimum Go; Make pins toolchain/tool versions and uses
+  Go checksum verification. These external tools are not copied project files.
+  Review transitive graphs before redistribution.
+- Future binaries must include applicable Go runtime notices alongside the project license.
 
-The mdBook installer verifies release archive digests reported by the official
-release API, and downloads original notices with individually reviewed hashes.
-Generated documentation retains those texts under `assets/upstream-licenses/`
-without changing upstream holders or licenses. No upstream executable or asset is
-checked into this repository. The published theme uses these bundled components:
+### Admitted Go modules
+
+x/crypto and x/sys are maintained Go project libraries that avoid a custom KDF.
+Their imported package graph was inspected for Argon2id, BLAKE2b, and CPU-feature
+detection only.
+
+- **Licensing:** both pinned module `LICENSE` files use BSD-3-Clause and retain
+  the original Go copyright holder; `PATENTS` grants remain upstream. No source is
+  copied or relicensed. Client binaries must preserve these notices and terms.
+  See the pinned [x/crypto](https://cs.opensource.google/go/x/crypto/+/v0.58.0:LICENSE)
+  and [x/sys](https://cs.opensource.google/go/x/sys/+/v0.49.0:LICENSE) licenses.
+- **Security:** `make vuln` checks the used package graph for known advisories,
+  not correctness or independent audit. Upgrades require the same admission review;
+  removal requires a reviewed replacement profile and compatibility plan, never
+  a silent KDF fallback.
+- **Excluded package:** the admission scan reports
+  [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) in x/crypto's unmaintained
+  OpenPGP package, with no fixed version. It is neither imported nor reachable.
+  Do not introduce OpenPGP through this dependency.
+
+### WASM runtime support
+
+The public-only verifier imports only standard-library packages and the shared
+member-request parser. `make wasm` copies Go 1.27.3's unmodified
+[loader](https://github.com/golang/go/blob/go1.27.3/lib/wasm/wasm_exec.js),
+[license](https://github.com/golang/go/blob/go1.27.3/LICENSE), and
+[patent grant](https://github.com/golang/go/blob/go1.27.3/PATENTS) beside the build.
+Their reviewed SHA-256 hashes are pinned in `scripts/wasm.toml`; original upstream
+notices stay intact. No upstream asset or generated WASM is checked in or served
+by the shell. Updating Go requires reviewing these pins and rerunning compatibility
+and security checks (sources accessed 2026-10-27).
+
+Node.js is pinned in the same manifest and CI. Use official
+[22.23.3 archives and checksums](https://nodejs.org/dist/v22.23.3/SHASUMS256.txt)
+and retain its upstream notices if redistributing that external test runtime.
+Only built-in assertion, crypto, filesystem, module, and path facilities are used
+by the test runner. No Node code handles passwords or private-key fixtures.
+
+### Documentation theme
+
+mdBook setup verifies official release-API digests and reviewed notice hashes.
+Generated docs preserve holders/licenses in `assets/upstream-licenses/`. No upstream
+executable or asset is checked in.
 
 | Component | Bundled version | License and treatment |
 | --- | --- | --- |
@@ -53,12 +93,10 @@ checked into this repository. The published theme uses these bundled components:
 | elasticlunr.js | 0.9.5 | MIT; embedded notice and full license retained |
 | Font Awesome Free SVG icons | 6.2.0, via font-awesome-as-a-crate 0.3.1 | CC-BY-4.0 for icons; original Font Awesome license/attribution file retained |
 
-These versions are observations from the pinned mdBook source and Cargo lockfile
-on the access date above, not an independent transitive security audit. Do not
-infer that old bundled browser libraries are current merely because the tool is
-current. Documentation contains no private data or runnable remote playground.
-Device fonts replace the bundled font files; no font binaries are published.
-Documentation assets are separate from future product browser dependencies.
+Versions come from pinned mdBook source/Cargo lockfile on the access date above,
+not an independent audit. Current tools can bundle old browser libraries.
+Docs contain no private data or runnable remote playground. Device fonts replace
+bundled fonts; no font binaries are published. Docs assets are separate from product dependencies.
 
 ## Proposed product dependencies
 
@@ -68,7 +106,6 @@ Documentation assets are separate from future product browser dependencies.
 | [pgx](https://github.com/jackc/pgx) | 5.11.0 | MIT | Native PostgreSQL driver |
 | [Goose](https://github.com/pressly/goose) | 3.29.0 | MIT | Separate SQL migration histories |
 | [CIRCL](https://github.com/cloudflare/circl) | 1.6.5 | BSD-3-Clause | Blind RSA implementation |
-| [x/crypto](https://pkg.go.dev/golang.org/x/crypto/argon2) | 0.58.0 | BSD-3-Clause | Argon2id |
 | [x/mod](https://pkg.go.dev/golang.org/x/mod/sumdb/tlog) | 0.42.0 | BSD-3-Clause | Tree/proof and signed-note routines |
 | [go-webauthn](https://pkg.go.dev/github.com/go-webauthn/webauthn) | 0.18.2 | BSD-3-Clause | Passkey verification |
 | [otp](https://pkg.go.dev/github.com/pquerna/otp) | 1.5.0 | Apache-2.0 | TOTP fallback |
@@ -77,19 +114,18 @@ Documentation assets are separate from future product browser dependencies.
 | [Lucide](https://lucide.dev/license) | Exact icon revision pending | ISC and MIT for inherited icons | Selected static SVGs, both notice sets retained |
 | [SoftHSM](https://github.com/softhsm/SoftHSMv2) | 2.7.0 | BSD-2-Clause | Optional PKCS#11 simulation |
 
-Technical requirements belong in [architecture](architecture.md),
-[cryptography](cryptography.md), [database](database.md), and [UI design](ui-design.md).
-Pin the toolchain and exact module/asset hashes when implementation is introduced.
-Browser-development packages remain separate from the product build and require
-transitive license review. Admit testing and release tools when their real targets
-are added, rather than maintaining a speculative tool inventory.
+See [architecture](architecture.md), [cryptography](cryptography.md),
+[database](database.md), and [UI design](ui-design.md) for requirements.
+Pin toolchain and module/asset hashes on implementation. Keep browser-development
+packages outside the product build and review transitive licenses. Admit test/release
+tools with real targets, not speculative inventories.
 
 ## Review method
 
-Require a purpose, maintained upstream, exact version/hash, compatible grant, retained
-copyright, security review, and a removal/update plan. Reject unknown licenses or
-copyleft incompatibilities rather than guessing. Review fonts/icons as assets, not
-Go modules. Upstream copyright notices are not replaced with project authorship.
-Optional hosted services cannot become a hidden prerequisite for product builds or
-required checks. Required tools must be openly licensed and locally runnable. Follow
-[contributing](../CONTRIBUTING.md#dependency-updates) for update review and identity rules.
+- Require purpose, maintained upstream, exact version/hash, compatible license,
+  retained copyright, security review, and removal/update plan.
+- Reject unknown/incompatible licenses. Review fonts/icons as assets, not modules.
+  Never replace upstream copyright with project authorship.
+- Required tools must be openly licensed and locally runnable. Optional hosted
+  services cannot become hidden build/check prerequisites.
+- Follow [dependency-update review and identity rules](../CONTRIBUTING.md#dependency-updates).

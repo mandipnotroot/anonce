@@ -5,38 +5,56 @@
 
 Audience: transport implementers and client authors.
 
-Status: infrastructure endpoints are implemented by local demonstration processes.
-[OpenAPI](openapi.yaml) distinguishes these from proposed public discovery endpoints.
-Cryptographic request schemas are intentionally absent until their encoding and
-profiles are reviewed.
+Status: local demonstration infrastructure only. The [API definition](openapi.yaml)
+uses the official [OpenAPI 3.1.0 specification](https://spec.openapis.org/oas/v3.1.0)
+and separates implemented endpoints from proposed discovery APIs. Cryptographic
+schemas await encoding and profile review.
+
+The separate [local WASM verifier](key-management.md#local-wasm-request-verification)
+has an in-process JavaScript interface, not an HTTP route. Its artifacts are not
+served by these commands; the HTTP contract and OpenAPI definition are unchanged.
 
 ## Implemented infrastructure
 
-All three commands expose `GET` and `HEAD` on `/healthz`, `/readyz`, `/api/v1/status`,
-and `/source`. Other methods on these paths return `405` with `Allow: GET, HEAD`.
-Liveness returns `200` with `ok`. Readiness always returns
-`503` with code `not_ready`; no storage or protocol readiness is asserted.
+All three commands expose:
 
-Status returns version `development`, `demonstration: true`, and exactly the
-capability identifiers `liveness`, `status`, and `source-discovery`. `/source`
-returns a bodyless `302` to the required configured HTTPS source location.
-All handler responses use `Cache-Control: no-store` and the restrictive headers described
-in [deployment](deployment.md#transport-and-headers). No cookies or CORS access
-are issued. `HEAD` returns no response body.
+| Path | `GET` response |
+| --- | --- |
+| `/healthz` | `200`, `ok` |
+| `/readyz` | Always `503`, code `not_ready`; no storage or protocol readiness |
+| `/api/v1/status` | Version `development`, `demonstration: true`; exactly `liveness`, `status`, `source-discovery` capabilities |
+| `/source` | Bodyless `302` to the required configured HTTPS source URL |
 
-The CA process owns enrollment and CA discovery; the issuer owns challenges,
-issuances, and CA discovery. Both reserve `/admin` and its descendants. The
-submission process reserves rounds, submissions, receipts, log, and reply-mailbox
-paths. These owned route roots and descendants return `501` with code
-`not_implemented` for every method. Unknown paths, including another process's
-exclusive routes, return `404` with code `not_found`. No handler reads request
-bodies or reflects request data in errors. This is not authentication or a
-protocol parser. No capability or private state can be consumed.
+- `HEAD` has no body. Other methods return `405`, `Allow: GET, HEAD`.
+- All handler responses use `Cache-Control: no-store` and
+  [restrictive headers](deployment.md#transport-and-headers), without cookies or CORS access.
+- CA reserves enrollment, CA discovery, and `/admin`; issuer reserves challenges,
+  issuances, CA discovery, and `/admin`. Submission reserves rounds, submissions,
+  receipts, log, and reply mailboxes. Reserved roots and descendants return `501`,
+  code `not_implemented`, for every method.
+- Unknown paths, including another process's exclusive routes, return `404`, code `not_found`.
+- Handlers read no request bodies and reflect no request data in errors. They perform
+  no authentication or protocol parsing and consume no capabilities or private state.
+- JSON errors contain only `code` and `message`. Go's transport parser may reject
+  malformed HTTP or oversized headers before handlers, without application JSON/headers.
 
-JSON errors contain only `code` and `message`. Resource limits and local-only
-configuration are in [deployment](deployment.md#local-development).
-Malformed HTTP or oversized headers can be rejected by Go's transport parser
-before the application handler runs, without application JSON or headers.
+See [deployment](deployment.md#local-development) for limits and configuration.
+
+## Implemented read-only shell
+
+- **Pages:** submission only, at `/` and `/about`. `/dev/styleguide` requires
+  `-dev-styleguide`; otherwise JSON `404`. CA/issuer serve no shell pages or assets.
+  The infrastructure-only status capability list is unchanged.
+- **CSS:** one embedded `/assets/shell.{sha256}.css`, with the full lowercase
+  hexadecimal SHA-256 digest and matching page SRI. Only the current exact path
+  exists; no listing, unhashed alias, or template download.
+- **Delivery:** `GET`/`HEAD` only; other methods return JSON `405`, `Allow: GET, HEAD`.
+  `HEAD` has no body. Use `no-store`, no cookies/CORS, and the
+  [shell CSP](deployment.md#transport-and-headers).
+- **Input:** no request data in templates. Body-bearing requests close without
+  reading or draining. No forms, authentication, or protocol calls.
+- **Compatibility:** root HTML `200` replaces JSON `404`, a
+  [breaking HTTP change](versioning.md#public-api-boundary), not a stable profile or product interface.
 
 ## Endpoint ownership
 
@@ -73,29 +91,26 @@ existence or participation oracles. Where necessary, use equivalent safe respons
 ## Authentication and caching
 
 Administrative writes require server-side authorization, CSRF protection, and recent
-reauthentication for sensitive actions. Public certificate, bulletin, checkpoint,
-and asset responses may use explicit caches with freshness requirements. Secret or
-identity-bearing responses use `Cache-Control: no-store`. Never share issuer session
-cookies or authentication headers with the submission origin.
+reauthentication for sensitive actions. Never share issuer session cookies or
+authentication headers with the submission origin.
+
+Public certificate, bulletin, checkpoint, and asset responses may use explicit
+caches with freshness requirements. Secret or identity-bearing responses use
+`Cache-Control: no-store`.
 
 ## Response-limit contract
 
-Round publication requires the common, bounded positive integer `response_limit`
-defined in [protocol](protocol.md#round-response-limit). The signed bulletin binds
-it, and clients and the issuer must validate it without silently assuming a default.
-An identity-side issuance request binds its reservation slot and bulletin context
-to the authenticated challenge. Quota state and slot indices must never accompany
-anonymous submission or receipt requests. Each issued token authorizes only one
-accepted ciphertext, regardless of the round's limit.
+Follow the [protocol rules](protocol.md#round-response-limit): `response_limit`
+must be a bounded positive integer, explicitly confirmed at publication, and
+signed as a common immutable limit. Clients and issuers validate it without
+defaults; each token permits one accepted ciphertext.
 
-Quota exhaustion is a safe `409` on the authenticated issuance interface, not a
-reason to reset quota or fall back to identity-authenticated submission. The public
-bulletin exposes the common limit, never a member's remaining allowance. Under the
-same round ID, published limits are immutable. The administrative UI may suggest a
-draft value, but omitted or invalid published values fail validation.
-
-Form schemas and bulletin formats are part of the public API. Changes follow
-[versioning](versioning.md), including wire/profile compatibility and migration range.
-Replacing fixed single-response semantics with a configurable limit is a breaking
-protocol/profile change, not a compatible optional field. No released runtime
-exists to migrate; the reviewed wire profile must require the limit explicitly.
+- Bind slot/bulletin context to the authenticated issuance challenge. No quota state
+  or slot indices in anonymous submissions or receipt requests; public bulletins
+  expose the common limit, not remaining allowances.
+- Quota exhaustion returns safe authenticated-issuance `409`. No quota reset or
+  identity-authenticated submission fallback.
+- Forms/bulletins follow [public API versioning](versioning.md), including wire/profile
+  compatibility and migration ranges. Configurable limits are a breaking replacement
+  for fixed single-response semantics, not an optional field. No released runtime
+  needs migration; require the limit in the reviewed wire profile.
