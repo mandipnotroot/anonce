@@ -101,7 +101,7 @@ not make a key trusted or authorized.
 | Command | Required flags | Result |
 | --- | --- | --- |
 | `client generate` | `-kind member\|reviewer -out PATH` | Fresh key, encrypted backup file; no stdout |
-| `client inspect` | `-kind member\|reviewer -in PATH` | Validated backup; public key only on stdout |
+| `client inspect` | `-kind member\|reviewer -in PATH`, optional `-expect-public-key HEX` | Validated backup, optionally matched to an expected key; public key only on stdout |
 | `client rewrap` | `-kind member\|reviewer -in PATH -out PATH` | Validated existing key, freshly encrypted backup under the replacement password; no stdout |
 | `client csr` | `-kind member -in PATH`, optional `-out PATH` | Validated member backup; signed identity-free binary DER on stdout, or in a new owner-only file with no stdout |
 | `client verify-csr` | `-kind member -in PATH`, optional `-expect-public-key HEX` | Validated member request and signature, optionally matched to an expected key; public key only on stdout, no password input |
@@ -198,12 +198,41 @@ under the same no-replace publication rules as generation. Verify the new backup
 with `inspect` before managing old copies under an independently reviewed retention
 procedure.
 
+To check that the replacement still holds the expected key, use
+[`inspect -expect-public-key`](#local-backup-key-matching) with the independently
+retained public key from the trusted original backup.
+
 Password changes do not rotate keys, revoke old backups, repair a weak old password,
 enforce expiry, or make a compromised key safe. Retained copies remain decryptable
 with their old password; no secure-deletion claim is made.
 
 See [testing](testing.md#implemented-test-mapping) for executable evidence and
 [threat model](threat-model.md) for remaining device and offline-guessing risks.
+
+### Local backup key matching
+
+`inspect -expect-public-key HEX` requires the validated member or reviewer backup
+to contain that exact public key before stdout is written. Supply exactly 64 ASCII
+hexadecimal characters in either case, without a kind prefix, whitespace, or newline.
+Empty, malformed, oversized, and repeated flags fail before password input or file
+access. Omitting the flag preserves ordinary inspection. Generation, rewrapping,
+and CSR creation reject it; request verification supports it separately below.
+
+Inspection still requires the usual one-line password input, trusted-file checks,
+authenticated purpose, and canonical typed payload validation. A match prints the
+unchanged `member:<hex>\n` or `reviewer:<hex>\n` line; a mismatch fails with no stdout.
+Errors contain neither key nor the file path. Cancellation before output prints
+nothing; output failures can leave a partial line, which must be discarded.
+
+Obtain the expected key independently, such as retained inspection output from a
+trusted original backup before restoration or password replacement. Copying it from
+the file under examination provides no substitution protection. Public-key arguments
+remain linkable and may appear in process listings and shell history.
+
+A match establishes neither freshness, revocation, identity, authorization, nor
+reviewer round binding or expiry. Older backups for the same key still match. For
+X25519, this compares public keys, not exact private encodings: equivalent private
+encodings can produce the same public key. Cryptographic profiles are unchanged.
 
 ### Local member certificate requests
 
@@ -259,7 +288,8 @@ With `-expect-public-key HEX`, the validated request must contain that exact
 32-byte public key before any stdout is written. Supply exactly 64 ASCII hex
 characters in either case, without a `member:` prefix, whitespace, or newline.
 Empty, malformed, oversized, or repeated expected-key flags fail as invalid
-arguments before reading the request. Other operations reject the flag.
+arguments before reading the request. Backup inspection supports the same flag
+under [backup key matching](#local-backup-key-matching); other operations reject it.
 Omitting it preserves ordinary request verification and public-key output.
 
 Obtain the expected key through an independently trusted channel, for example

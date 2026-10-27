@@ -100,62 +100,71 @@ func TestClientExpectedPublicKeyArguments(t *testing.T) {
 	t.Parallel()
 	// Synthetic public-only parser input, not a private key fixture.
 	encoded := strings.Repeat("ab", ed25519.PublicKeySize)
-	base := []string{"verify-csr", "-kind=member", "-in=request"}
-	for _, tc := range []struct {
-		name  string
-		flags []string
-		valid bool
-	}{
-		{"omitted", nil, true},
-		{"lowercase", []string{"-expect-public-key=" + encoded}, true},
-		{"uppercase", []string{"-expect-public-key", strings.ToUpper(encoded)}, true},
-		{"mixed case", []string{"-expect-public-key=" + strings.Repeat("aB", ed25519.PublicKeySize)}, true},
-		{"empty", []string{"-expect-public-key="}, false},
-		{"empty split", []string{"-expect-public-key", ""}, false},
-		{"missing value", []string{"-expect-public-key"}, false},
-		{"short", []string{"-expect-public-key=" + encoded[:len(encoded)-2]}, false},
-		{"odd", []string{"-expect-public-key=" + encoded[:len(encoded)-1]}, false},
-		{"long", []string{"-expect-public-key=" + encoded + "00"}, false},
-		{"oversized", []string{"-expect-public-key=" + strings.Repeat("a", maxArgumentBytes)}, false},
-		{"not hex", []string{"-expect-public-key=" + strings.Repeat("z", len(encoded))}, false},
-		{"late invalid hex", []string{"-expect-public-key=" + encoded[:len(encoded)-1] + "z"}, false},
-		{"non ascii", []string{"-expect-public-key=" + encoded[:len(encoded)-2] + "é"}, false},
-		{"prefix", []string{"-expect-public-key=member:" + encoded}, false},
-		{"leading whitespace", []string{"-expect-public-key= " + encoded[1:]}, false},
-		{"trailing newline", []string{"-expect-public-key=" + encoded[:len(encoded)-1] + "\n"}, false},
-		{"null", []string{"-expect-public-key=" + encoded[:len(encoded)-1] + "\x00"}, false},
-		{"repeat same", []string{"-expect-public-key=" + encoded, "-expect-public-key=" + encoded}, false},
-		{"repeat different", []string{"-expect-public-key=" + encoded, "-expect-public-key=" + strings.Repeat("cd", ed25519.PublicKeySize)}, false},
-		{"repeat empty", []string{"-expect-public-key=" + encoded, "-expect-public-key="}, false},
+	for _, base := range [][]string{
+		{"verify-csr", "-kind=member", "-in=request"},
+		{"inspect", "-kind=member", "-in=backup"},
+		{"inspect", "-kind=reviewer", "-in=backup"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(base[0]+"/"+base[1], func(t *testing.T) {
 			t.Parallel()
-			args := append(slices.Clone(base), tc.flags...)
-			cfg, err := parse(args)
-			if tc.valid {
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(tc.flags) == 0 {
-					if cfg.expectedPublicKey != nil {
-						t.Fatal("omitted expected key enabled matching")
+			for _, tc := range []struct {
+				name  string
+				flags []string
+				valid bool
+			}{
+				{"omitted", nil, true},
+				{"lowercase", []string{"-expect-public-key=" + encoded}, true},
+				{"uppercase", []string{"-expect-public-key", strings.ToUpper(encoded)}, true},
+				{"mixed case", []string{"-expect-public-key=" + strings.Repeat("aB", ed25519.PublicKeySize)}, true},
+				{"empty", []string{"-expect-public-key="}, false},
+				{"empty split", []string{"-expect-public-key", ""}, false},
+				{"missing value", []string{"-expect-public-key"}, false},
+				{"short", []string{"-expect-public-key=" + encoded[:len(encoded)-2]}, false},
+				{"odd", []string{"-expect-public-key=" + encoded[:len(encoded)-1]}, false},
+				{"long", []string{"-expect-public-key=" + encoded + "00"}, false},
+				{"oversized", []string{"-expect-public-key=" + strings.Repeat("a", maxArgumentBytes)}, false},
+				{"not hex", []string{"-expect-public-key=" + strings.Repeat("z", len(encoded))}, false},
+				{"late invalid hex", []string{"-expect-public-key=" + encoded[:len(encoded)-1] + "z"}, false},
+				{"non ascii", []string{"-expect-public-key=" + encoded[:len(encoded)-2] + "é"}, false},
+				{"prefix", []string{"-expect-public-key=member:" + encoded}, false},
+				{"reviewer prefix", []string{"-expect-public-key=reviewer:" + encoded}, false},
+				{"leading whitespace", []string{"-expect-public-key= " + encoded[1:]}, false},
+				{"trailing newline", []string{"-expect-public-key=" + encoded[:len(encoded)-1] + "\n"}, false},
+				{"null", []string{"-expect-public-key=" + encoded[:len(encoded)-1] + "\x00"}, false},
+				{"repeat same", []string{"-expect-public-key=" + encoded, "-expect-public-key=" + encoded}, false},
+				{"repeat different", []string{"-expect-public-key=" + encoded, "-expect-public-key=" + strings.Repeat("cd", ed25519.PublicKeySize)}, false},
+				{"repeat empty", []string{"-expect-public-key=" + encoded, "-expect-public-key="}, false},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
+					args := append(slices.Clone(base), tc.flags...)
+					cfg, err := parse(args)
+					if tc.valid {
+						if err != nil {
+							t.Fatal(err)
+						}
+						if len(tc.flags) == 0 {
+							if cfg.expectedPublicKey != nil {
+								t.Fatal("omitted expected key enabled matching")
+							}
+						} else if hex.EncodeToString(cfg.expectedPublicKey) != encoded {
+							t.Fatal("parser did not preserve the complete expected key")
+						}
+						return
 					}
-				} else if hex.EncodeToString(cfg.expectedPublicKey) != encoded {
-					t.Fatal("parser did not preserve the complete expected key")
-				}
-				return
-			}
-			if !errors.Is(err, errArguments) || cfg.expectedPublicKey != nil || cfg.operation != "" {
-				t.Fatal("invalid expected key returned configuration or wrong error")
-			}
-			var stdout bytes.Buffer
-			// Nil stdin and a missing request ensure invalid flags fail at parsing.
-			if err := run(t.Context(), args, nil, &stdout); !errors.Is(err, errArguments) || stdout.Len() != 0 {
-				t.Fatal("invalid expected key did not fail before file or stdin access")
+					if !errors.Is(err, errArguments) || cfg.expectedPublicKey != nil || cfg.operation != "" {
+						t.Fatal("invalid expected key returned configuration or wrong error")
+					}
+					var stdout bytes.Buffer
+					// Nil stdin and a missing file ensure invalid flags fail at parsing.
+					if err := run(t.Context(), args, nil, &stdout); !errors.Is(err, errArguments) || stdout.Len() != 0 {
+						t.Fatal("invalid expected key did not fail before file or stdin access")
+					}
+				})
 			}
 		})
 	}
-	for _, operation := range []string{"generate", "inspect", "rewrap", "csr"} {
+	for _, operation := range []string{"generate", "rewrap", "csr"} {
 		t.Run(operation, func(t *testing.T) {
 			t.Parallel()
 			args := []string{operation, "-kind=member"}
@@ -367,6 +376,15 @@ func TestClientRoundTrip(t *testing.T) {
 			if output.String() != kind+":"+hex.EncodeToString(public)+"\n" {
 				t.Fatal("inspect did not return exactly the expected public key")
 			}
+			for _, expected := range []string{hex.EncodeToString(public), strings.ToUpper(hex.EncodeToString(public))} {
+				output.Reset()
+				if err := run(t.Context(), append(slices.Clone(args), "-expect-public-key", expected), passwordFile(t, "synthetic test password\n"), &output); err != nil {
+					t.Fatal(err)
+				}
+				if output.String() != kind+":"+hex.EncodeToString(public)+"\n" {
+					t.Fatal("expected-key inspection changed the public output")
+				}
+			}
 			for _, tc := range []struct {
 				name     string
 				kind     string
@@ -384,10 +402,16 @@ func TestClientRoundTrip(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
-					output.Reset()
-					err := run(t.Context(), []string{"inspect", "-kind", tc.kind, "-in", path}, passwordFile(t, tc.password), &output)
-					if !errors.Is(err, keystore.ErrInvalidBackup) || output.Len() != 0 {
-						t.Fatal("invalid backup produced public output or wrong error")
+					for _, expected := range []string{"", hex.EncodeToString(public)} {
+						output.Reset()
+						args := []string{"inspect", "-kind", tc.kind, "-in", path}
+						if expected != "" {
+							args = append(args, "-expect-public-key", expected)
+						}
+						err := run(t.Context(), args, passwordFile(t, tc.password), &output)
+						if !errors.Is(err, keystore.ErrInvalidBackup) || output.Len() != 0 {
+							t.Fatal("invalid backup produced public output or wrong error")
+						}
 					}
 				})
 			}
@@ -458,6 +482,13 @@ func passwordFile(t *testing.T, data string) *os.File {
 func FuzzClientArguments(f *testing.F) {
 	f.Add("generate\x00-kind\x00member\x00-out\x00backup")
 	f.Add("inspect\x00-kind=reviewer\x00-in=backup")
+	for _, kind := range []string{"member", "reviewer"} {
+		base := "inspect\x00-kind=" + kind + "\x00-in=backup\x00-expect-public-key="
+		f.Add(base + strings.Repeat("ab", ed25519.PublicKeySize))
+		f.Add(base + strings.Repeat("AB", ed25519.PublicKeySize))
+		f.Add(base)
+		f.Add(base + strings.Repeat("ab", ed25519.PublicKeySize) + "\x00-expect-public-key=")
+	}
 	f.Add("rewrap\x00-kind=member\x00-in=old\x00-out=new")
 	f.Add("csr\x00-kind=member\x00-in=backup")
 	f.Add("csr\x00-kind=member\x00-in=backup\x00-out=request")
@@ -479,7 +510,7 @@ func FuzzClientArguments(f *testing.F) {
 			(cfg.operation == "csr" || cfg.operation == "verify-csr") && cfg.kind != "member" ||
 			cfg.operation != "generate" && cfg.input == "" ||
 			cfg.output != "" && cfg.operation != "generate" && cfg.operation != "rewrap" && cfg.operation != "csr" ||
-			cfg.expectedPublicKey != nil && (cfg.operation != "verify-csr" || len(cfg.expectedPublicKey) != ed25519.PublicKeySize) ||
+			cfg.expectedPublicKey != nil && ((cfg.operation != "verify-csr" && cfg.operation != "inspect") || len(cfg.expectedPublicKey) != ed25519.PublicKeySize) ||
 			strings.ContainsRune(cfg.input+cfg.output, 0) ||
 			(cfg.operation == "generate" || cfg.operation == "rewrap") && cfg.output == "") {
 			t.Fatal("parser accepted unsupported configuration")

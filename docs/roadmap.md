@@ -35,7 +35,9 @@ Available foundations:
   encrypted PKCS #8 backups.
 - **Offline CLI:** [generation, public-key inspection, and password changes](key-management.md#local-key-cli)
   with bounded password input and no-replace encrypted files. Rewrapping preserves
-  the key and does not revoke old backups. Local member CSR generation and bounded
+  the key and does not revoke old backups. Optional independently trusted
+  expected-key matching checks member/reviewer backups before public output.
+  Local member CSR generation and bounded
   validation use an identity-free profile, with optional owner-only no-replace
   request export and password-free `verify-csr` public-key inspection with optional
   independently trusted expected-key matching; enrollment

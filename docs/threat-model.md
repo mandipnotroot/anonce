@@ -58,6 +58,11 @@ properties described below.
   establish freshness or expiry. Retained copies remain open to password guessing.
 - Passwords and private bytes enter the local process. Compromised-device risks
   remain, and independent device-workflow review is still required.
+- Optional [backup key matching](key-management.md#local-backup-key-matching) rejects
+  a different member/reviewer public key after full backup validation, without stdout.
+  It requires an independently trusted expected key. Old backups for the same key
+  still match, so this does not detect rollback, expiry, or revocation. Public-key
+  arguments may appear in process listings and shell history.
 - [Member requests](cryptography.md#member-csr-profile-1) sign only a fixed,
   identity-free PKCS #10 structure. Bounded validation rejects extra claims and
   invalid signatures. Requests are public but linkable and replayable; they do not

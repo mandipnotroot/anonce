@@ -30,7 +30,7 @@ import (
 const usage = `Development-only local keys; independent review is required before real use.
 Usage:
   client generate -kind member|reviewer -out PATH
-  client inspect -kind member|reviewer -in PATH
+  client inspect -kind member|reviewer -in PATH [-expect-public-key HEX]
   client rewrap -kind member|reviewer -in PATH -out PATH
   client csr -kind member -in PATH [-out PATH]
   client verify-csr -kind member -in PATH [-expect-public-key HEX]
@@ -51,7 +51,8 @@ CSR prints a signed identity-free DER request, not a certificate or enrollment.
 CSR -out publishes the public request in a new owner-only file without stdout.
 Request publication never overwrites a path; requests are public, not encrypted.
 Verify-csr checks a request and prints only its public key; it never reads stdin.
-With -expect-public-key, require an independently trusted 64-character hex public key.
+Inspect and verify-csr accept -expect-public-key with an independently trusted
+64-character hex public key for the selected kind.
 Empty, malformed, or repeated expected-key flags fail; mismatches print nothing.
 Public keys in arguments remain linkable and may appear in process listings/history.
 Request inputs require owner-only files and parents, just like backup inputs.
@@ -68,7 +69,7 @@ type config struct {
 	kind              string
 	input             string
 	output            string
-	expectedPublicKey ed25519.PublicKey
+	expectedPublicKey []byte
 }
 
 // Main returns the process exit code after signal-aware execution.
@@ -113,8 +114,9 @@ func parse(args []string) (config, error) {
 	if cfg.operation != "generate" {
 		flags.StringVar(&cfg.input, "in", "", "input file")
 	}
-	if cfg.operation == "verify-csr" {
-		flags.Func("expect-public-key", "expected member public key in hexadecimal", func(value string) error {
+	if cfg.operation == "verify-csr" || cfg.operation == "inspect" {
+		// Both supported key kinds have exactly 32 public bytes.
+		flags.Func("expect-public-key", "expected public key in hexadecimal", func(value string) error {
 			if cfg.expectedPublicKey != nil || len(value) != 2*ed25519.PublicKeySize {
 				return errArguments
 			}
@@ -206,7 +208,13 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("inspect backup: %w", err)
 	}
-	if _, err := fmt.Fprintf(output, "%s:%x\n", cfg.kind, public); err != nil {
+	// Compare only after typed authentication and payload validation. Both values
+	// are public; matching cannot authorize a malformed or wrong-purpose backup.
+	if cfg.expectedPublicKey != nil && !bytes.Equal(public, cfg.expectedPublicKey) {
+		return errors.New("inspect backup: public key does not match expected key")
+	}
+	line := fmt.Sprintf("%s:%x\n", cfg.kind, public)
+	if n, err := io.WriteString(output, line); err != nil || n != len(line) {
 		return errors.New("inspect backup: write public key")
 	}
 	return nil

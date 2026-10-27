@@ -6,6 +6,7 @@ package clientcli
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -106,10 +107,13 @@ func TestClientRewrapRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			openedPublic, err := inspect(t.Context(), kind, replacement, sealed)
-			if err != nil || !bytes.Equal(public, openedPublic) {
-				t.Fatal("typed inspection changed the public key")
+			if err := run(t.Context(), []string{"inspect", "-kind", kind, "-in", output, "-expect-public-key", hex.EncodeToString(public)}, passwordFile(t, "synthetic new\n"), &stdout); err != nil {
+				t.Fatal(err)
 			}
+			if stdout.String() != kind+":"+hex.EncodeToString(public)+"\n" {
+				t.Fatal("rewrapped backup did not match the independently retained public key")
+			}
+			stdout.Reset()
 			original, err := os.ReadFile(input)
 			if err != nil || !bytes.Equal(original, backup) {
 				t.Fatal("rewrap changed the input file")

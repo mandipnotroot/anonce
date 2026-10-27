@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional `client inspect -expect-public-key HEX` for validated member/reviewer
+  backup key matching before public output. Malformed or repeated flags fail before
+  password/file access; mismatches print nothing. The expected key must be
+  independently trusted. Existing formats, password framing, default inspection,
+  request verification, WASM, and HTTP behavior are unchanged. Matching does not
+  establish backup freshness, revocation, or reviewer round binding.
 - Public-only WASM `verifyCSRForKey(hex, expectedHex)` for bounded request and
   signature validation followed by exact expected-key matching. Invalid input or
   mismatches return `null` without public output or fallback. Existing `verifyCSR`,
@@ -103,5 +109,10 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 - Consolidate documentation around canonical references and remove repeated guidance.
 - Focus documentation and planning on project capabilities and implementation evidence.
 - Keep baseline requirements and acceptance evidence explicit in the documentation index.
+
+### Fixed
+
+- Backup inspection now reports short public-key writes as failures, rather than
+  treating a partial stdout line as successful inspection.
 
 [Unreleased]: https://github.com/mandipnotroot/anonce/commits/main

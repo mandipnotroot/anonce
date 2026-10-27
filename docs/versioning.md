@@ -65,6 +65,12 @@ breaking-impact or independent-review requirements for those unreleased formats.
 Its three-line password framing applies only to that command. Existing commands,
 password framing, backup/payload formats, and HTTP behavior remain unchanged.
 
+The optional `client inspect -expect-public-key HEX` is an additive interface
+requiring `semver:minor` review. For either supported key kind it checks the complete
+public key after typed backup validation, before output. Omitting it preserves
+existing inspection. Password framing, backup/payload formats, request verification,
+WASM, and HTTP behavior are unchanged.
+
 `client csr` adds an opt-in member-only command with one-line password framing and
 binary DER stdout. The new cryptographic request profile requires `semver:major`
 review under the format policy above. Existing commands, encrypted backups, and
