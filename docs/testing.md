@@ -58,6 +58,11 @@ profiles. Key tests generate keys at runtime and clear accessible owned buffers;
 opaque library copies cannot be explicitly cleared. Generic backup tests use
 synthetic non-key payloads; CLI filesystem tests use non-key stand-ins.
 
+Unsafe-file fixtures set and verify their final permissions after creation so
+CI's restrictive `umask 077` cannot make a public-file case owner-only. Tests do
+not change the process-wide mask while parallel tests run. Reproduce CI defaults
+locally with `BASH_ENV="$PWD/scripts/ci-shell.sh" bash -c 'make check'`.
+
 The keystore's single `G407` annotation documents a scanner false positive:
 `NewGCMWithRandomNonce` requires an empty nonce argument and generates the nonce
 itself. `TestKeystoreFreshRandomness` and `TestKeystoreLibraryCompatibility` check

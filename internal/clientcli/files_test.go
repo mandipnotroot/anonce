@@ -79,14 +79,25 @@ func TestClientBackupRejectsUnsafePaths(t *testing.T) {
 		mode os.FileMode
 	}{
 		{"public file", []byte("synthetic"), 0o644},
+		{"group-readable file", []byte("synthetic"), 0o640},
+		{"other-readable file", []byte("synthetic"), 0o604},
 		{"empty file", nil, 0o600},
 		{"oversized file", make([]byte, keystore.MaxBackupSize+1), 0o600},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			path := filepath.Join(privateDirectory(t), "backup")
-			if err := os.WriteFile(path, tc.data, tc.mode); err != nil {
+			if err := os.WriteFile(path, tc.data, 0o600); err != nil {
 				t.Fatal(err)
+			}
+			// Creation permissions are narrowed by umask. Set the intended
+			// fixture mode explicitly without changing the process-wide mask.
+			if err := os.Chmod(path, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(path)
+			if err != nil || info.Mode().Perm() != tc.mode {
+				t.Fatal("unsafe-file fixture does not have the intended permissions")
 			}
 			if data, err := readBackup(t.Context(), path); err == nil || data != nil {
 				t.Fatal("accepted unsafe file")
