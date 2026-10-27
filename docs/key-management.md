@@ -8,8 +8,8 @@ Audience: implementers, reviewers, and operators responsible for secret custody.
 Status: shared in-memory device-backup encryption and local member/reviewer-key
 generation, encrypted export, validated import, and an offline backup CLI are
 implemented, along with local member certificate requests and in-memory member
-sessions. Browser custody, round binding, recovery, enrollment, and signing
-services are not.
+sessions and a separate development-only WASM member bridge. Browser page custody,
+round binding, recovery, enrollment, and signing services are not implemented.
 
 ## Browser account vault
 
@@ -127,9 +127,10 @@ Primary sources consulted 2026-10-27:
   inform authentication recovery and usable prompts. These references do not
   specify encrypted-vault recovery or establish an assurance-level claim here.
 
-No supported-browser/provider matrix, vault wrapping/recovery profile, browser
-private-key bridge, server vault API, or end-to-end evidence exists yet. Acceptance
-requirements live in [testing](testing.md#browser-account-and-vault-acceptance).
+No supported-browser/provider matrix, vault wrapping/recovery profile, server vault
+API, or end-to-end evidence exists yet. The [local member bridge](#local-wasm-member-sessions)
+does not resolve these requirements. Acceptance requirements live in
+[testing](testing.md#browser-account-and-vault-acceptance).
 
 ## Inventory
 
@@ -199,8 +200,9 @@ signing is serialized with lock, which can briefly wait for that bounded call.
 Callers must limit session counts and unlocked lifetimes and explicitly lock on
 logout, account switch, or disposal. Operation contexts cancel individual calls,
 not the lifetime of a successfully unlocked session. No timer, cross-tab lock,
-worker termination, persistence, JS/WASM private-key bridge, passkey/PRF handling,
-account binding, or server transport exists. Library/runtime copies prevent
+worker termination, persistence, passkey/PRF handling, account binding, or server
+transport exists in this package. The separate [WASM adapter](#local-wasm-member-sessions)
+does not add those controls. Library/runtime copies prevent
 complete erasure. [Native checks](testing.md#implemented-test-mapping) do not
 establish browser custody or satisfy the browser acceptance cases.
 
@@ -606,6 +608,64 @@ provided. See [testing](testing.md#wasm-verifier-checks) for Node-only evidence 
 This follows the official [Go WebAssembly build/runtime guidance](https://go.dev/wiki/WebAssembly)
 and [Go 1.27.3 JavaScript bindings](https://pkg.go.dev/syscall/js@go1.27.3)
 (accessed 2026-10-27). No Node product build or npm dependencies are introduced.
+
+## Local WASM member sessions
+
+`make member-wasm` builds a separate development-only module in `bin/memberwasm/`.
+It does not change the public-only verifier, serve artifacts, or enable shell
+scripts/forms. Use only synthetic development inputs pending independent review.
+The build uses the same loader/hash/8 MiB gate and preserves Go and admitted module
+notices. `make member-wasm-test` checks native/Node backup interoperability.
+
+After a trusted host starts this module with the matching `Go.run`,
+`globalThis.anonceMember` owns one initially locked shared member session:
+
+| Method | Contract |
+| --- | --- |
+| `create(password)` | One `Uint8Array` of 1–1024 opaque password bytes; automatically generate a member key and return a Promise of `{publicKey, csr, backup}` |
+| `unlock(password, backup, expected)` | Three `Uint8Array` inputs: password as above, exactly 108 backup bytes, and an independently trusted 32-byte expected public key; return a Promise of `{publicKey, csr}` only after typed validation and matching |
+| `request()` | No arguments; Promise of `{publicKey, csr}` for the unlocked session |
+| `lock()` | No arguments; clear the owned key and cancel pending work; return `null`; safe to repeat |
+| `close()` | No arguments; lock, cancel, wait for pending input cleanup and Promise settlement, remove the namespace, release callbacks, and let `Go.run` finish; return `null` |
+
+Data methods resolve to `null` for invalid types/arity/sizes, unavailable state,
+cancellation, or validation failure. They do not expose internal errors or fall
+back to key creation. Extra arguments to `lock`/`close` return `null` without acting.
+Results contain fresh `Uint8Array` buffers: 32 public-key bytes, 129 CSR bytes,
+and, on creation only, 108 encrypted backup bytes. No raw-private-key or arbitrary
+message-signing interface exists. Existing cryptographic profiles are unchanged.
+
+All inputs are branded and bounded before copying any bytes. Proxies, strings,
+other views, detached/empty arrays, and shared backing memory fail without coercion.
+Intrinsic typed-array getters ignore shadowed caller properties. Accepted bytes
+are snapshotted synchronously before returning the Promise. Clear caller password
+buffers after invocation; the adapter clears its owned copies before settlement.
+It does not modify caller inputs or retain passwords/backups after completion.
+
+Only one data operation is admitted at a time, before input copying or goroutine
+creation. Setup/restoration also reject an unlocked session without replacing its
+key. Lock cancels even work that has not entered the shared session yet; admission
+remains held until cleanup. Cancellation cannot interrupt Argon2id or a blocked
+JS event loop. Already returned public material/backups are not retracted by lock.
+Await pending operations and `Go.run` before discarding a closed instance; never
+reuse released callbacks. An existing namespace is not overwritten.
+
+The loading realm, runtime, and built-ins must be trusted. WASM is not a secret
+boundary from its host. Promise-based calls do not make CPU-bound WASM nonblocking
+on a browser UI thread. A future page integration must use a dedicated worker,
+bound its lifetime, terminate it on disposal, and coordinate lock/logout across
+tabs. No worker host, browser delivery/CSP changes, account binding, trusted-key
+discovery, storage, enrollment, passkey/PRF, recovery, or automatic expiry is provided.
+Never load member keys or requests on the anonymous submission origin. Server
+metadata alone is not an independent expected-key trust anchor. Runtime/library
+copies still prevent a complete-erasure guarantee.
+
+The bridge follows the pinned [Go JS bindings](https://pkg.go.dev/syscall/js@go1.27.3)
+and [ECMAScript 2025 typed-array semantics](https://262.ecma-international.org/16.0/#sec-typedarray-objects)
+(consulted 2026-10-27). Node tests are not a supported-browser matrix, mobile cost
+measurement, UI responsiveness, or browser custody evidence. See
+[testing](testing.md#wasm-member-session-checks) and
+[compatibility](versioning.md#wasm-member-session-compatibility).
 
 ## Retention and destruction
 

@@ -10,6 +10,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Separate development-only WASM member-session bridge for automatic key/backup/CSR
+  setup, required expected-key restoration, fixed requests, and lock/shutdown.
+  Bounded nonshared byte inputs are snapshotted before work; owned passwords are
+  cleared before Promise settlement, with one admitted operation per instance.
+  Native/Node backup compatibility and rejection/lifecycle checks are included.
+  Existing verifier, CLI, HTTP, and cryptographic profiles are unchanged. Browser
+  page/worker integration, accounts, persistence, passkeys, and recovery remain unavailable.
 - Shared in-memory member sessions for automatic key, encrypted-backup, and CSR
   preparation; restoration requires a validated backup and an independently trusted
   expected key. Private bytes stay internal, lock clears owned key buffers and

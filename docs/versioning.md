@@ -145,6 +145,16 @@ the unchanged request profile/signature, and rejects mismatches without public
 output. Existing `verifyCSR` arity, output, and rejection behavior, shutdown, CLI,
 HTTP, and cryptographic profiles are unchanged.
 
+### WASM member session compatibility
+
+The [member-session bridge](key-management.md#local-wasm-member-sessions) is a
+separate opt-in development interface requiring `semver:minor` review. Its namespace,
+byte-array inputs/outputs, Promise/null results, single-session admission, and lock/
+shutdown behavior are new contracts. The existing public verifier, CLI, HTTP,
+and cryptographic profiles are unchanged. This adds no browser page, account/vault
+API, PRF/recovery format, or supported-browser claim. Existing format-breaking and
+independent-review requirements still apply.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

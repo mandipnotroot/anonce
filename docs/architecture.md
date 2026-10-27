@@ -100,12 +100,13 @@ the [protocol design](protocol.md#review-and-replies).
 | `internal/app`, `internal/service` | Implemented command configuration, bounded local HTTP, and unavailable-operation responses |
 | `cmd/client`, `internal/clientcli` | Implemented offline key CLI and file custody |
 | `cmd/wasm`, `internal/clientwasm` | Implemented public-only member-request verifier; no page integration or device-key access |
+| `cmd/memberwasm`, `internal/memberwasm` | Separate local WASM adapter for shared member sessions; no page/worker host, accounts, or storage |
 | `cmd/cli` | Optional future protocol CLI, not required for product use |
 | `internal/client` | Shared composition, validation, and local state |
 | `internal/client/keystore` | Implemented in-memory device-backup encryption; no transport or persistence |
 | `internal/client/memberkey` | Implemented local Ed25519 member-key generation and typed encrypted backups; no transport or persistence |
 | `internal/client/membercsr` | Implemented local, identity-free member certificate requests and bounded validation; no enrollment or transport |
-| `internal/client/membersession` | Implemented in-memory member setup, expected-key restoration, fixed CSR requests, and lock; no browser bridge, account binding, or persistence |
+| `internal/client/membersession` | Implemented in-memory member setup, expected-key restoration, fixed CSR requests, and lock; no account binding or persistence |
 | `internal/client/reviewerkey` | Implemented local X25519 reviewer-key generation and typed encrypted backups; no transport, persistence, or round binding |
 | `internal/membership`, `internal/issuer` | Identity-side policy and issuance |
 | `internal/submission` | Ciphertext acceptance and atomic spending |
@@ -130,6 +131,9 @@ Current implementation limits:
   See [cryptography](cryptography.md#keystore-composition) for their profiles and limits.
 - The separate [WASM artifact](key-management.md#local-wasm-request-verification)
   shares member-request validation with the CLI. No HTTP service serves it.
+- The separate [member WASM adapter](key-management.md#local-wasm-member-sessions)
+  owns one shared session with bounded inputs and public/encrypted outputs. It adds
+  no account, worker host, browser page, transport, or persistence.
 
 ## Availability and failure
 

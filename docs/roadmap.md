@@ -58,7 +58,10 @@ Available foundations:
 - **Member session composition:** [in-memory setup and restoration](key-management.md#in-memory-member-sessions)
   automatically prepare encrypted backups and public requests without exporting
   private bytes. Required expected-key matching, explicit lock, and cancellation
-  are tested natively; browser integration and account binding remain unavailable.
+  are tested natively. A separate [local WASM bridge](key-management.md#local-wasm-member-sessions)
+  adds bounded byte inputs, Promise-based setup/restoration, and lock/shutdown with
+  native/Node backup compatibility checks. Browser page/worker integration and
+  account binding remain unavailable.
 
 These foundations do not establish protocol or storage security. Browser custody,
 enrollment, signing-service integration, reviewer round binding, expiry, submission

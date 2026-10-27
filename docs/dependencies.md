@@ -77,11 +77,20 @@ notices stay intact. No upstream asset or generated WASM is checked in or served
 by the shell. Updating Go requires reviewing these pins and rerunning compatibility
 and security checks (sources accessed 2026-10-27).
 
+The separate `make member-wasm` module also links the already admitted x/crypto
+and x/sys packages through the shared session. It copies each module's unchanged
+`LICENSE` and `PATENTS` alongside the artifact as `LICENSE.x-crypto`,
+`PATENTS.x-crypto`, `LICENSE.x-sys`, and `PATENTS.x-sys`. Their contents match the
+reviewed Go notice hashes above and are verified independently from module-cache
+sources; replaced module sources are rejected. No additional dependency is admitted.
+
 Node.js is pinned in the same manifest and CI. Use official
 [22.23.3 archives and checksums](https://nodejs.org/dist/v22.23.3/SHASUMS256.txt)
 and retain its upstream notices if redistributing that external test runtime.
 Only built-in assertion, crypto, filesystem, module, and path facilities are used
-by the test runner. No Node code handles passwords or private-key fixtures.
+by the test runners. The public verifier runner handles no passwords. The member
+runner handles only synthetic unlock bytes, encrypted backups, and public enrollment
+material for interoperability checks, never private-key fixtures or real credentials.
 
 ### Documentation theme
 

@@ -58,8 +58,8 @@ properties described below.
   cannot later install a key, and each session admits only one pending operation.
   This does not limit hostile callers creating many sessions, erase runtime copies,
   or revoke already returned public material/backups.
-- There is no browser bridge, account binding, automatic expiry, cross-tab lock,
-  persistence, enrollment, or recovery. Callers still control passwords and session
+- There is no account binding, automatic expiry, cross-tab lock, persistence,
+  enrollment, or recovery. Callers still control passwords and session
   lifetime. Native state/ownership tests are not browser custody evidence.
 
 ### Offline key CLI
@@ -140,6 +140,24 @@ properties described below.
   runtime memory are not bounded by the per-request size limit.
 - Node compatibility tests are not browser execution, CSP, private-key custody,
   or independent security evidence. The HTTP shell still loads no executable code.
+
+### Local WASM member bridge
+
+- The [separate adapter](key-management.md#local-wasm-member-sessions) retains one
+  shared session, snapshots bounded nonshared byte inputs, and returns only public
+  enrollment material and encrypted backups. Invalid or busy calls start no worker;
+  owned passwords are cleared before Promise settlement. Lock cancels pending work
+  even before the shared session begins. Close waits for pending cleanup/settlement.
+- Expected-key trust, account binding, backup persistence, expiry, cross-tab lock,
+  and browser delivery remain integration responsibilities, not implemented controls.
+  Failed restoration never generates a key. Public keys and requests are linkable
+  and must stay off the anonymous submission origin.
+- Go WASM computation can block its host event loop despite a Promise interface.
+  Cancellation cannot preempt Argon2id. A future page needs a dedicated worker and
+  tested disposal, not a main-thread load. No worker integration exists yet.
+  Hostile code in the loading realm can steal unlock material or inspect WASM memory;
+  owned-buffer clearing does not erase runtime/library copies. Native/Node checks
+  establish limited format/lifecycle evidence, not browser custody or security review.
 
 ## Browser account and vault risks
 

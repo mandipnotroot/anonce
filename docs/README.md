@@ -9,7 +9,7 @@ Audience: readers choosing the appropriate project reference.
 
 | Status | Scope |
 | --- | --- |
-| Implemented | Repository and documentation checks; local HTTP services and read-only shell; device-backup encryption, local member/reviewer keys, in-memory member sessions, offline key CLI, and public-only WASM request verification. See [testing](testing.md) |
+| Implemented | Repository and documentation checks; local HTTP services and read-only shell; device-backup encryption, local member/reviewer keys, in-memory member sessions, offline key CLI, public-only WASM request verification, and a separate local member-session WASM bridge. See [testing](testing.md) |
 | Designed | Browser-only account/review workflow and automatic encrypted key custody; application, cryptography, product UI, database boundaries, releases. Vault wrapping/recovery and browser compatibility remain unresolved |
 | Unavailable | Working protocol/product, screenshots, production deployment, protocol security results |
 

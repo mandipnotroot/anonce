@@ -15,11 +15,13 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make build` | All Go commands with Go 1.27.3 |
 | `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no native-package exclusions, including wrappers and signal handling. JS-only code is checked separately below |
 | `make lint` | Native and WASM entry-point vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzMemberWASMSizes`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 | `make wasm` | Go `js/wasm` public-request verifier; matching reviewed loader/notices, SHA-256 manifest, 8 MiB uncompressed size gate |
 | `make wasm-test` | Rebuild artifacts, compare native and Node WASM public-request results, exercise the actual bridge, and run adapter unit tests under the Go JS/WASM runner |
+| `make member-wasm` | Separate local member-session module, matching reviewed loader/module notices, manifest, and 8 MiB gate |
+| `make member-wasm-test` | Native race/lifecycle tests and actual Node bridge setup/restoration, rejection, shutdown, and bidirectional encrypted-backup compatibility |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -35,6 +37,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Member/reviewer payload | 49-byte input cap, 48-byte ASN.1 profile; no KDF work |
 | Member CSR | 130-byte fuzz input cap, 129-byte DER profile; bounded ASN.1 and signature verification, no KDF work |
 | Member session unlock admission | 1025-byte password, 65597-byte backup, and 33-byte expected-key fuzz caps; exercise invalid password/key lengths only, no KDF work; backup/payload parsing reuse the shared fuzzed implementations |
+| Member WASM admission sizes | Fixed-width integer fuzz inputs for password/backup/key lengths and operation kind; exact member bounds, no allocations or KDF work; byte parsing reuses shared backup/payload validation |
 | WASM request adapter | 259-byte request fuzz input cap, exact 258-byte ASCII hex representation before bounded shared CSR parsing; expected-key fuzzing also caps the key input at 65 bytes for an exact 64-byte ASCII hex representation; no KDF work |
 | CLI arguments | 8193-byte fuzz input cap; no file, network, or KDF work |
 | CLI expected-key record | 75-byte data and 9-byte kind fuzz caps; exact 72/74-byte lowercase kind-tagged lines, no file, network, or KDF work |
@@ -52,6 +55,7 @@ in the relevant package's `testdata/fuzz/<target>` directory:
   admission inputs only; no real passwords or private-key fixtures.
 - `internal/clientwasm`: `FuzzWASMRequest` and `FuzzWASMExpectedKey`, public hex
   requests/expected keys or malformed data only.
+- `internal/memberwasm`: `FuzzMemberWASMSizes`, integer admission bounds only.
 - `internal/client/reviewerkey`: `FuzzReviewerKeyPayload`.
 - `internal/clientcli`: `FuzzClientArguments`, `FuzzClientPublicKeyLine`,
   `FuzzClientPassword`, and `FuzzClientRewrapPasswords`.
@@ -115,6 +119,8 @@ profile-2 nonce prefix and library composition.
 | WASM adapter valid/malformed hex, shared profile rejection, every-byte request mutations, concurrent native calls, bounded fuzzing | `TestWASMVerifyCSR`, `TestWASMVerifyCSRRejectsInvalidInput`, `FuzzWASMRequest` |
 | WASM expected-key matching in either hex case, malformed/empty/oversized keys, every-byte key mismatches, unchanged profile/signature rejection, concurrent calls and bounded two-input fuzzing | `TestWASMVerifyCSRForKey`, `TestWASMVerifyCSRForKeyRejectsInvalidInput`, `FuzzWASMExpectedKey` |
 | Actual WASM bridge, type/arity/size rejection without object coercion, native/public result parity, shutdown and namespace collisions | `TestClientNativeWASMCompatibility` with `scripts/wasm_test.mjs`, through `make wasm-test` |
+| Member bridge admission, cancellation before shared-session entry, cleanup-before-shutdown, repeated lock/close, concurrent lock/admission, and size fuzzing | `TestMemberWASMSizes`, `TestMemberWASMLifecycle`, `TestMemberWASMConcurrent`, `FuzzMemberWASMSizes` |
+| Actual member WASM bridge, opaque passwords, native backup restore, WASM backup opened natively, public CSR validation, wrong password/purpose, corruption/key mismatch, byte types/arity/bounds, hostile objects/shadowed getters, shared/detached arrays, input snapshots, public-output ownership, lock/close and namespace collision | `TestMemberNativeWASMCompatibility` with `scripts/member_wasm_test.mjs`, through `make member-wasm-test` |
 | Reviewed loader/notice digest rejection, invalid artifact headers and size bounds | `scripts/test_build_wasm.py` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
@@ -129,7 +135,7 @@ go test ./internal/client/keystore -run='^$' -bench=BenchmarkKeystore -benchmem
 ```
 
 This measures the full 64 MiB, three-pass profile, not a weakened test substitute.
-Browser costs, private-key/backup native/WASM compatibility, independent cryptographic review,
+Browser costs, reviewer-backup native/WASM compatibility, independent cryptographic review,
 independent file-custody review, certificate/enrollment integration, and end-to-end device
 confidentiality remain untested. Reviewer round binding, expiry enforcement, and
 envelope-decryption workflows are not implemented.
@@ -151,10 +157,30 @@ tools/artifacts fail the target; it does not skip unavailable checks.
 
 The Go JS/WASM runner also executes adapter unit tests and fuzz seeds. Native race
 coverage does not instrument WASM; Node execution is not browser, CSP, accessibility,
-private-key interoperability, or independent security evidence. Loader and compiler
+member-key custody, or independent security evidence. Loader and compiler
 must match under the official [Go WASM guidance](https://go.dev/wiki/WebAssembly)
 (accessed 2026-10-27). See the [interface](key-management.md#local-wasm-request-verification)
 and [dependency review](dependencies.md#wasm-runtime-support).
+
+### WASM member session checks
+
+`make member-wasm-test` uses the same pinned Go/Node runtimes and build gates as
+the verifier and is included in `make check` and CI. It generates a native member
+backup at full profile costs, restores it through the actual bridge, creates a
+fresh WASM backup, and validates that backup's key and CSR natively. The runtime
+exchange contains only encrypted backups, public material, and a synthetic opaque
+password; there are no committed private-key fixtures or plaintext key exports.
+
+The Node runner verifies artifact hashes, rejects unexpected network calls, and
+exercises the failure/lifecycle cases mapped above. Native race tests additionally
+cover cancellation before the worker enters the shared session and admission held
+until pending cleanup. WASM is not race-instrumented. Cooperative execution means
+a lock/close event can arrive after KDF completion; tests do not claim preemption.
+
+No page/worker host, actual browser tests, mobile memory/latency measurements, CSP
+delivery, passkeys, account/vault authorization, recovery, multi-tab coordination,
+or independent cryptographic review is supplied. These checks do not satisfy the
+[browser acceptance cases](#browser-account-and-vault-acceptance).
 
 ## Required runtime command contract
 

@@ -10,9 +10,9 @@ Audience: contributors, repository administrators, and release maintainers.
 | Workflow/check | Coverage |
 | --- | --- |
 | Policy | Current files, full reachable history, PR text/commit range/title grammar, exactly one SemVer label, Unreleased change or maintainer exception |
-| Runtime | HTTP commands, offline key CLI, and public-only WASM verifier; race/coverage, lint, 15-second parser fuzzing, vulnerability/secret scans, shell delivery, and native/Node request compatibility. See [testing](testing.md#current-executable-checks) |
+| Runtime | HTTP commands, offline key CLI, public-only WASM verifier, and separate local member-session bridge; race/coverage, lint, 15-second parser/admission fuzzing, vulnerability/secret scans, shell delivery, and native/Node request and member-backup compatibility. See [testing](testing.md#current-executable-checks) |
 | Documentation / Pages | Pinned mdBook and upstream notices via `make docs-setup`, offline build, source/rendered links; `book.toml` and `SUMMARY.md` configure the site |
-| Nightly | Full-history policy run |
+| Nightly | Full-history policy, complete local runtime checks with pinned Node, documentation build and external links |
 | Weekly dependency updates | GitHub Actions, Python check tools, Go modules |
 | `make workflow-lint` | Pinned actionlint and Go toolchain |
 
@@ -34,7 +34,7 @@ Planned, not implemented. Track work in the [roadmap](roadmap.md).
 
 | Workflow | Intended checks |
 | --- | --- |
-| Runtime checks | Extend the infrastructure job with database, browser, container, and simulation targets in [testing](testing.md#required-runtime-command-contract); extend WASM evidence beyond public requests |
+| Runtime checks | Extend the infrastructure job with database, browser, container, and simulation targets in [testing](testing.md#required-runtime-command-contract); extend WASM evidence to actual browser custody and worker lifecycle |
 | Nightly extension | Longer fuzzing and Scorecard beyond the existing vulnerability and complete repository/history checks |
 | PR reporting | Coverage artifact and restricted comment publication without executing PR content |
 | Release | Enforce the [release checklist](releasing.md#maintainer-release-checklist) in trusted publication jobs |

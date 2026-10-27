@@ -82,14 +82,17 @@ Optional local development key tools are also available:
   and [member/reviewer-key generation, encrypted export, and validated import](docs/key-management.md#device-keystores).
 - Shared [in-memory member sessions](docs/key-management.md#in-memory-member-sessions)
   for automatic key/backup/request preparation, expected-key restoration, and lock;
-  no private-key export, browser bridge, or account integration.
+  no private-key export or account integration.
 - An [offline CLI](docs/key-management.md#local-key-cli) for encrypted backup
   generation, public-key-only inspection, backup password changes, and local member
   certificate requests. Requests do not enroll a member or issue a certificate.
 - A [public-only WASM request verifier](docs/key-management.md#local-wasm-request-verification),
   built with `make wasm` and checked with `make wasm-test`.
+- A separate [WASM member-session bridge](docs/key-management.md#local-wasm-member-sessions)
+  for automatic setup/restoration and lock, built with `make member-wasm` and
+  checked with `make member-wasm-test`; only public material and encrypted backups leave it.
 
-Browser page and private-key integration are unavailable. Independent review is required before real-key use.
+Browser page/worker and account integration are unavailable. Independent review is required before real-key use.
 
 ## Architecture at a glance
 

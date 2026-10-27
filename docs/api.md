@@ -15,6 +15,10 @@ provides request validation and opt-in expected-key matching through an in-proce
 JavaScript interface, not an HTTP route. These commands serve no verifier artifacts;
 HTTP routes and OpenAPI schemas are unchanged.
 
+The separate [local member-session bridge](key-management.md#local-wasm-member-sessions)
+also uses only an in-process interface. It adds no HTTP endpoint or OpenAPI schema;
+the services still handle no passwords, private keys, or encrypted member backups.
+
 ## Implemented infrastructure
 
 All three commands expose:

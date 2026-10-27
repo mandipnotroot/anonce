@@ -226,7 +226,9 @@ are unchanged; this typed importer accepts only the member-key profile. The
 and migration rules.
 
 The wrapper does not bind a key to a member, certificate, round, revocation state,
-or expiry. Browser custody is unimplemented; native/WASM compatibility is untested.
+or expiry. Browser page custody is unimplemented;
+[native/Node WASM member-backup compatibility](testing.md#wasm-member-session-checks)
+is tested through the separate session adapter.
 
 ### Device-backup profile 2
 
@@ -289,11 +291,18 @@ The construction follows [RFC 8439, section 2.8](https://www.rfc-editor.org/rfc/
 and the pinned [Go ChaCha20-Poly1305 API](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/chacha20poly1305)
 (consulted 2026-10-27). Independent review remains required.
 
-Native benchmarks are available, but browser performance and native/WASM
-interoperability remain untested. Do not weaken this profile to make an interface
-responsive; introduce a separately reviewed profile and compatibility plan if needed.
+Native benchmarks and [member-backup native/Node WASM checks](testing.md#wasm-member-session-checks)
+are available, but browser performance remains untested. Do not weaken this profile
+to make an interface responsive; introduce a separately reviewed profile and
+compatibility plan if needed.
 
 ### Browser vault profile boundary
+
+The separate [local WASM member bridge](key-management.md#local-wasm-member-sessions)
+reuses profile 2, member-key payload profile 1, and CSR profile 1 without parameter
+or encoding changes. Passwords are opaque bytes, never PRF outputs or server login
+credentials. The bridge exposes only encrypted backups and public enrollment
+material, requires expected-key restoration, and adds no wrapping/recovery profile.
 
 The [browser account vault](key-management.md#browser-account-vault) is planned.
 WebAuthn Level 3 is the selected authentication design reference; its PRF extension

@@ -40,10 +40,14 @@ Distinguish implemented from planned behavior.
   profile validation; no identity claims, certificate issuance, or transport.
 - `internal/client/membersession`: in-memory member setup, required expected-key
   restoration, fixed CSR requests, and explicit lock/cancellation; public-only
-  results and encrypted backups, no browser bridge, account binding, or persistence.
+  results and encrypted backups, no account binding or persistence.
 - `cmd/wasm`, `internal/clientwasm`: public-only member request verification using
   the shared parser, with opt-in expected-public-key matching; local WASM artifacts
   and Node compatibility checks, no page integration, device-key access, or enrollment.
+- `cmd/memberwasm`, `internal/memberwasm`: separate development-only WASM member
+  setup/restoration, fixed requests, and lock/shutdown using shared sessions;
+  bounded byte inputs, public/encrypted outputs, native/Node backup checks;
+  no page/worker host, account binding, storage, passkeys, or enrollment.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
 
@@ -119,11 +123,13 @@ make vuln             # Go vulnerability, static security, and secret checks
 make web-lint         # rendered inert markup, local CSS, SRI, and HTTP delivery checks
 make wasm             # public-only Go WASM verifier, matching loader, hashes, size gate
 make wasm-test        # native/WASM public-request compatibility and bridge checks
+make member-wasm      # separate local member-session WASM and matching notices
+make member-wasm-test # native/Node backup compatibility and member bridge checks
 ```
 
 See [testing](docs/testing.md) for required database, container, browser, and
 protocol targets, none available yet. WASM evidence covers request verification
-only. Add real Make targets with implementation.
+and local member sessions in Node, not browser custody. Add real Make targets with implementation.
 No successful no-op checks or claims that unavailable commands passed.
 
 ## Engineering boundaries
