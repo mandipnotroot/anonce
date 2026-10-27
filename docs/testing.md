@@ -15,7 +15,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make build` | All Go commands with Go 1.27.3 |
 | `make test` | Race detection, `coverage/out`, statement coverage report; whole module, no exclusions, including wrappers and signal handling |
 | `make lint` | vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, and `FuzzReviewerKeyPayload`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, and `FuzzClientPassword`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 
@@ -46,6 +46,10 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
   itself. `TestKeystoreFreshRandomness` and `TestKeystoreLibraryCompatibility`
   check this API's nonce-prefix behavior; ordinary fixed-nonce GCM is not used
   in production code.
+- CLI fuzzing caps argument input at 8193 bytes and password framing at 2051 bytes,
+  with no file, network, or KDF work. Seeds are explicitly synthetic, not credentials.
+  Never retain real password material in corpora. CLI unit tests exercise actual
+  profile costs and runtime-generated keys; filesystem tests use non-key stand-ins.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
   Module inventory supports manual review, not automatic license approval.
   See [dependencies](dependencies.md) for device-backup modules and pins/admission.
@@ -68,6 +72,10 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Fresh reviewer keys, library key agreement, backup ownership, fresh exports, independent PKCS #8 composition, preserved private encoding | `TestReviewerKeyGenerate`, `TestReviewerKeyRoundTrip`, `TestReviewerKeyLibraryCompatibility`, `TestReviewerKeyPreservesEncoding` |
 | Invalid reviewer inputs, authenticated wrong-algorithm/non-key payloads, noncanonical DER, wrong passwords/purposes, ciphertext tampering, cross-wrapper purpose isolation | `TestReviewerKeyRejectsInvalidInputs`, `TestReviewerKeyRejectsInvalidPayloads`, `TestReviewerKeyRejectsUnauthenticatedBackup`, `TestReviewerKeyPurposeIsolation`, `FuzzReviewerKeyPayload` |
 | Reviewer-key cancellation at entry/output and concurrent shared-key export/import | `TestReviewerKeyCancellation`, `TestReviewerKeyConcurrent` |
+| CLI argument validation, bounded opaque password framing/confirmation, pipe and non-device stdin, help and secret-free failures | `TestClientArguments`, `TestClientPasswordInput`, `TestClientPasswordPipe`, `TestClientFailsClosed`, `FuzzClientArguments`, `FuzzClientPassword` |
+| Offline generation/import through the shared profiles; exact public-only output; wrong password/purpose and ciphertext tampering | `TestClientRoundTrip` |
+| Owner-only files/directories, bounded regular-file imports, symlink/dangling-symlink rejection, no overwrite and complete concurrent publication | `TestClientBackupFiles`, `TestClientBackupRejectsUnsafePaths`, `TestClientBackupConcurrentPublication` |
+| Cancelled pipe reads, inherited stdin in a subprocess, file operations before/after publication, temporary-file cleanup | `TestClientPasswordPipeCancellation`, `TestClientInheritedPipeCancellation`, `TestClientBackupCancellation` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
 Web checks validate allowlists/delivery, not full HTML/CSS grammar or browser execution.
@@ -82,13 +90,14 @@ go test ./internal/client/keystore -run='^$' -bench=BenchmarkKeystore -benchmem
 
 This measures the full 64 MiB, three-pass profile, not a weakened test substitute.
 Browser costs, native/WASM compatibility, independent cryptographic review,
-file custody, certificate/enrollment integration, and end-to-end device
+independent file-custody review, certificate/enrollment integration, and end-to-end device
 confidentiality remain untested. Reviewer round binding, expiry enforcement, and
 envelope-decryption workflows are not implemented.
 
 ## Required runtime command contract
 
-Build/test/lint/fuzz/vuln cover infrastructure and the shared backup/member/reviewer-key foundation;
+Build/test/lint/fuzz/vuln cover infrastructure, the shared backup/member/reviewer-key foundation,
+and the offline key CLI;
 web-lint covers the inert shell.
 **All other targets below are required but unavailable.** See [roadmap](roadmap.md).
 

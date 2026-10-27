@@ -9,8 +9,8 @@ Audience: contributors and automated tooling.
 
 anonce is designed for anonymous submissions from verified members with
 administrator-set per-member/round limits. Docs, checks, local demo HTTP
-infrastructure, a read-only shell, shared device-backup encryption, and local
-member/reviewer-key generation/import/export exist.
+infrastructure, a read-only shell, shared device-backup encryption, local
+member/reviewer-key generation/import/export, and an offline encrypted-file CLI exist.
 Distinguish implemented from planned behavior.
 
 - `docs/`: architecture, security, operations, and contributor reference.
@@ -20,12 +20,14 @@ Distinguish implemented from planned behavior.
 - `.githooks/`: local enforcement, installed through `make setup`.
 - `.github/`: collaboration templates and supported CI workflows.
 - `cmd/`, `internal/`: local CA, issuer, and submission HTTP infrastructure.
-- `internal/client/keystore`: bounded, in-memory device-backup encryption, not yet
-  connected to a CLI, browser, or service.
+- `internal/client/keystore`: bounded, in-memory device-backup encryption, used by
+  typed key wrappers; no browser or service integration.
 - `internal/client/memberkey`: local Ed25519 member keys and validated encrypted
-  backups; no device-interface or enrollment integration.
+  backups; offline CLI integration, no browser or enrollment integration.
 - `internal/client/reviewerkey`: local X25519 reviewer keys and validated encrypted
-  backups; no device-interface, round-binding, or decryption integration.
+  backups; offline CLI integration, no browser, round-binding, or decryption integration.
+- `internal/clientcli`, `cmd/client`: offline backup generation and public-only
+  inspection; bounded stdin passwords and no-replace encrypted files.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
 
@@ -68,7 +70,7 @@ make workflow-lint    # pinned actionlint; requires Go
 make build            # build the local demonstration commands
 make test             # race tests and coverage report
 make lint             # Go analysis, formatting, and module checks
-make fuzz             # bounded configuration, shell-route, backup, and key-parser fuzzing
+make fuzz             # bounded configuration, shell-route, backup, key, and CLI parser fuzzing
 make vuln             # Go vulnerability, static security, and secret checks
 make web-lint         # rendered inert markup, local CSS, SRI, and HTTP delivery checks
 ```

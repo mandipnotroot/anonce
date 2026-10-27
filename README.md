@@ -70,7 +70,9 @@ See [deployment](docs/deployment.md#local-development) for flags and limits and
 Shared [device-backup encryption](docs/cryptography.md#device-backup-profile-1)
 and [local member/reviewer keys](docs/key-management.md#device-keystores) are implemented
 as internal Go packages, including typed encrypted export and validated import.
-They have no CLI/browser integration and require independent review before real-key use.
+The offline [local key CLI](docs/key-management.md#local-key-cli) generates encrypted
+backups and validates imports while displaying only public keys. Browser integration
+is unavailable; independent review is required before real-key use.
 
 ## Architecture at a glance
 

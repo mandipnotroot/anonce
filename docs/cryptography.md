@@ -91,9 +91,10 @@ purpose `2`. This adds no HPKE envelope, round publication, or decryption workfl
 The encrypted backup is 108 bytes. The outer format and opaque keystore API are
 unchanged. The typed importer has no prior payload format or migration and requires
 breaking-impact and independent review. It enforces no round binding, expiry,
-revocation, restoration policy, or separation between rounds. Device interfaces,
-native/WASM compatibility, and submission/reply encryption remain unimplemented or
-untested. Generate a fresh key for each round when those workflows are introduced.
+revocation, restoration policy, or separation between rounds. The
+[offline CLI](key-management.md#local-key-cli) reuses this format. Browser interfaces,
+native/WASM compatibility, and submission/reply encryption remain unimplemented or untested.
+Generate a fresh key for each round when those workflows are introduced.
 
 ### Member-key payload profile 1
 
@@ -125,7 +126,8 @@ the generic keystore still accepts opaque payloads, while this member-key import
 rejects anything outside the profile. No older member-key payload is supported.
 This unreleased payload contract requires breaking-impact and independent review.
 It does not bind a key to a member, certificate, round, revocation state, or expiry.
-CLI/browser custody and native/WASM compatibility remain unimplemented or untested.
+The [offline CLI](key-management.md#local-key-cli) reuses this format. Browser
+custody and native/WASM compatibility remain unimplemented or untested.
 
 ### Device-backup profile 1
 

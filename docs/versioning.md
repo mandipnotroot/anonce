@@ -52,6 +52,13 @@ breaking HTTP behavior even before release. Consumers expecting root errors must
 use explicit infrastructure endpoints. `/about`, hashed CSS, and opt-in
 `-dev-styleguide` are new. CA/issuer roots remain JSON `404`; infrastructure JSON is unchanged.
 
+**Local key CLI compatibility:** `client generate` and `client inspect` are new
+opt-in commands requiring `semver:minor` review. Their flags, stdin framing, exits,
+file-custody rules, and public-key output are documented in
+[key management](key-management.md#local-key-cli). Existing HTTP commands and
+encrypted backup/payload formats are unchanged. This does not remove the existing
+breaking-impact or independent-review requirements for those unreleased formats.
+
 ## Change classification
 
 | Impact | Stable release behavior | Unstable release policy |

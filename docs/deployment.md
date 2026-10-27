@@ -11,7 +11,9 @@ stack, production image, or working protocol. Do not collect real data.
 ## Local development
 
 Build with `make build` (Go 1.27.3). Run each command in a separate terminal or
-supervisor. Set `-source-url` to its exact corresponding source, including
+supervisor. The separate offline `bin/client` is documented under
+[local key CLI](key-management.md#local-key-cli); it does not start an HTTP service.
+For the HTTP commands, set `-source-url` to the exact corresponding source, including
 modifications and build/install material:
 
 ```sh
@@ -26,7 +28,7 @@ modifications and build/install material:
 | --- | --- |
 | `-listen` | Unzoned loopback IP literal, canonical decimal port `0`–`65535`; no hostname, wildcard, or non-loopback bind. Port `0` is ephemeral; use a fixed port for manual inspection |
 | `-source-url` | Required absolute HTTPS URL; no credentials, query, or fragment. Missing value fails startup |
-| `-help` | Available on all commands |
+| `-help` | Available on all HTTP commands |
 | `-dev-styleguide` | Submission only, default false; rejected by identity commands and configuration validation |
 
 Unknown flags and positional arguments fail. The process does not fetch or verify

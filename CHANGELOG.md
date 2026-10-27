@@ -10,6 +10,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Offline `client generate` and `client inspect` commands for encrypted member and
+  reviewer backups, bounded confirmed stdin passwords, owner-only no-replace files,
+  and public-key-only inspection. Existing backup formats are unchanged; browser,
+  enrollment, round binding, and independent security review remain outstanding.
 - Shared local X25519 reviewer-key generation, validated encrypted PKCS #8 backups,
   purpose-isolation and cancellation/concurrency tests, and bounded payload fuzzing.
   Device interfaces, round binding, and submission decryption remain unavailable.

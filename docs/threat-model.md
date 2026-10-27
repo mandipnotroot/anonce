@@ -32,7 +32,15 @@ and authenticated non-key payloads. No keys enter HTTP services. The package doe
 not verify identity, authorization, revocation, expiry, or backup freshness, and
 does not protect returned private keys from callers or compromised devices.
 The same password-guessing and runtime-erasure limits apply. No reviewed
-password-entry, file/browser custody, enrollment, or integrated reviewer workflow exists.
+interactive password-entry, browser custody, enrollment, or integrated reviewer
+workflow exists. The [offline CLI](key-management.md#local-key-cli) accepts bounded,
+confirmed passwords through a pipe/file, publishes owner-only encrypted files
+without replacement, and validates typed backups before printing only public keys.
+Its file checks assume a trusted directory, ancestors, and owner, not hostile
+same-user writers or ACLs. No protection against offline guessing, restored old
+backups, retained copies, or compromised devices is added. Process interruption
+after publication may leave a complete backup; crashes may leave encrypted temporary
+files. No plaintext private-key export or HTTP device-key route is introduced.
 
 The isolated reviewer-key package generates local X25519 keys and validates
 canonical reviewer-purpose encrypted backups under the
@@ -42,7 +50,7 @@ non-key payloads without returning private bytes. It neither binds keys to round
 nor enforces reviewer authorization, expiry, or restoration policy. Raw returned
 buffers are caller-owned, while library-internal key copies cannot be explicitly
 erased. Offline guessing and compromised-device risks remain. No round-publication,
-envelope-decryption, or reviewed device-custody workflow exists.
+envelope-decryption, browser custody, or independently reviewed device workflow exists.
 
 ## Assets and principals
 
