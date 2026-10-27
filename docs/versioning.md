@@ -5,7 +5,9 @@
 
 Audience: maintainers, integrators, and client authors.
 
-Use [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html) and `vMAJOR.MINOR.PATCH` tags.
+Consult and follow the official [SemVer 2.0.0 specification](https://semver.org/spec/v2.0.0.html).
+The requirements below define its project-specific application, not a replacement
+for the specification. Use `vMAJOR.MINOR.PATCH` tags.
 First release: `v0.1.0`; no tag yet.
 Unstable `0.y.z` changes still require compatibility review.
 
@@ -64,20 +66,27 @@ password framing, backup/payload formats, and HTTP behavior remain unchanged.
 
 ## Change classification
 
-| Impact | Stable release behavior | Unstable release policy |
-| --- | --- | --- |
-| MAJOR | Incompatible public contract, removed flag/config, unsafe migration range, crypto/wire/parameter change without compatibility | Increase MINOR, document breaking impact and migration; use `!` or the standard breaking footer |
-| MINOR | Backward-compatible feature or new opt-in capability | Increase MINOR |
-| PATCH | Backward-compatible fix, clarification, hardening with no contract break | Increase PATCH |
+Use the official SemVer definitions for stable releases. During `0.y.z`, apply
+this project policy:
 
-Security fixes are not automatically PATCH: rejecting unsafe parameters or changing
-trust anchors may break compatibility and require operator action. Crypto/wire
-changes are breaking without a reviewed compatibility mechanism. Never retain insecure paths for compatibility.
+| Impact | Project policy during `0.y.z` |
+| --- | --- |
+| MAJOR | Increase MINOR; document breaking impact and migration |
+| MINOR | Increase MINOR |
+| PATCH | Increase PATCH |
+
+Treat removed flags/configuration, unsafe migration ranges, and incompatible
+public contracts as breaking changes. Security fixes are not automatically PATCH:
+rejecting unsafe parameters or changing trust anchors may require operator action.
+Cryptographic, wire-format, and parameter changes are breaking without a reviewed
+compatibility mechanism. Never retain insecure paths for compatibility.
 
 ## Commit and PR mapping
 
-- `feat`: normally MINOR; `fix`/compatible `perf`: normally PATCH.
-- Any type with `!` or `BREAKING CHANGE:`: breaking review.
+Follow the official [Conventional Commits 1.0.0 specification](https://www.conventionalcommits.org/en/v1.0.0/)
+for commit meaning and breaking-change notation. Project requirements:
+
+- Compatible `perf` changes normally have PATCH impact; all breaking changes require review.
 - Docs/tests/CI/maintenance: no automatic bump unless public behavior changes.
 - Review the diff; labels do not replace compatibility analysis.
 - Every PR needs exactly one `semver:major`, `semver:minor`, or `semver:patch`.
@@ -86,11 +95,10 @@ changes are breaking without a reviewed compatibility mechanism. Never retain in
 
 ## Changelog contract
 
-- Human-curated [CHANGELOG.md](../CHANGELOG.md),
-  [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
-- Newest section: `## [Unreleased]`; dated entries: `## [X.Y.Z] - YYYY-MM-DD`, newest first.
-- Groups: Added, Changed, Deprecated, Removed, Fixed, Security. Comparison links at bottom.
-- Withdrawals retain entries with `[YANKED]` in the version heading.
+Consult and follow the official [Keep a Changelog 1.1.0 guidance](https://keepachangelog.com/en/1.1.0/)
+for format, categories, dates, links, and withdrawn releases. Project requirements:
+
+- Maintain the human-curated [CHANGELOG.md](../CHANGELOG.md).
 - PRs change content inside Unreleased unless a maintainer applies `changelog:not-needed`.
 - Automation extracts reviewed sections, never replaces the changelog with commit
   messages or reformats curated prose.

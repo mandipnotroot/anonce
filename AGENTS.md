@@ -113,17 +113,13 @@ No successful no-op checks or claims that unavailable commands passed.
 ## Git and review
 
 - Use short feature branches, such as `docs/key-storage`. Never rewrite shared history.
-- Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
-  `<type>[scope][!]: <description>`, lowercase imperative,
-  no trailing period. Breaking changes need `!` or the standard footer.
-
-Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.
-Scopes: repo, ca, issuer, server, reviewer, client, wasm, keystore, log, web, admin,
-db, docs, ci, deps, release. `scripts/commits.toml` is the machine-readable authority.
-
-Examples: `docs(ca): describe revocation checks`; `fix(web): preserve focus on errors`.
-
-- Keep commits atomic; PR titles must pass commit lint.
+- Consult the official [Conventional Commits 1.0.0 specification](https://www.conventionalcommits.org/en/v1.0.0/)
+  and follow it strictly for every commit and PR title.
+- Repository-specific types, scopes, and subject limits are defined in `scripts/commits.toml`.
+- Keep commits atomic; commit lint and hooks must pass without bypass.
+- Follow the official [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html) and
+  [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) guidance, with
+  project-specific requirements in [versioning](docs/versioning.md).
 - Every PR needs a [SemVer impact label](docs/versioning.md#commit-and-pr-mapping)
   and Unreleased entry unless the documented
   exception label applies.
@@ -132,21 +128,10 @@ Examples: `docs(ca): describe revocation checks`; `fix(web): preserve focus on e
 
 ## Licensing, tests, and documentation
 
+Follow the official [REUSE 3.3 specification](https://reuse.software/spec-3.3/).
 Use AGPL-3.0-only for original work. Never relicense upstream files. Record binary,
 JSON, checksum, and font notices in `REUSE.toml` when headers cannot be carried.
 Use `Anonce Contributors` for original project notices. Preserve upstream holders.
-SPDX header examples:
-
-```text
-// SPDX-FileCopyrightText: 2026 Anonce Contributors
-// SPDX-License-Identifier: AGPL-3.0-only
-
-# SPDX-FileCopyrightText: 2026 Anonce Contributors
-# SPDX-License-Identifier: AGPL-3.0-only
-
-<!-- SPDX-FileCopyrightText: 2026 Anonce Contributors -->
-<!-- SPDX-License-Identifier: AGPL-3.0-only -->
-```
 
 Add table-driven unit tests, error cases, race coverage, and bounded parser fuzzing
 with each implementation. Keep protocol attack cases mapped to named tests and
@@ -157,6 +142,11 @@ paragraphs short and focused. Avoid overexplaining, filler, unnecessary repetiti
 and jargon that does not help the intended audience. Be concise without omitting
 required information, essential context, prerequisites, limitations, or safety
 guidance.
+
+For external conventions and standards, consult the official source for the
+version adopted by the project instead of repeating its rules. Keep project-specific
+requirements explicit. Do not silently use a newer version; if none is selected,
+record that limitation and resolve it before implementation.
 
 Update canonical references and link instead of repeating explanations:
 

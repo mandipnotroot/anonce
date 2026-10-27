@@ -130,8 +130,9 @@ JavaScript and full syntax validation.
   print, source links, CSP, SRI, and prohibited outbound requests. Manual
   assistive-technology testing is still required.
 - Map admin controls to versioned [ASVS](https://owasp.org/www-project-application-security-verification-standard/)
-  requirements. Test login, factor enrollment,
-  recovery, session rotation, and expiry.
+  requirements. No version is selected yet; select and record an official release
+  before mapping controls. Test login, factor enrollment, recovery, session
+  rotation, and expiry.
 - Measure native/WASM interoperability, bundle size, startup, cryptographic latency,
   and memory on supported desktop/mobile browsers.
 

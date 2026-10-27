@@ -3,8 +3,8 @@
 
 # Changelog
 
-Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Notable changes follow [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/)
+and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
@@ -44,6 +44,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Link conventions and standards to their official, project-adopted versions
+  instead of repeating their rules. Preserve project-specific requirements and
+  identify standards whose versions remain unselected.
 - Clarify documentation with focused sections, shorter summaries, and canonical
   links while preserving requirements and safety guidance. Correct outdated
   component-status descriptions and require professional, concise, complete prose.

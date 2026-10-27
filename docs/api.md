@@ -5,9 +5,10 @@
 
 Audience: transport implementers and client authors.
 
-Status: local demonstration infrastructure only. [OpenAPI](openapi.yaml) separates
-implemented endpoints from proposed discovery APIs. Cryptographic schemas await
-encoding and profile review.
+Status: local demonstration infrastructure only. The [API definition](openapi.yaml)
+uses the official [OpenAPI 3.1.0 specification](https://spec.openapis.org/oas/v3.1.0)
+and separates implemented endpoints from proposed discovery APIs. Cryptographic
+schemas await encoding and profile review.
 
 ## Implemented infrastructure
 

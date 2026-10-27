@@ -26,7 +26,9 @@ Commands below are planned verification, not available evidence.
 - Independently verify the published assets before announcing availability.
 
 Provenance must name the real builder and inputs. Claim a SLSA level only after
-satisfying and documenting its requirements.
+satisfying and documenting its requirements. No SLSA specification or provenance
+schema version is selected yet; record both from official sources before
+implementing release publication.
 
 ## User verification
 
