@@ -86,16 +86,19 @@ existence or participation oracles. Where necessary, use equivalent safe respons
 ## Authentication and caching
 
 Administrative writes require server-side authorization, CSRF protection, and recent
-reauthentication for sensitive actions. Public certificate, bulletin, checkpoint,
-and asset responses may use explicit caches with freshness requirements. Secret or
-identity-bearing responses use `Cache-Control: no-store`. Never share issuer session
-cookies or authentication headers with the submission origin.
+reauthentication for sensitive actions. Never share issuer session cookies or
+authentication headers with the submission origin.
+
+Public certificate, bulletin, checkpoint, and asset responses may use explicit
+caches with freshness requirements. Secret or identity-bearing responses use
+`Cache-Control: no-store`.
 
 ## Response-limit contract
 
-Apply the [protocol rules](protocol.md#round-response-limit) for `response_limit`:
-required bounded positive integer, common signed immutable limit, explicit publication
-confirmation, client/issuer validation without defaults, one accepted ciphertext per token.
+Follow the [protocol rules](protocol.md#round-response-limit): `response_limit`
+must be a bounded positive integer, explicitly confirmed at publication, and
+signed as a common immutable limit. Clients and issuers validate it without
+defaults; each token permits one accepted ciphertext.
 
 - Bind slot/bulletin context to the authenticated issuance challenge. No quota state
   or slot indices in anonymous submissions or receipt requests; public bulletins

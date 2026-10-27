@@ -5,10 +5,9 @@
 
 Audience: implementers, reviewers, and operators evaluating system boundaries.
 
-Status: proposed application architecture. Local HTTP infrastructure, a read-only
-web shell, shared device-backup encryption, and local member/reviewer-key generation and
-encrypted import/export exist. No domain policy, device entry points, storage,
-or working submission protocol.
+Status: proposed application architecture. Local HTTP services, a read-only shell,
+device-backup encryption, local member/reviewer keys, and an offline key CLI exist.
+Domain policy, browser clients, storage, and the submission protocol are unimplemented.
 
 ## Components and ownership
 
@@ -61,7 +60,8 @@ validly signed forms served to different members.
 | --- | --- |
 | `cmd/server`, `cmd/issuer`, `cmd/ca` | Process configuration and lifecycle |
 | `internal/app`, `internal/service` | Implemented command configuration, bounded local HTTP, and unavailable-operation responses |
-| `cmd/cli`, `cmd/wasm` | Device-side entry points |
+| `cmd/client`, `internal/clientcli` | Implemented offline key CLI and file custody |
+| `cmd/cli`, `cmd/wasm` | Planned protocol CLI and browser entry points |
 | `internal/client` | Shared composition, validation, and local state |
 | `internal/client/keystore` | Implemented in-memory device-backup encryption; no transport or persistence |
 | `internal/client/memberkey` | Implemented local Ed25519 member-key generation and typed encrypted backups; no transport or persistence |
@@ -79,13 +79,14 @@ validly signed forms served to different members.
 - Domain code must not depend on HTTP handlers. Clients must not import server
   storage or database drivers. No command may silently connect to both databases.
 
-**Current implementation:** no databases or membership/issuance/submission domain
-packages. `internal/web`
-pre-renders fixed pages at startup using escaped templates and first-party CSS
-embedded in `web/`. Request data never enters templates. Only submission serves
-these pages; there is no executable browser code or device entry point. The
-shared keystore and member/reviewer-key packages are not imported by HTTP services. Their
-profiles and limits are defined in [cryptography](cryptography.md#keystore-composition).
+Current implementation limits:
+
+- No databases or membership, issuance, or submission domain packages exist.
+- `internal/web` pre-renders fixed pages at startup using escaped templates and
+  first-party CSS embedded in `web/`. Request data never enters templates.
+  Only the submission service serves these pages; no executable browser code exists.
+- The offline CLI uses the shared key packages; HTTP services do not import them.
+  See [cryptography](cryptography.md#keystore-composition) for their profiles and limits.
 
 ## Availability and failure
 

@@ -6,11 +6,14 @@ info:
   title: anonce infrastructure API
   version: 0.0.0
   description: >-
-    Local demonstration processes implement liveness, status, source discovery,
-    always-unavailable readiness, and a submission-only read-only HTML shell.
-    Protocol/discovery routes return 501 on
-    their owning process; their successful responses below remain proposed.
-    Cryptographic request formats are not published or stable. Round bulletins
+    Local demonstration processes implement liveness, status, and source discovery.
+    Readiness always returns 503. Only submission serves the read-only HTML shell.
+
+    Protocol/discovery routes return 501 on their owning process; successful
+    responses below remain proposed. Cryptographic request formats are not
+    published or stable.
+
+    Round bulletins
     must bind an administrator-set per-member response_limit. Each authorization
     token remains single-use; identity-side allowance slots are never public.
   license:

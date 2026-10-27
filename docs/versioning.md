@@ -26,33 +26,32 @@ must use `/vN` module/import paths for breaking v2+ releases, even in a monorepo
 are unreleased, not stable wire profiles or a product. Future crypto formats need
 explicit breaking review.
 
-**Device-backup compatibility:** profile 1 introduces an unreleased cryptographic
-file format and requires breaking-impact review. There is no previous format or
-legacy decoder to migrate. Unknown versions/profiles fail closed; future format
-or parameter changes require breaking review and an explicit migration plan.
+### Cryptographic file compatibility
 
-**Member-key compatibility:** the unreleased
-[member-key payload profile 1](cryptography.md#member-key-payload-profile-1)
-defines canonical Ed25519 PKCS #8 plaintext inside existing member-purpose backups.
-This is a breaking cryptographic-payload addition requiring `semver:major` review,
-not a change to the outer backup format or generic keystore API. The typed importer
-does not accept arbitrary opaque member-purpose payloads; no prior typed key format
-or migration exists. HTTP and CLI contracts are unchanged.
+The following formats are unreleased breaking additions requiring `semver:major`
+review and independent security review before real-key use. None has a prior
+supported format or legacy migration.
 
-**Reviewer-key compatibility:** the unreleased
-[reviewer-key payload profile 1](cryptography.md#reviewer-key-payload-profile-1)
-defines canonical X25519 PKCS #8 plaintext inside existing reviewer-purpose backups.
-This is a breaking cryptographic-payload addition requiring `semver:major` review.
-The outer backup format, generic keystore, HTTP, and CLI contracts are unchanged.
-Opaque, wrong-algorithm, and noncanonical payloads are not accepted by this typed
-importer. There is no prior typed reviewer format or migration.
+| Contract | Compatibility boundary |
+| --- | --- |
+| [Device-backup profile 1](cryptography.md#device-backup-profile-1) | Defines the outer encrypted file. Unknown versions/profiles fail closed; future format or parameter changes require breaking review and an explicit migration plan |
+| [Member-key payload profile 1](cryptography.md#member-key-payload-profile-1) | Canonical Ed25519 PKCS #8 inside member-purpose backups |
+| [Reviewer-key payload profile 1](cryptography.md#reviewer-key-payload-profile-1) | Canonical X25519 PKCS #8 inside reviewer-purpose backups |
 
-**Shell compatibility:** submission `/` changed from JSON `404` to HTML `200`,
+Typed key importers reject opaque, wrong-algorithm, and noncanonical payloads.
+Their addition does not change the outer format, generic opaque keystore API,
+or HTTP/CLI contracts.
+
+### Shell compatibility
+
+Submission `/` changed from JSON `404` to HTML `200`,
 breaking HTTP behavior even before release. Consumers expecting root errors must
 use explicit infrastructure endpoints. `/about`, hashed CSS, and opt-in
 `-dev-styleguide` are new. CA/issuer roots remain JSON `404`; infrastructure JSON is unchanged.
 
-**Local key CLI compatibility:** `client generate` and `client inspect` are new
+### Local key CLI compatibility
+
+`client generate` and `client inspect` are new
 opt-in commands requiring `semver:minor` review. Their flags, stdin framing, exits,
 file-custody rules, and public-key output are documented in
 [key management](key-management.md#local-key-cli). Existing HTTP commands and

@@ -7,55 +7,57 @@ Audience: security reviewers, implementers, and organizations considering adopti
 
 Status: design analysis, not a completed security assessment.
 
-**Current controls:** [local infrastructure](deployment.md#local-development) rejects
-non-loopback binds, reads no request bodies, and discards HTTP diagnostics that
-could contain peer addresses or panic values. No protocol operations, signers, credentials,
-or databases exist. Local users, browser-initiated requests, host compromise, and
-externally configured proxies are not isolated by these controls.
+## Current controls and limits
 
-The read-only shell serves public HTML/local CSS without forms or browser execution.
-Mocks require explicit development mode. See [UI design](ui-design.md#current-local-shell)
-for checks and missing browser/manual evidence. None establishes the protocol properties below.
+These controls cover local development only. They do not establish the protocol
+properties described below.
 
-The isolated device-backup package authenticates bounded opaque secrets and their
-headers under [profile 1](cryptography.md#device-backup-profile-1). It is not used by
-HTTP services. Malformed imports cannot select expensive work factors, but even
-well-formed invalid imports cost one full KDF. Serialized derivation does not bound
-caller queues, total RSS, repeated guessing, or hostile client execution. Encrypted
-backups permit offline password guessing and do not prevent rollback or expired-key
-reuse. See [custody limits](key-management.md#device-keystores).
+### HTTP services and shell
 
-The isolated member-key package generates fresh device-local Ed25519 keys and
-validates canonical member-purpose encrypted backups. Export rejects inconsistent
-private/public halves; import rejects other algorithms, noncanonical encodings,
-and authenticated non-key payloads. No keys enter HTTP services. The package does
-not verify identity, authorization, revocation, expiry, or backup freshness, and
-does not protect returned private keys from callers or compromised devices.
-The same password-guessing and runtime-erasure limits apply. No reviewed
-interactive password-entry, browser custody, enrollment, or integrated reviewer
-workflow exists. The [offline CLI](key-management.md#local-key-cli) accepts bounded,
-confirmed passwords through a pipe/file, publishes owner-only encrypted files
-without replacement, and validates typed backups before printing only public keys.
-Its file checks assume a trusted directory, ancestors, and owner, not hostile
-same-user writers or ACLs. No protection against offline guessing, restored old
-backups, retained copies, or compromised devices is added. Process interruption
-after publication may leave a complete backup; crashes may leave encrypted temporary
-files. No plaintext private-key export or HTTP device-key route is introduced.
-The CLI's [password changes](key-management.md#backup-password-changes) preserve the
-same private key in a freshly encrypted file. They neither delete nor invalidate
-old backups, prevent guessing against retained copies, rotate a compromised key,
-nor establish freshness or expiry. Both passwords and private bytes are exposed
-to the local process and compromised-device risks still apply.
+- [Local services](deployment.md#local-development) reject non-loopback binds,
+  read no request bodies, and discard HTTP diagnostics that could expose peer
+  addresses or panic values. No protocol operations, signers, credentials, or
+  databases exist.
+- The shell serves public HTML and local CSS without forms or browser execution.
+  Mocks require explicit development mode. [Browser and manual checks](ui-design.md#current-local-shell)
+  remain outstanding.
+- These controls do not isolate local users, browser-initiated requests, host
+  compromise, or externally configured proxies.
 
-The isolated reviewer-key package generates local X25519 keys and validates
-canonical reviewer-purpose encrypted backups under the
-[reviewer-key profile](cryptography.md#reviewer-key-payload-profile-1). It rejects
-member-purpose backups, wrong algorithms, noncanonical DER, and authenticated
-non-key payloads without returning private bytes. It neither binds keys to rounds
-nor enforces reviewer authorization, expiry, or restoration policy. Raw returned
-buffers are caller-owned, while library-internal key copies cannot be explicitly
-erased. Offline guessing and compromised-device risks remain. No round-publication,
-envelope-decryption, browser custody, or independently reviewed device workflow exists.
+### Device keys and backups
+
+- [Device-backup profile 1](cryptography.md#device-backup-profile-1) authenticates
+  bounded secrets and headers. Imports cannot choose KDF costs, but a structurally
+  valid import with an invalid password or tag still costs a full derivation.
+  Serialized work does not bound caller queues, total process memory, or repeated guessing.
+- The [member](cryptography.md#member-key-payload-profile-1) and
+  [reviewer](cryptography.md#reviewer-key-payload-profile-1) wrappers generate local
+  Ed25519/X25519 keys and validate purpose, algorithm, and canonical PKCS #8.
+  They reject authenticated non-key payloads; member export also rejects inconsistent
+  private/public halves. Failed imports return no key.
+- Keys never enter HTTP services. These packages do not establish identity,
+  authorization, revocation, expiry, backup freshness, or reviewer round binding.
+  Browser custody, enrollment, round publication, and submission decryption are unavailable.
+- Backups permit offline password guessing. They do not detect restored old copies
+  or prevent expired-key reuse. Hostile callers and compromised devices can access returned secrets.
+  Owned private buffers require caller cleanup; library/runtime copies prevent
+  complete erasure. See [custody limits](key-management.md#device-keystores).
+
+### Offline key CLI
+
+- The [CLI](key-management.md#local-key-cli) accepts bounded passwords through a
+  pipe/file, with confirmation for generation and password changes. It publishes
+  owner-only encrypted files without replacement,
+  and validates backups before printing public keys only. There is no plaintext
+  private-key export or reviewed interactive password prompt.
+- File checks require a trusted directory, ancestors, owner, and access-control
+  lists. They do not isolate hostile same-user writers. Interruption after
+  publication may leave a complete backup; crashes may leave encrypted temporary files.
+- [Password changes](key-management.md#backup-password-changes) re-encrypt the same
+  key. They do not delete or invalidate old copies, rotate a compromised key, or
+  establish freshness or expiry. Retained copies remain open to password guessing.
+- Passwords and private bytes enter the local process. Compromised-device risks
+  remain, and independent device-workflow review is still required.
 
 ## Assets and principals
 

@@ -67,12 +67,14 @@ source, including local modifications. There is no default.
 See [deployment](docs/deployment.md#local-development) for flags and limits and
 [API](docs/api.md) for endpoint behavior.
 
-Shared [device-backup encryption](docs/cryptography.md#device-backup-profile-1)
-and [local member/reviewer keys](docs/key-management.md#device-keystores) are implemented
-as internal Go packages, including typed encrypted export and validated import.
-The offline [local key CLI](docs/key-management.md#local-key-cli) generates encrypted
-backups and validates imports while displaying only public keys. Browser integration
-is unavailable; independent review is required before real-key use.
+Local key tools are also available:
+
+- Shared Go packages for [backup encryption](docs/cryptography.md#device-backup-profile-1)
+  and [member/reviewer-key generation, encrypted export, and validated import](docs/key-management.md#device-keystores).
+- An [offline CLI](docs/key-management.md#local-key-cli) for encrypted backup
+  generation, public-key-only inspection, and backup password changes.
+
+Browser integration is unavailable. Independent review is required before real-key use.
 
 ## Architecture at a glance
 

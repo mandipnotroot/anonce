@@ -19,6 +19,7 @@ boundaries affected. Identify unavailable checks explicitly.
 - [ ] Feature/component wording and the typography rule are satisfied.
 - [ ] Applicable tests, licensing, and documentation checks pass without bypass.
 - [ ] Public/security behavior is accurately described, including unimplemented features.
+- [ ] Documentation is professional, clear, concise, and complete for its audience.
 - [ ] Unreleased is updated, or a maintainer has explained the exception.
 - [ ] Exactly one SemVer impact label is applied.
 - [ ] No secrets, private keys, raw tokens, enrollment data, or personal reports are included.

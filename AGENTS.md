@@ -43,7 +43,9 @@ authors, committers, messages, trailers, branches, tags, and annotations.
 Do not attribute work to automated tooling, describe its involvement, or include
 its identifying names, models, vendors, signatures, or bot addresses. The person who
 commits must understand, review, and be able to explain the entire change. Human
-co-authors may receive ordinary credit. Recognized dependency-update identities are
+co-authors may receive ordinary credit.
+
+Recognized dependency-update identities are
 permitted only in PR identity fields under the [dependency-update rules](CONTRIBUTING.md#dependency-updates).
 Original third-party vendor text stays unchanged and receives a licensing review.
 Conventional reproducibility headers for approved ordinary build programs are allowed.
@@ -149,6 +151,12 @@ SPDX header examples:
 Add table-driven unit tests, error cases, race coverage, and bounded parser fuzzing
 with each implementation. Keep protocol attack cases mapped to named tests and
 report unimplemented cases honestly. Never use production identities or secrets.
+
+Write professional documentation in plain, easy-to-understand language. Keep
+paragraphs short and focused. Avoid overexplaining, filler, unnecessary repetition,
+and jargon that does not help the intended audience. Be concise without omitting
+required information, essential context, prerequisites, limitations, or safety
+guidance.
 
 Update canonical references and link instead of repeating explanations:
 

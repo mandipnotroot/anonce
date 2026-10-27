@@ -5,8 +5,8 @@
 
 Audience: users and contributors seeking help.
 
-The application is not implemented. Start with the [docs](docs/README.md) and
-[threat model](docs/threat-model.md).
+There is no working submission product yet. For available development components
+and their limits, start with the [docs](docs/README.md) and [threat model](docs/threat-model.md).
 
 | Need | Channel |
 | --- | --- |

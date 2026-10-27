@@ -80,21 +80,24 @@ purpose `2`. This adds no HPKE envelope, round publication, or decryption workfl
 - Generation and import return caller-owned 32-byte private-key buffers. Export
   accepts only the 32-byte encoding accepted by `ecdh.X25519().NewPrivateKey`.
   X25519 scalar processing belongs to the library; equivalent private encodings
-  are not normalized or used as round identifiers. Callers may construct library
-  keys in memory but must never persist or transmit private bytes unencrypted.
+  are not normalized or used as round identifiers.
+- Callers may construct library keys in memory but must never persist or transmit
+  private bytes unencrypted.
 - Each export uses fresh backup salt and nonce. Owned DER and temporary byte
   buffers are cleared; the library's opaque `ecdh.PrivateKey` storage cannot be
   cleared through its API. Callers must clear returned private bytes and passwords.
   Cancellation is checked at entry and before returning key bytes, in addition to
   the backup package's checks. Runtime copies prevent complete-erasure guarantees.
 
-The encrypted backup is 108 bytes. The outer format and opaque keystore API are
-unchanged. The typed importer has no prior payload format or migration and requires
-breaking-impact and independent review. It enforces no round binding, expiry,
-revocation, restoration policy, or separation between rounds. The
-[offline CLI](key-management.md#local-key-cli) reuses this format. Browser interfaces,
-native/WASM compatibility, and submission/reply encryption remain unimplemented or untested.
-Generate a fresh key for each round when those workflows are introduced.
+The encrypted backup is 108 bytes. The [offline CLI](key-management.md#local-key-cli)
+reuses it without changing the outer format or opaque keystore API. See
+[file compatibility](versioning.md#cryptographic-file-compatibility) for review
+and migration rules.
+
+The wrapper enforces no round binding, expiry, revocation, restoration policy, or
+separation between rounds. Browser interfaces and submission/reply encryption are
+unimplemented; native/WASM compatibility is untested. Generate a fresh key per
+round when those workflows are introduced.
 
 ### Member-key payload profile 1
 
@@ -121,13 +124,14 @@ This is not enrollment, a certificate profile, or a general signing interface.
   library/runtime copies cannot be completely erased. Cancellation is checked at
   entry and before returning keys, in addition to the backup package's checks.
 
-The encrypted backup is 108 bytes. The outer backup format remains unchanged;
-the generic keystore still accepts opaque payloads, while this member-key importer
-rejects anything outside the profile. No older member-key payload is supported.
-This unreleased payload contract requires breaking-impact and independent review.
-It does not bind a key to a member, certificate, round, revocation state, or expiry.
-The [offline CLI](key-management.md#local-key-cli) reuses this format. Browser
-custody and native/WASM compatibility remain unimplemented or untested.
+The encrypted backup is 108 bytes. The outer format and generic opaque keystore
+are unchanged; this typed importer accepts only the member-key profile. The
+[offline CLI](key-management.md#local-key-cli) reuses it. See
+[file compatibility](versioning.md#cryptographic-file-compatibility) for review
+and migration rules.
+
+The wrapper does not bind a key to a member, certificate, round, revocation state,
+or expiry. Browser custody is unimplemented; native/WASM compatibility is untested.
 
 ### Device-backup profile 1
 
@@ -165,17 +169,20 @@ associated data, followed immediately by the nonce-prefixed ciphertext:
 The total file size is 61–65596 bytes. Unknown versions/profiles/purposes,
 nonzero reserved bytes, trailing data, truncation, and inconsistent lengths are
 rejected before key derivation. The caller supplies the expected purpose; imports
-cannot silently change it. Valid-looking header tampering, a wrong password, and
-failed authentication return the same invalid-backup error and no plaintext.
-There are no variable work factors for an import to inflate or downgrade.
+cannot silently change it. There are no variable work factors for an import to
+inflate or downgrade.
+
+Valid-looking header tampering, a wrong password, and failed authentication return
+the same invalid-backup error and no plaintext.
 
 One active derivation per process/package instance limits concurrent KDF work.
 Callers must still bound queued calls and imports; this is not a process RSS cap.
+The package performs no file, network, or logging operations.
+
 Cancellation is checked before queueing, after admission, after derivation, and
 before returning output. Argon2id itself is not interruptible: cancellation during
 it waits for that bounded computation to finish, then discards the result.
-The package performs no file, network, or logging operations. See
-[key management](key-management.md#device-keystores) for buffer ownership and limits.
+See [key management](key-management.md#device-keystores) for buffer ownership and limits.
 
 The offline CLI's [password-change operation](key-management.md#backup-password-changes)
 validates an existing typed key before re-exporting it with fresh salt and nonce.

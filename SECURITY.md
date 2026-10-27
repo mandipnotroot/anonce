@@ -7,8 +7,9 @@ Audience: security researchers, contributors, and operators.
 
 ## Current support
 
-- No released or production-supported versions. Only design docs, contributor checks,
-  and demo HTTP infrastructure exist; the submission protocol is unimplemented.
+- No released or production-supported versions. Current code covers demo HTTP
+  services, a read-only shell, local key/backup packages, and an offline key CLI.
+  The submission protocol is unimplemented; see [project status](docs/README.md#project-status).
 - Review of `main` is best effort, not cryptographic or deployment certification.
 - Future security fixes cover the latest release only, unless this policy says otherwise.
 

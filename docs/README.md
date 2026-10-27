@@ -9,7 +9,7 @@ Audience: readers choosing the appropriate project reference.
 
 | Status | Scope |
 | --- | --- |
-| Implemented | Hooks, wording/identity checks, commit lint, REUSE, docs checks, local HTTP infrastructure, read-only shell, shared device-backup encryption, member/reviewer-key generation/import/export, and offline encrypted-file CLI; checks in [testing](testing.md) |
+| Implemented | Repository and documentation checks; local HTTP services and read-only shell; device-backup encryption, local member/reviewer keys, and offline key CLI. See [testing](testing.md) |
 | Designed | Application, cryptography, product UI, database boundaries, releases |
 | Unavailable | Working protocol/product, screenshots, production deployment, protocol security results |
 

@@ -22,27 +22,24 @@ promises. Track tasks in issues and requirements in the linked references.
   the required security operations exist. Add browser, screenshot, and manual
   accessibility evidence under [UI design](ui-design.md#demonstration-and-evidence).
 
-**Available:** separate loopback CA/issuer/submission commands, liveness/status/source,
-bounded shutdown, embedded read-only pages, and an opt-in style guide. `make web-lint`
-checks markup, CSS, asset integrity, and delivery. Readiness is unavailable;
-protocol routes reject without reading bodies. No protocol/storage security claims
-or browser/accessibility evidence. See [deployment](deployment.md#local-development).
-Shared device-backup encryption implements
-[profile 1](cryptography.md#device-backup-profile-1), with bounded parsing,
-authenticated headers, cancellation-aware admission, tests, and native benchmarks.
-The [offline key CLI](key-management.md#local-key-cli) now connects typed keys to
-bounded password input, no-replace encrypted files, and public-only inspection.
-It also rewraps validated keys under replacement passwords into new encrypted
-files without changing key identity or revoking retained old backups.
-Browser integration and independent review remain outstanding.
-Local member-key generation, encrypted PKCS #8 export, and validated import now
-use this backup foundation under the
-[member-key payload profile](cryptography.md#member-key-payload-profile-1).
-They have no enrollment, signing-service, or browser integration.
-Local X25519 reviewer-key generation and validated encrypted PKCS #8 backups use
-the same backup foundation under the
-[reviewer-key payload profile](cryptography.md#reviewer-key-payload-profile-1).
-They have no round-binding, expiry, browser, or decryption integration.
+Available foundations:
+
+- **HTTP services:** separate loopback CA, issuer, and submission commands with
+  liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
+  protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).
+- **Read-only shell:** embedded pages and opt-in style guide, with markup, CSS,
+  integrity, and delivery checks. Browser/accessibility evidence remains outstanding.
+- **Device backups:** [profile 1](cryptography.md#device-backup-profile-1) encryption,
+  bounded parsing, authenticated headers, cancellation-aware admission, tests,
+  and native benchmarks. Typed wrappers generate member/reviewer keys and validate
+  encrypted PKCS #8 backups.
+- **Offline CLI:** [generation, public-key inspection, and password changes](key-management.md#local-key-cli)
+  with bounded password input and no-replace encrypted files. Rewrapping preserves
+  the key and does not revoke old backups.
+
+These foundations do not establish protocol or storage security. Browser custody,
+enrollment, signing-service integration, reviewer round binding, expiry, submission
+decryption, and independent security review remain outstanding.
 
 ## Next
 

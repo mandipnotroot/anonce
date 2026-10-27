@@ -38,27 +38,32 @@ advisories before further imports.
   Go checksum verification. These external tools are not copied project files.
   Review transitive graphs before redistribution.
 - Future binaries must include applicable Go runtime notices alongside the project license.
-- The imported x/crypto and x/sys package graph was inspected for its Argon2id,
-  BLAKE2b, and CPU-detection purpose. Both pinned module `LICENSE` files carry the
-  same BSD-3-Clause terms and original Go copyright holder; their `PATENTS` grants
-  remain upstream. No library source is copied or relicensed. Distributing a client
-  binary must preserve those notices and terms, including the upstream holder.
-  See the pinned [x/crypto license](https://cs.opensource.google/go/x/crypto/+/v0.58.0:LICENSE)
-  and [x/sys license](https://cs.opensource.google/go/x/sys/+/v0.49.0:LICENSE).
-- These are the Go project's maintained cryptographic/system libraries; they
-  avoid a new KDF implementation. `make vuln` checks the used package graph for
-  known advisories, not correctness or an independent audit. Review upgrades
-  through the same admission process; removal requires a reviewed replacement
-  backup profile and compatibility plan, never a silent KDF fallback.
-- The admission scan reports [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932)
-  against x/crypto's unmaintained OpenPGP package, with no fixed version. That
-  package is not imported or reachable here; only Argon2id/BLAKE2b and CPU
-  detection are admitted. Do not introduce OpenPGP through this dependency.
-- mdBook setup verifies official release-API digests and individually reviewed notice
-  hashes. Generated docs keep unchanged holders/licenses in `assets/upstream-licenses/`.
-  No upstream executable or asset is checked in.
 
-Published theme components:
+### Admitted Go modules
+
+x/crypto and x/sys are maintained Go project libraries that avoid a custom KDF.
+Their imported package graph was inspected for Argon2id, BLAKE2b, and CPU-feature
+detection only.
+
+- **Licensing:** both pinned module `LICENSE` files use BSD-3-Clause and retain
+  the original Go copyright holder; `PATENTS` grants remain upstream. No source is
+  copied or relicensed. Client binaries must preserve these notices and terms.
+  See the pinned [x/crypto](https://cs.opensource.google/go/x/crypto/+/v0.58.0:LICENSE)
+  and [x/sys](https://cs.opensource.google/go/x/sys/+/v0.49.0:LICENSE) licenses.
+- **Security:** `make vuln` checks the used package graph for known advisories,
+  not correctness or independent audit. Upgrades require the same admission review;
+  removal requires a reviewed replacement profile and compatibility plan, never
+  a silent KDF fallback.
+- **Excluded package:** the admission scan reports
+  [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) in x/crypto's unmaintained
+  OpenPGP package, with no fixed version. It is neither imported nor reachable.
+  Do not introduce OpenPGP through this dependency.
+
+### Documentation theme
+
+mdBook setup verifies official release-API digests and reviewed notice hashes.
+Generated docs preserve holders/licenses in `assets/upstream-licenses/`. No upstream
+executable or asset is checked in.
 
 | Component | Bundled version | License and treatment |
 | --- | --- | --- |

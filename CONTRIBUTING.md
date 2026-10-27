@@ -31,7 +31,8 @@ boundaries in [AGENTS.md](AGENTS.md#engineering-boundaries) take precedence.
 
 ## Local checks
 
-For the complete documentation checks on Linux with Python 3.13:
+On Linux with Python 3.13, install the pinned documentation tools and run the
+repository and site checks:
 
 ```sh
 python3 -m venv .cache/docs-env

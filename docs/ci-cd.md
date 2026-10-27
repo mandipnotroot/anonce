@@ -10,7 +10,7 @@ Audience: contributors, repository administrators, and release maintainers.
 | Workflow/check | Coverage |
 | --- | --- |
 | Policy | Current files, full reachable history, PR text/commit range/title grammar, exactly one SemVer label, Unreleased change or maintainer exception |
-| Runtime | Three demo commands, race/coverage, lint, 15-second configuration/shell fuzzing, vulnerability/secrets, `make web-lint` delivery checks |
+| Runtime | HTTP commands and offline key CLI; race/coverage, lint, 15-second parser fuzzing, vulnerability/secret scans, and shell-delivery checks. See [testing](testing.md#current-executable-checks) |
 | Documentation / Pages | Pinned mdBook and upstream notices via `make docs-setup`, offline build, source/rendered links; `book.toml` and `SUMMARY.md` configure the site |
 | Nightly | Full-history policy run |
 | Weekly dependency updates | GitHub Actions, Python check tools, Go modules |

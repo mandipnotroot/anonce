@@ -13,47 +13,49 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Target | Current checks |
 | --- | --- |
 | `make build` | All Go commands with Go 1.27.3 |
-| `make test` | Race detection, `coverage/out`, statement coverage report; whole module, no exclusions, including wrappers and signal handling |
+| `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no exclusions, including wrappers and signal handling |
 | `make lint` | vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
 | `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
-- Fuzz configuration input is capped at 8192 bytes before parsing, with separate
-  listen/source-URL limits. Retained failures belong in
-  `internal/service/testdata/fuzz/FuzzConfig` or `internal/web/testdata/fuzz/FuzzLookup`.
-  Review and license corpora before committing.
-- Backup fuzzing caps input at the maximum backup size plus one byte, exercises
-  only the allocation-free structural parser, and never invokes Argon2id. Retain
-  licensed synthetic failures in `internal/client/keystore/testdata/fuzz/FuzzBackup`.
-  Unit tests use real profile costs and synthetic non-key payloads; no private
-   key fixtures or reduced-cost test profiles exist.
-- Member-key fuzzing caps payloads at 49 bytes and bounds ASN.1 parsing to the
-  48-byte profile. It performs no KDF work; seeds contain only malformed non-key
-  data and public DER structure. Review and license synthetic failures before
-  retaining them in `internal/client/memberkey/testdata/fuzz/FuzzMemberKeyPayload`.
-  Member-key unit tests generate keys at runtime, clear accessible owned buffers,
-  and use real backup costs. No private key fixtures are retained.
-- Reviewer-key fuzzing applies the same 49-byte input cap and 48-byte ASN.1 bound,
-  without KDF work. Seeds contain only malformed non-key data and public DER
-  structure. Review and license synthetic failures before retaining them in
-  `internal/client/reviewerkey/testdata/fuzz/FuzzReviewerKeyPayload`. Unit tests
-  generate keys at runtime, clear accessible private bytes, and use real backup
-  costs. Opaque library key copies cannot be cleared through their public API.
-- The keystore's single `G407` annotation documents a scanner false positive:
-  `NewGCMWithRandomNonce` requires an empty nonce argument and generates the nonce
-  itself. `TestKeystoreFreshRandomness` and `TestKeystoreLibraryCompatibility`
-  check this API's nonce-prefix behavior; ordinary fixed-nonce GCM is not used
-  in production code.
-- CLI fuzzing caps argument input at 8193 bytes, ordinary password framing at 2051
-  bytes, and rewrap password framing at 3076 bytes,
-  with no file, network, or KDF work. Seeds are explicitly synthetic, not credentials.
-  Never retain real password material in corpora. CLI unit tests exercise actual
-  profile costs and runtime-generated keys; filesystem tests use non-key stand-ins.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
   Module inventory supports manual review, not automatic license approval.
   See [dependencies](dependencies.md) for device-backup modules and pins/admission.
+
+### Parser fuzzing and fixtures
+
+| Parser | Input/work bounds |
+| --- | --- |
+| Configuration | 8192 bytes before parsing; separate listen/source-URL limits |
+| Backup structure | Maximum backup size plus one byte; allocation-free parser, no Argon2id |
+| Member/reviewer payload | 49-byte input cap, 48-byte ASN.1 profile; no KDF work |
+| CLI arguments | 8193-byte fuzz input cap; no file, network, or KDF work |
+| CLI password framing | 2051 bytes for ordinary framing, 3076 for rewrap; no file, network, or KDF work |
+
+Review and license synthetic regression inputs before committing. Retain failures
+in the relevant package's `testdata/fuzz/<target>` directory:
+
+- `internal/service`: `FuzzConfig`.
+- `internal/web`: `FuzzLookup`.
+- `internal/client/keystore`: `FuzzBackup`.
+- `internal/client/memberkey`: `FuzzMemberKeyPayload`.
+- `internal/client/reviewerkey`: `FuzzReviewerKeyPayload`.
+
+Key-payload seeds contain only malformed non-key data and public DER structure.
+CLI seeds are synthetic, not credentials. Never retain real passwords or private
+key fixtures.
+
+Backup, key, and CLI unit tests use real profile costs, not reduced-cost test
+profiles. Key tests generate keys at runtime and clear accessible owned buffers;
+opaque library copies cannot be explicitly cleared. Generic backup tests use
+synthetic non-key payloads; CLI filesystem tests use non-key stand-ins.
+
+The keystore's single `G407` annotation documents a scanner false positive:
+`NewGCMWithRandomNonce` requires an empty nonce argument and generates the nonce
+itself. `TestKeystoreFreshRandomness` and `TestKeystoreLibraryCompatibility` check
+its nonce-prefix behavior. Production code does not use ordinary fixed-nonce GCM.
 
 ### Implemented test mapping
 
@@ -100,21 +102,18 @@ envelope-decryption workflows are not implemented.
 
 ## Required runtime command contract
 
-Build/test/lint/fuzz/vuln cover infrastructure, the shared backup/member/reviewer-key foundation,
-and the offline key CLI;
-web-lint covers the inert shell.
-**All other targets below are required but unavailable.** See [roadmap](roadmap.md).
+The [current targets](#current-executable-checks) cover infrastructure, shared key
+packages, the offline CLI, and the inert shell. As components are added, build
+every command with the pinned stable toolchain, retain failing fuzz inputs, and
+extend security checks with dependency review. Extend `web-lint` for future
+JavaScript and full syntax validation.
+
+**Every target below is required but unavailable.** See [roadmap](roadmap.md).
 
 | Target | Required behavior |
 | --- | --- |
-| `make build` | Build every Go command with the pinned stable toolchain |
-| `make test` | `go test -race -coverprofile=coverage/out ./...` with a coverage report |
-| `make lint` | go vet, gofumpt, golangci-lint, tidy diff, and module verification |
-| `make vuln` | govulncheck, gosec, dependency review, and secret scanning |
 | `make db-test` | Migrations, privileges, concurrency, backup/restore on real PostgreSQL |
-| `make fuzz` | Bounded parser fuzzing with retained failing inputs |
 | `make wasm` | Shared Go client build for `js/wasm`, matching loader, hash and size gate |
-| `make web-lint` | Implemented inert HTML/CSS and asset-delivery checks; extend for future JS and full syntax validation |
 | `make e2e` | Headless browser checks against the Compose stack |
 | `make up` | `docker compose up --build --wait` with loopback-only demo exposure |
 | `make smoke` | Health/readiness checks and service isolation checks |

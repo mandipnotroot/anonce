@@ -80,9 +80,10 @@ error combinations against [WCAG 2.2 AA](https://www.w3.org/TR/WCAG22/).
 
 ## Round response policy
 
-Apply [protocol rules](protocol.md#round-response-limit) for `response_limit`:
-authorized manager, validated draft value, suggested `1` for ballots, supported
-larger values, explicit publication confirmation, and no changes without a new round.
+Follow the [protocol rules](protocol.md#round-response-limit). An authorized manager
+sets a validated `response_limit` and explicitly confirms it at publication.
+Suggest `1` for ballots and support larger permitted values. Changes after
+publication require a new round.
 
 - Label the limit separately from the release threshold. Show it in round summaries
   and submission flows; lock after publication.

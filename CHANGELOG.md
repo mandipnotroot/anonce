@@ -20,14 +20,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   enrollment, round binding, and independent security review remain outstanding.
 - Shared local X25519 reviewer-key generation, validated encrypted PKCS #8 backups,
   purpose-isolation and cancellation/concurrency tests, and bounded payload fuzzing.
-  Device interfaces, round binding, and submission decryption remain unavailable.
+  Browser interfaces, round binding, and submission decryption remain unavailable.
 - Shared local Ed25519 member-key generation, validated encrypted PKCS #8 backups,
   strict import validation, cancellation/concurrency tests, and bounded payload
-  fuzzing. CLI/browser custody and enrollment remain unavailable.
+  fuzzing. Browser custody and enrollment remain unavailable.
 - Shared in-memory device-backup encryption with bounded Argon2id, AES-256-GCM,
   authenticated key purposes and headers, cancellation-aware derivation admission,
-  tampering/concurrency tests, parser fuzzing, and native benchmarks. No device
-  interface or persistence integration is available yet.
+  tampering/concurrency tests, parser fuzzing, and native benchmarks. See
+  [key management](docs/key-management.md#device-keystores) for custody limits.
 - A read-only local submission-service overview and about page, opt-in mock style
   guide, embedded content-addressed CSS with SRI, and rendered-shell checks.
 - Local-only Go CA, issuer, and submission commands with liveness, explicit
@@ -44,6 +44,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Clarify documentation with focused sections, shorter summaries, and canonical
+  links while preserving requirements and safety guidance. Correct outdated
+  component-status descriptions and require professional, concise, complete prose.
 - Breaking cryptographic-payload addition: define reviewer-key payload profile 1
   inside the unchanged device-backup format. Only canonical X25519 PKCS #8 is
   accepted by the typed importer. Independent review is still required.
