@@ -10,6 +10,11 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional `client csr -expect-public-key HEX` to reject a substituted member
+  backup after typed validation, before signing or creating a request file. Works
+  with stdout and `-out`; mismatches produce no output. The expected key must be
+  independently trusted. Existing password framing, cryptographic formats, WASM,
+  and HTTP behavior are unchanged; this adds no freshness or enrollment authority.
 - Optional `client rewrap -expect-public-key HEX` to reject a substituted member or
   reviewer backup after typed validation, before replacement encryption or file
   creation. The expected key must be independently trusted. Existing rewrapping,

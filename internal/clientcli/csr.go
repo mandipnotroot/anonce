@@ -15,12 +15,17 @@ import (
 	"github.com/mandipnotroot/anonce/internal/client/memberkey"
 )
 
-func createCSR(ctx context.Context, password, backup []byte) ([]byte, error) {
+func createCSR(ctx context.Context, password, backup, expected []byte) ([]byte, error) {
 	key, err := memberkey.Open(ctx, password, backup)
 	if err != nil {
 		return nil, fmt.Errorf("member request: %w", err)
 	}
 	defer clear(key)
+	// Compare public bytes only after typed authentication and validation, before
+	// signing with this same in-memory key or creating any output file.
+	if expected != nil && !bytes.Equal(key[ed25519.SeedSize:], expected) {
+		return nil, errors.New("member request: public key does not match expected key")
+	}
 	der, err := membercsr.Create(ctx, key)
 	if err != nil {
 		return nil, err
@@ -28,8 +33,8 @@ func createCSR(ctx context.Context, password, backup []byte) ([]byte, error) {
 	return der, nil
 }
 
-func writeCSRFile(ctx context.Context, password, backup []byte, path string) error {
-	der, err := createCSR(ctx, password, backup)
+func writeCSRFile(ctx context.Context, password, backup, expected []byte, path string) error {
+	der, err := createCSR(ctx, password, backup, expected)
 	if err != nil {
 		return err
 	}
@@ -39,8 +44,8 @@ func writeCSRFile(ctx context.Context, password, backup []byte, path string) err
 	return nil
 }
 
-func writeCSR(ctx context.Context, password, backup []byte, output io.Writer) error {
-	der, err := createCSR(ctx, password, backup)
+func writeCSR(ctx context.Context, password, backup, expected []byte, output io.Writer) error {
+	der, err := createCSR(ctx, password, backup, expected)
 	if err != nil {
 		return err
 	}

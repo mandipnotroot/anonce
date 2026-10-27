@@ -6,12 +6,14 @@ package clientcli
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -85,7 +87,7 @@ func TestClientCSRRoundTrip(t *testing.T) {
 		t.Fatal("CSR created a file")
 	}
 	for _, writer := range []io.Writer{failingWriter{}, shortWriter{}} {
-		if err := writeCSR(t.Context(), password, backup, writer); err == nil || strings.Contains(err.Error(), "synthetic") {
+		if err := writeCSR(t.Context(), password, backup, nil, writer); err == nil || strings.Contains(err.Error(), "synthetic") {
 			t.Fatal("CSR did not report a secret-free output failure")
 		}
 	}
@@ -93,7 +95,7 @@ func TestClientCSRRoundTrip(t *testing.T) {
 	for _, at := range []int{1, 6, 8} {
 		stdout.Reset()
 		ctx := &cancelAtCheck{Context: t.Context(), at: at}
-		if err := writeCSR(ctx, password, backup, &stdout); !errors.Is(err, context.Canceled) || stdout.Len() != 0 {
+		if err := writeCSR(ctx, password, backup, nil, &stdout); !errors.Is(err, context.Canceled) || stdout.Len() != 0 {
 			t.Fatal("cancelled CSR wrote public output or lost cancellation")
 		}
 	}
@@ -102,6 +104,110 @@ func TestClientCSRRoundTrip(t *testing.T) {
 type shortWriter struct{}
 
 func (shortWriter) Write(data []byte) (int, error) { return len(data) - 1, nil }
+
+func TestClientCSRExpectedKey(t *testing.T) {
+	password := []byte("synthetic")
+	defer clear(password)
+	key, err := memberkey.Generate(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(key)
+	backup, err := memberkey.Seal(t.Context(), password, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := key[32:]
+	directory := privateDirectory(t)
+	path := filepath.Join(directory, "backup")
+	if err := writeBackup(t.Context(), path, backup); err != nil {
+		t.Fatal(err)
+	}
+	want, err := membercsr.Create(t.Context(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fileOutput := range []bool{false, true} {
+		t.Run(fmt.Sprintf("file=%t", fileOutput), func(t *testing.T) {
+			for _, encoded := range []string{hex.EncodeToString(public), strings.ToUpper(hex.EncodeToString(public))} {
+				outputDir := privateDirectory(t)
+				outputPath := filepath.Join(outputDir, "request")
+				args := []string{"csr", "-kind=member", "-in", path, "-expect-public-key", encoded}
+				if fileOutput {
+					args = append(args, "-out", outputPath)
+				}
+				var stdout bytes.Buffer
+				if err := run(t.Context(), args, passwordFile(t, "synthetic\n"), &stdout); err != nil {
+					t.Fatal(err)
+				}
+				der := stdout.Bytes()
+				if fileOutput {
+					if stdout.Len() != 0 {
+						t.Fatal("file export wrote stdout")
+					}
+					der, err = readOwnedFile(t.Context(), outputPath, membercsr.DERSize)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := run(t.Context(), args, passwordFile(t, "synthetic\n"), &stdout); err == nil || stdout.Len() != 0 {
+						t.Fatal("pinned export replaced an existing destination or wrote stdout")
+					}
+					after, err := os.ReadFile(outputPath)
+					if err != nil || !bytes.Equal(after, der) {
+						t.Fatal("existing request changed")
+					}
+				}
+				if !bytes.Equal(der, want) {
+					t.Fatal("matching changed the request profile or signing key")
+				}
+			}
+			for _, index := range []int{0, len(public) / 2, len(public) - 1} {
+				expected := bytes.Clone(public)
+				expected[index] ^= 1
+				encoded := hex.EncodeToString(expected)
+				outputDir := privateDirectory(t)
+				args := []string{"csr", "-kind=member", "-in", path, "-expect-public-key", encoded}
+				if fileOutput {
+					args = append(args, "-out", filepath.Join(outputDir, "request"))
+				}
+				var stdout bytes.Buffer
+				err := run(t.Context(), args, passwordFile(t, "synthetic\n"), &stdout)
+				if err == nil || errors.Is(err, keystore.ErrInvalidBackup) || stdout.Len() != 0 {
+					t.Fatal("mismatch did not fail after validation without output")
+				}
+				for _, value := range []string{path, outputDir, encoded, hex.EncodeToString(public), "synthetic"} {
+					if strings.Contains(err.Error(), value) {
+						t.Fatal("mismatch reflected input")
+					}
+				}
+				entries, err := os.ReadDir(outputDir)
+				if err != nil || len(entries) != 0 {
+					t.Fatal("mismatch created an output or temporary file")
+				}
+			}
+		})
+	}
+	for _, writer := range []io.Writer{failingWriter{}, shortWriter{}} {
+		if err := writeCSR(t.Context(), password, backup, public, writer); err == nil || strings.Contains(err.Error(), path) {
+			t.Fatal("pinned CSR lost an output failure or reflected input")
+		}
+	}
+	for _, at := range []int{1, 6, 8} {
+		var stdout bytes.Buffer
+		ctx := &cancelAtCheck{Context: t.Context(), at: at}
+		if err := writeCSR(ctx, password, backup, public, &stdout); !errors.Is(err, context.Canceled) || stdout.Len() != 0 {
+			t.Fatal("pinned CSR lost cancellation or wrote stdout")
+		}
+	}
+	original, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(original, backup) {
+		t.Fatal("pinned CSR changed the source backup")
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil || len(entries) != 1 {
+		t.Fatal("pinned CSR created a file beside the backup")
+	}
+}
 
 func TestClientCSRRejectsInvalidBackup(t *testing.T) {
 	password := []byte("synthetic")
@@ -141,13 +247,15 @@ func TestClientCSRRejectsInvalidBackup(t *testing.T) {
 				if fileOutput {
 					args = append(args, "-out", outputPath)
 				}
-				var stdout bytes.Buffer
-				err := run(t.Context(), args, passwordFile(t, tc.framing), &stdout)
-				if !errors.Is(err, keystore.ErrInvalidBackup) || stdout.Len() != 0 {
-					t.Fatal("invalid backup produced a request")
-				}
-				if strings.Contains(err.Error(), path) || strings.Contains(err.Error(), "synthetic") || strings.Contains(err.Error(), "different") {
-					t.Fatal("failure reflected input")
+				for _, flags := range [][]string{nil, {"-expect-public-key", strings.Repeat("ab", 32)}} {
+					var stdout bytes.Buffer
+					err := run(t.Context(), append(slices.Clone(args), flags...), passwordFile(t, tc.framing), &stdout)
+					if !errors.Is(err, keystore.ErrInvalidBackup) || stdout.Len() != 0 {
+						t.Fatal("invalid backup produced a request or bypassed typed validation")
+					}
+					if strings.Contains(err.Error(), path) || strings.Contains(err.Error(), "synthetic") || strings.Contains(err.Error(), "different") {
+						t.Fatal("failure reflected input")
+					}
 				}
 				entries, err := os.ReadDir(filepath.Dir(outputPath))
 				if err != nil || len(entries) != 0 {
@@ -272,6 +380,10 @@ func TestClientCSRFileCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	public, err := inspect(t.Context(), "member", password, backup)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name      string
 		at        int
@@ -283,31 +395,33 @@ func TestClientCSRFileCancellation(t *testing.T) {
 		{"before publication", 9, false},
 		{"after publication", 10, true},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := privateDirectory(t)
-			path := filepath.Join(dir, "request")
-			ctx := &cancelAtCheck{Context: t.Context(), at: tc.at}
-			if err := writeCSRFile(ctx, password, backup, path); !errors.Is(err, context.Canceled) {
-				t.Fatal("file export lost cancellation")
-			}
-			entries, err := os.ReadDir(dir)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !tc.published {
-				if len(entries) != 0 {
-					t.Fatal("cancelled export left a file before publication")
+		for _, expected := range [][]byte{nil, public} {
+			t.Run(fmt.Sprintf("%s/pinned=%t", tc.name, expected != nil), func(t *testing.T) {
+				dir := privateDirectory(t)
+				path := filepath.Join(dir, "request")
+				ctx := &cancelAtCheck{Context: t.Context(), at: tc.at}
+				if err := writeCSRFile(ctx, password, backup, expected, path); !errors.Is(err, context.Canceled) {
+					t.Fatal("file export lost cancellation")
 				}
-				return
-			}
-			data, err := os.ReadFile(path)
-			if err != nil || len(entries) != 1 {
-				t.Fatal("post-publication cancellation lost the request or left a temporary file")
-			}
-			if _, err := membercsr.Parse(data); err != nil {
-				t.Fatal("post-publication cancellation left an invalid request")
-			}
-		})
+				entries, err := os.ReadDir(dir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !tc.published {
+					if len(entries) != 0 {
+						t.Fatal("cancelled export left a file before publication")
+					}
+					return
+				}
+				data, err := os.ReadFile(path)
+				if err != nil || len(entries) != 1 {
+					t.Fatal("post-publication cancellation lost the request or left a temporary file")
+				}
+				if _, err := membercsr.Parse(data); err != nil {
+					t.Fatal("post-publication cancellation left an invalid request")
+				}
+			})
+		}
 	}
 }
 
@@ -318,13 +432,17 @@ func TestClientCSRFileConcurrentPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	public, err := inspect(t.Context(), "member", password, backup)
+	if err != nil {
+		t.Fatal(err)
+	}
 	dir := privateDirectory(t)
 	path := filepath.Join(dir, "request")
 	var successes atomic.Int32
 	var group sync.WaitGroup
-	for range 4 {
+	for _, expected := range [][]byte{nil, public, nil, public} {
 		group.Go(func() {
-			if err := writeCSRFile(t.Context(), password, backup, path); err == nil {
+			if err := writeCSRFile(t.Context(), password, backup, expected, path); err == nil {
 				successes.Add(1)
 			}
 		})
@@ -337,8 +455,7 @@ func TestClientCSRFileConcurrentPublication(t *testing.T) {
 	if err := verifyCSR(t.Context(), path, nil, &stdout); err != nil {
 		t.Fatal(err)
 	}
-	public, err := inspect(t.Context(), "member", password, backup)
-	if err != nil || stdout.String() != fmt.Sprintf("member:%x\n", public) {
+	if stdout.String() != fmt.Sprintf("member:%x\n", public) {
 		t.Fatal("concurrent export did not preserve the membership public key")
 	}
 	entries, err := os.ReadDir(dir)

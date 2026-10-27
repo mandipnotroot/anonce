@@ -106,6 +106,8 @@ func TestClientExpectedPublicKeyArguments(t *testing.T) {
 		{"inspect", "-kind=reviewer", "-in=backup"},
 		{"rewrap", "-kind=member", "-in=old", "-out=new"},
 		{"rewrap", "-kind=reviewer", "-in=old", "-out=new"},
+		{"csr", "-kind=member", "-in=backup"},
+		{"csr", "-kind=member", "-in=backup", "-out=request"},
 	} {
 		t.Run(base[0]+"/"+base[1], func(t *testing.T) {
 			t.Parallel()
@@ -166,23 +168,14 @@ func TestClientExpectedPublicKeyArguments(t *testing.T) {
 			}
 		})
 	}
-	for _, operation := range []string{"generate", "csr"} {
-		t.Run(operation, func(t *testing.T) {
-			t.Parallel()
-			args := []string{operation, "-kind=member"}
-			if operation != "generate" {
-				args = append(args, "-in=backup")
-			}
-			if operation == "generate" || operation == "rewrap" {
-				args = append(args, "-out=result")
-			}
-			args = append(args, "-expect-public-key="+encoded)
-			_, err := parse(args)
-			if !errors.Is(err, errArguments) {
-				t.Fatal("expected key flag accepted on another operation")
-			}
-		})
-	}
+	t.Run("generate", func(t *testing.T) {
+		t.Parallel()
+		args := []string{"generate", "-kind=member", "-out=result", "-expect-public-key=" + encoded}
+		var stdout bytes.Buffer
+		if err := run(t.Context(), args, nil, &stdout); !errors.Is(err, errArguments) || stdout.Len() != 0 {
+			t.Fatal("generation accepted an expected key or read stdin")
+		}
+	})
 }
 
 func TestClientPasswordInput(t *testing.T) {
@@ -500,6 +493,13 @@ func FuzzClientArguments(f *testing.F) {
 	f.Add("csr\x00-kind=member\x00-in=backup")
 	f.Add("csr\x00-kind=member\x00-in=backup\x00-out=request")
 	f.Add("csr\x00-kind=member\x00-in=backup\x00-out=")
+	for _, output := range []string{"", "\x00-out=request"} {
+		base := "csr\x00-kind=member\x00-in=backup" + output + "\x00-expect-public-key="
+		f.Add(base + strings.Repeat("ab", ed25519.PublicKeySize))
+		f.Add(base + strings.Repeat("AB", ed25519.PublicKeySize))
+		f.Add(base)
+		f.Add(base + strings.Repeat("ab", ed25519.PublicKeySize) + "\x00-expect-public-key=")
+	}
 	f.Add("verify-csr\x00-kind=member\x00-in=request")
 	f.Add("verify-csr\x00-kind=reviewer\x00-in=request")
 	f.Add("verify-csr\x00-kind=member\x00-in=request\x00-expect-public-key=" + strings.Repeat("ab", ed25519.PublicKeySize))
@@ -517,7 +517,7 @@ func FuzzClientArguments(f *testing.F) {
 			(cfg.operation == "csr" || cfg.operation == "verify-csr") && cfg.kind != "member" ||
 			cfg.operation != "generate" && cfg.input == "" ||
 			cfg.output != "" && cfg.operation != "generate" && cfg.operation != "rewrap" && cfg.operation != "csr" ||
-			cfg.expectedPublicKey != nil && ((cfg.operation != "verify-csr" && cfg.operation != "inspect" && cfg.operation != "rewrap") || len(cfg.expectedPublicKey) != ed25519.PublicKeySize) ||
+			cfg.expectedPublicKey != nil && (cfg.operation == "generate" || len(cfg.expectedPublicKey) != ed25519.PublicKeySize) ||
 			strings.ContainsRune(cfg.input+cfg.output, 0) ||
 			(cfg.operation == "generate" || cfg.operation == "rewrap") && cfg.output == "") {
 			t.Fatal("parser accepted unsupported configuration")

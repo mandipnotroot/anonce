@@ -41,7 +41,8 @@ Available foundations:
   before re-encryption or file creation.
   Local member CSR generation and bounded
   validation use an identity-free profile, with optional owner-only no-replace
-  request export and password-free `verify-csr` public-key inspection with optional
+  request export and expected-key matching before signing, plus password-free
+  `verify-csr` public-key inspection with optional
   independently trusted expected-key matching; enrollment
   and certificate issuance remain unavailable.
 - **Public-only WASM verifier:** [member-request validation](key-management.md#local-wasm-request-verification)

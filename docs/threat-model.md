@@ -70,6 +70,12 @@ properties described below.
   invalid signatures. Requests are public but linkable and replayable; they do not
   authenticate enrollment or belong on the anonymous submission path. HTTP
   services still perform no signing or request handling.
+- Optional `csr -expect-public-key` rejects a substituted member backup after typed
+  authentication and validation, before signing or creating a request file. It
+  compares and signs with the same in-memory key. The expected key must be
+  independently trusted; this does not detect rollback or revocation, establish
+  identity, or authorize enrollment. Process listings and shell history can expose
+  the linkable public-key argument.
 - Optional [request file export](key-management.md#local-member-certificate-requests)
   shares the owner-only, no-replace publication path but stores public DER, not
   encrypted data. Failed validation creates no file; interruption after publication

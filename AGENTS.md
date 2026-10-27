@@ -30,6 +30,7 @@ Distinguish implemented from planned behavior.
   inspection and password rewrapping with optional expected-public-key matching;
   bounded stdin passwords and no-replace
   encrypted files, plus identity-free member CSR stdout or no-replace file output
+  with optional expected-public-key matching before signing
   and password-free request verification with optional expected-public-key matching;
   no old-backup revocation, key rotation, or enrollment.
 - `internal/client/membercsr`: local Ed25519 certificate requests and bounded

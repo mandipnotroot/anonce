@@ -87,6 +87,12 @@ The optional `client csr -out PATH` is an additive interface requiring
 of stdout. Omitting it preserves the existing stdout contract; other commands,
 password framing, cryptographic profiles, and HTTP behavior are unchanged.
 
+The optional `client csr -expect-public-key HEX` is an additive interface requiring
+`semver:minor` review. It checks the complete member public key after typed backup
+validation, before request signing or file creation, for both stdout and `-out`.
+Omitting it preserves existing CSR creation. Password framing, cryptographic
+profiles, other commands, WASM, and HTTP behavior are unchanged.
+
 `client verify-csr` is an additive opt-in command requiring `semver:minor` review.
 It reads an owner-only request file, does not read stdin, and prints the same
 public-key line as `inspect` after validating the existing CSR profile. Existing

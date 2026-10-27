@@ -85,6 +85,12 @@ The optional [`csr -out` file export](key-management.md#local-member-certificate
 publishes the same public DER without encryption or private-key serialization.
 It changes no cryptographic profile or authorization decision.
 
+The optional `csr -expect-public-key` check compares the complete public key after
+typed backup authentication and payload validation, before request signing or file
+creation. It uses the same validated in-memory key for signing, without reopening
+the backup. The expected key must be independently trusted; no profile or primitive
+changes, freshness check, or enrollment authority is added.
+
 The [local WASM verifier](key-management.md#local-wasm-request-verification) uses
 the same parser and unchanged DER profile. Hexadecimal is only its bounded bridge
 input representation, not a new request format. Its native/Node compatibility
