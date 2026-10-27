@@ -26,7 +26,7 @@ properties described below.
 
 ### Device keys and backups
 
-- [Device-backup profile 1](cryptography.md#device-backup-profile-1) authenticates
+- [Device-backup profile 2](cryptography.md#device-backup-profile-2) authenticates
   bounded secrets and headers. Imports cannot choose KDF costs, but a structurally
   valid import with an invalid password or tag still costs a full derivation.
   Serialized work does not bound caller queues, total process memory, or repeated guessing.
@@ -42,6 +42,11 @@ properties described below.
   or prevent expired-key reuse. Hostile callers and compromised devices can access returned secrets.
   Owned private buffers require caller cleanup; library/runtime copies prevent
   complete erasure. See [custody limits](key-management.md#device-keystores).
+- Profile 2 uses ChaCha20-Poly1305 with one encryption per freshly salted derived
+  key and a fresh 96-bit nonce. Do not reuse the key for multiple exports. Retired
+  AES profile 1 is rejected before derivation, not tried as a decryption fallback.
+  Existing old backups need a trusted earlier implementation for recovery; no
+  automatic migration is provided. This is not a FIPS-validation claim.
 
 ### Offline key CLI
 

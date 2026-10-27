@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Anonce Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package keystore encrypts bounded device secrets using device-backup profile 1
+// Package keystore encrypts bounded device secrets using device-backup profile 2
 // in docs/cryptography.md. It performs no key generation, persistence, or I/O.
 package keystore
 
 import (
 	"bytes"
 	"context"
-	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/binary"
@@ -16,6 +15,7 @@ import (
 	"fmt"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 // Purpose binds a backup to the caller's expected use, not to an identity or round.
@@ -30,10 +30,11 @@ const (
 	MaxBackupSize   = headerSize + MaxSecretSize + overhead
 
 	headerSize = 32
-	overhead   = 12 + 16 // Random GCM nonce and authentication tag.
+	prefixSize = headerSize + chacha20poly1305.NonceSize
+	overhead   = chacha20poly1305.NonceSize + chacha20poly1305.Overhead
 	magic      = "ANONCEKS"
 	version    = 1
-	profile    = 1
+	profile    = 2
 )
 
 var (
@@ -48,7 +49,7 @@ var (
 	kdfSlot = make(chan struct{}, 1)
 )
 
-// Seal encrypts a secret with a fresh salt and library-generated nonce. Inputs
+// Seal encrypts a secret with a fresh salt and cryptographically random nonce. Inputs
 // remain caller-owned and must not be mutated during the call. Clear secret and
 // password when no longer needed. The returned backup is a new, owned buffer.
 func Seal(ctx context.Context, purpose Purpose, password, secret []byte) ([]byte, error) {
@@ -62,19 +63,23 @@ func Seal(ctx context.Context, purpose Purpose, password, secret []byte) ([]byte
 	if secretSize < 1 || secretSize > MaxSecretSize {
 		return nil, fmt.Errorf("seal keystore: %w", ErrInvalidInput)
 	}
-	backup := make([]byte, headerSize, headerSize+secretSize+overhead)
+	backup := make([]byte, prefixSize, headerSize+secretSize+overhead)
 	copy(backup, magic)
 	backup[8], backup[9], backup[10] = version, profile, byte(purpose)
 	if _, err := rand.Read(backup[12:28]); err != nil {
 		return nil, errors.New("seal keystore: generate salt")
+	}
+	nonce := backup[headerSize:prefixSize]
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, errors.New("seal keystore: generate nonce")
 	}
 	binary.BigEndian.PutUint32(backup[28:32], uint32(secretSize)+overhead)
 	aead, err := deriveAEAD(ctx, password, backup[12:28])
 	if err != nil {
 		return nil, fmt.Errorf("seal keystore: %w", err)
 	}
-	// #nosec G407 -- NewGCMWithRandomNonce requires an empty nonce argument and generates a fresh nonce internally.
-	backup = aead.Seal(backup, nil, secret, backup)
+	// Each fresh salt derives a one-export key. Never reuse this AEAD across exports.
+	backup = aead.Seal(backup, nonce, secret, backup[:headerSize])
 	if err := ctx.Err(); err != nil {
 		clear(backup)
 		return nil, fmt.Errorf("seal keystore: %w", err)
@@ -104,7 +109,7 @@ func Open(ctx context.Context, purpose Purpose, password, backup []byte) ([]byte
 	// Keep ownership of the entire destination even if authentication fails and
 	// the AEAD returns nil after having overwritten some of its backing array.
 	secret := make([]byte, len(backup)-headerSize-overhead)
-	opened, err := aead.Open(secret[:0], nil, backup[headerSize:], backup[:headerSize])
+	opened, err := aead.Open(secret[:0], backup[headerSize:prefixSize], backup[prefixSize:], backup[:headerSize])
 	if err != nil {
 		clear(secret)
 		return nil, fmt.Errorf("open keystore: %w", ErrInvalidBackup)
@@ -146,11 +151,7 @@ func deriveAEAD(ctx context.Context, password, salt []byte) (cipher.AEAD, error)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, errors.New("initialize keystore cipher")
-	}
-	aead, err := cipher.NewGCMWithRandomNonce(block)
+	aead, err := chacha20poly1305.New(key)
 	if err != nil {
 		return nil, errors.New("initialize keystore encryption")
 	}

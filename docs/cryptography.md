@@ -16,6 +16,7 @@ Submission, enrollment, and public-proof protocols remain prospective.
 | Membership and bulletin signatures | Go `crypto/ed25519`, `crypto/x509`; dedicated keys per purpose |
 | Blind tokens | CIRCL `blindsign/blindrsa`; RFC 9474 randomized preparation, SHA-384/PSS, dedicated RSA round keys |
 | Submission and reply envelopes | Go `crypto/hpke`; DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, ChaCha20-Poly1305, base mode |
+| Device-backup encryption | `golang.org/x/crypto/chacha20poly1305.New`; RFC 8439, device-backup profile 2 |
 | Password hashing and keystore derivation | `golang.org/x/crypto/argon2`, Argon2id |
 | Log tree and proofs | `golang.org/x/mod/sumdb/tlog` and signed notes; C2SP checkpoint conventions |
 | Randomness | `crypto/rand` through library interfaces |
@@ -141,7 +142,7 @@ It adds no primitive or format and does not establish freshness or round binding
 
 `internal/client/reviewerkey` generates device-local X25519 keys through
 `crypto/ecdh.X25519().GenerateKey` with `crypto/rand`. Private keys are serialized
-only inside [device-backup profile 1](#device-backup-profile-1), with reviewer-key
+only inside [device-backup profile 2](#device-backup-profile-2), with reviewer-key
 purpose `2`. This adds no HPKE envelope, round publication, or decryption workflow.
 
 - The encrypted plaintext is exactly 48 bytes of canonical, unencrypted PKCS #8
@@ -180,7 +181,7 @@ round when those workflows are introduced.
 
 `internal/client/memberkey` generates device-local Ed25519 keys through
 `crypto/ed25519.GenerateKey` with `crypto/rand`. It serializes private keys only inside
-[device-backup profile 1](#device-backup-profile-1), with the member-key purpose.
+[device-backup profile 2](#device-backup-profile-2), with the member-key purpose.
 This is not enrollment, a certificate profile, or a general signing interface.
 
 - The encrypted plaintext is exactly 48 bytes of canonical, unencrypted PKCS #8
@@ -210,7 +211,7 @@ and migration rules.
 The wrapper does not bind a key to a member, certificate, round, revocation state,
 or expiry. Browser custody is unimplemented; native/WASM compatibility is untested.
 
-### Device-backup profile 1
+### Device-backup profile 2
 
 `internal/client/keystore` composes library primitives, not a new primitive. This
 unreleased format needs independent review before real keys are entrusted to it.
@@ -220,9 +221,14 @@ It is not a certificate, token, submission envelope, or protected CA keystore.
   three passes, four lanes, 32-byte output. These are RFC 9106's second recommended
   parameters. No caller-selected or file-selected work factors are accepted.
 - Salt: 16 fresh bytes from `crypto/rand` for every backup, including re-exports.
-- AEAD: standard-library AES-256-GCM through `cipher.NewGCMWithRandomNonce`.
-  The library prepends its fresh 12-byte nonce and appends a 16-byte tag. One
-  encryption is performed per freshly salted derived key. No fallback is allowed.
+- AEAD: RFC 8439 ChaCha20-Poly1305 through
+  `golang.org/x/crypto/chacha20poly1305.New`, using a 32-byte key, 12-byte nonce,
+  and 16-byte tag. This is not plain ChaCha20 or XChaCha20-Poly1305.
+- Generate a fresh nonce with `crypto/rand` for every export and prepend it to the
+  library ciphertext/tag. Perform exactly one encryption per freshly salted
+  derived key; do not reuse an AEAD/key across exports. This per-export key policy
+  is essential: random 96-bit nonces are not a general uniqueness strategy for
+  repeated encryption under one key. No algorithm fallback is allowed.
 - Password: 1–1024 opaque bytes, with no Unicode normalization or trimming. This
   is an allocation bound, not a password-strength claim; callers must provide
   strong passwords through a separately reviewed interface.
@@ -236,12 +242,13 @@ associated data, followed immediately by the nonce-prefixed ciphertext:
 | --- | --- | --- |
 | 0 | 8 | ASCII `ANONCEKS` |
 | 8 | 1 | Format version `1` |
-| 9 | 1 | Profile `1`, fixing all KDF/AEAD parameters above |
+| 9 | 1 | Profile `2`, fixing all KDF/AEAD parameters above |
 | 10 | 1 | Purpose: member key `1`, reviewer key `2` |
 | 11 | 1 | Reserved, must be zero |
 | 12 | 16 | Random salt |
 | 28 | 4 | Ciphertext length, including nonce and tag |
-| 32 | 12 + plaintext length + 16 | AEAD output |
+| 32 | 12 | Fresh nonce |
+| 44 | plaintext length + 16 | Library ciphertext and authentication tag |
 
 The total file size is 61–65596 bytes. Unknown versions/profiles/purposes,
 nonzero reserved bytes, trailing data, truncation, and inconsistent lengths are
@@ -264,12 +271,30 @@ See [key management](key-management.md#device-keystores) for buffer ownership an
 The offline CLI's [password-change operation](key-management.md#backup-password-changes)
 validates an existing typed key before re-exporting it with fresh salt and nonce.
 It changes neither this format nor either key payload profile, preserves private
-key bytes, and introduces no new primitive or fallback. Old backups remain valid;
-password replacement is not key rotation or revocation.
+key bytes, and introduces no new primitive or fallback. Previous profile-2 backups
+remain valid; password replacement is not key rotation or revocation.
+
+The construction follows [RFC 8439, section 2.8](https://www.rfc-editor.org/rfc/rfc8439.html#section-2.8)
+and the pinned [Go ChaCha20-Poly1305 API](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/chacha20poly1305)
+(consulted 2026-10-27). Argon2id parameters, header length, payload encodings, and
+total size bounds are unchanged from the retired profile, but the profile byte
+and encryption algorithm are incompatible. Independent review remains required.
 
 Native benchmarks are available, but browser performance and native/WASM
 interoperability remain untested. Do not weaken this profile to make an interface
 responsive; introduce a separately reviewed profile and compatibility plan if needed.
+
+### Device-backup profile 1
+
+Retired unreleased profile: format version `1`, profile byte `1`, Argon2id and
+AES-256-GCM. Current readers reject it before password derivation; writers emit
+only profile `2`. Changing its header byte does not convert its ciphertext.
+There is no automatic migration or legacy decrypt fallback. Preserve an old file
+unchanged if recovery is needed. A trusted compatible earlier checkout is needed
+for recovery; any migration must be separately reviewed, local-only, preserve the
+key and purpose, validate the new backup, and never overwrite the original or
+write plaintext keys to disk. No migration command is provided. See
+[compatibility](versioning.md#cryptographic-file-compatibility).
 
 ### Browser vault profile boundary
 
@@ -279,7 +304,7 @@ is a candidate local unlock source, not a member signing key or a complete vault
 encryption protocol. WebAuthn authentication keys, member Ed25519 keys, and
 round-scoped reviewer X25519 keys retain separate purposes.
 
-Device-backup profile 1 remains the only implemented password-backup profile.
+Device-backup profile 2 is the only supported password-backup profile.
 Do not feed a passkey signature/public credential ID into it as an unlock secret,
 reinterpret PRF bytes as a password profile without review, or change its format
 or Argon2id costs for browser convenience.
@@ -326,7 +351,6 @@ Primary sources, accessed 2026-10-26:
 - [CIRCL blind RSA](https://pkg.go.dev/github.com/cloudflare/circl/blindsign/blindrsa).
 - [Argon2 package](https://pkg.go.dev/golang.org/x/crypto/argon2) and
   [OWASP password storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
-- [RFC 9106: Argon2](https://www.rfc-editor.org/rfc/rfc9106.html#section-4) and
-  [Go random-nonce GCM](https://pkg.go.dev/crypto/cipher#NewGCMWithRandomNonce).
+- [RFC 9106: Argon2](https://www.rfc-editor.org/rfc/rfc9106.html#section-4).
 - [Transparency tree routines](https://pkg.go.dev/golang.org/x/mod/sumdb/tlog) and
   [C2SP checkpoints](https://c2sp.org/tlog-checkpoint).

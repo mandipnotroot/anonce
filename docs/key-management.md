@@ -160,7 +160,7 @@ requirements live in [testing](testing.md#browser-account-and-vault-acceptance).
 ## Device keystores
 
 The implemented `internal/client/keystore` package seals and opens bounded opaque
-secrets using [device-backup profile 1](cryptography.md#device-backup-profile-1).
+secrets using [device-backup profile 2](cryptography.md#device-backup-profile-2).
 The [local CLI](#local-key-cli) uses the typed wrappers below; no browser interface
 or HTTP service handles device keys.
 
@@ -186,8 +186,8 @@ All three packages follow these custody boundaries:
 - Owned derived-key bytes and failed/cancelled output buffers are cleared.
   Passwords and input secrets are neither copied unnecessarily nor cleared by the
   package. Callers must clear them when no longer needed.
-- The library's Argon2 arena and expanded AES key cannot be cleared through their
-  public APIs. Garbage collection, compiler/runtime copies, swap, and crash dumps
+- The library's Argon2 arena and internal AEAD key copies cannot be cleared through
+  their public APIs. Garbage collection, compiler/runtime copies, swap, and crash dumps
   prevent complete-erasure guarantees. Bound concurrency and secure the device.
 - File permissions, atomic writes, password entry/confirmation, and browser
   persistence are caller responsibilities. The offline CLI implements the subset
@@ -215,6 +215,13 @@ Remaining custody requirements:
 `make build` builds `bin/client`, an optional development-only offline command using
 the shared key profiles. It is not product onboarding or a browser prerequisite.
 Independent review is required before real-key use.
+
+All current backup commands use ChaCha20-Poly1305 profile 2. Retired AES profile 1
+backups are rejected, including by `inspect`, `rewrap`, and `csr`; `rewrap` is not
+a format-migration command. Preserve old files and consult the
+[retired-profile recovery limits](cryptography.md#device-backup-profile-1) before
+changing tools. Flags and password framing are unchanged, but backup compatibility
+is intentionally breaking.
 
 The CLI performs no network calls, enrollment, general-purpose signing, reviewer
 round binding, expiry checks, or submission decryption. A local CSR signature does

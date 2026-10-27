@@ -41,7 +41,8 @@ Available foundations:
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).
 - **Read-only shell:** embedded pages and opt-in style guide, with markup, CSS,
   integrity, and delivery checks. Browser/accessibility evidence remains outstanding.
-- **Device backups:** [profile 1](cryptography.md#device-backup-profile-1) encryption,
+- **Device backups:** [profile 2](cryptography.md#device-backup-profile-2) uses
+  Argon2id and ChaCha20-Poly1305, rejects retired AES profile 1, and provides
   bounded parsing, authenticated headers, cancellation-aware admission, tests,
   and native benchmarks. Typed wrappers generate member/reviewer keys and validate
   encrypted PKCS #8 backups.
@@ -96,7 +97,7 @@ is required before real use, with or without extensions.
   and recovery policy without granting eligibility or resetting quotas through login.
 - Specify PRF wrapping and recovery profiles, per-credential access, trusted backup
   binding/rollback behavior, supported browser/provider matrix, and no-PRF browser UX.
-  Profile 1 is password-based; no PRF/recovery format is selected or implemented.
+  Profile 2 is password-based; no PRF/recovery format is selected or implemented.
 - Specify the cross-origin anonymous handoff and navigation return flow, including
   message origins, replay/cancellation, secret-free URLs, and no identity fetches.
   Decide anonymous receipt/reply persistence separately from member-key backup.
@@ -108,7 +109,7 @@ is required before real use, with or without extensions.
 - Fix the supported response-limit ceiling, quota/slot request encoding, and any
   stronger distinct-participant release mechanism before claiming those capabilities.
 - Finalize token encoding, domain separation, key validation, and envelope bounds
-  before interoperable code. The device-backup grammar is fixed for profile 1;
+  before interoperable code. The device-backup grammar is fixed for profile 2;
   independent review and native/WASM evidence remain outstanding. See [cryptography](cryptography.md).
 - Define payload-bound submission retries and crash recovery for log publication.
 - Define reviewer retrieval and reply-write authorization without membership cookies.

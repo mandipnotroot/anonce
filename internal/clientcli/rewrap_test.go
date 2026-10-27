@@ -146,7 +146,7 @@ func TestClientRewrapRoundTrip(t *testing.T) {
 
 func assertRewrappedKey(t *testing.T, kind string, current, replacement, backup, sealed []byte) {
 	t.Helper()
-	if len(sealed) != 108 || bytes.Equal(backup[12:28], sealed[12:28]) || bytes.Equal(backup[32:44], sealed[32:44]) {
+	if len(sealed) != 108 || sealed[9] != 2 || bytes.Equal(backup[12:28], sealed[12:28]) || bytes.Equal(backup[32:44], sealed[32:44]) {
 		t.Fatal("rewrap changed the profile size or reused salt/nonce")
 	}
 	purpose := keystore.MemberKey

@@ -6,8 +6,6 @@ package keystore
 import (
 	"bytes"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -17,6 +15,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 // All payloads are synthetic non-key data. No private key fixtures are retained.
@@ -127,6 +126,8 @@ func TestKeystoreRejectsUnsafeParameters(t *testing.T) {
 		{"old version", 8, 0},
 		{"future version", 8, 2},
 		{"downgrade profile", 9, 0},
+		{"retired AES profile", 9, 1},
+		{"future profile", 9, 3},
 		{"unknown cost profile", 9, 255},
 		{"missing purpose", 10, 0},
 		{"other purpose", 10, byte(ReviewerKey)},
@@ -201,25 +202,20 @@ func TestKeystoreRejectsTampering(t *testing.T) {
 }
 
 func TestKeystoreLibraryCompatibility(t *testing.T) {
-	// Independently compose the documented format with ordinary GCM, which takes
-	// an explicit nonce, rather than the production random-nonce wrapper. The
-	// payload is not a private key and the fixed inputs are only a format test.
+	// Independently compose profile 2 without the production framing or KDF helper.
+	// The payload is not a private key and fixed inputs are only a format test.
 	password, payload := []byte("synthetic test password"), []byte("synthetic non-key payload")
-	header := append([]byte("ANONCEKS\x01\x01\x01\x00"), bytes.Repeat([]byte{0xa5}, 16)...)
+	header := append([]byte("ANONCEKS\x01\x02\x01\x00"), bytes.Repeat([]byte{0xa5}, 16)...)
 	header = binary.BigEndian.AppendUint32(header, uint32(len(payload)+28))
 	key := argon2.IDKey(password, header[12:28], 3, 65536, 4, 32)
 	defer clear(key)
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	gcm, err := cipher.NewGCM(block)
+	aead, err := chacha20poly1305.New(key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	nonce := bytes.Repeat([]byte{0x5a}, 12)
 	reference := append(bytes.Clone(header), nonce...)
-	reference = gcm.Seal(reference, nonce, payload, header)
+	reference = aead.Seal(reference, nonce, payload, header)
 	opened, err := Open(t.Context(), MemberKey, password, reference)
 	if err != nil || !bytes.Equal(opened, payload) {
 		t.Fatalf("could not open independently composed backup: %v", err)
@@ -232,19 +228,35 @@ func TestKeystoreLibraryCompatibility(t *testing.T) {
 	}
 	key2 := argon2.IDKey(password, backup[12:28], 3, 65536, 4, 32)
 	defer clear(key2)
-	block2, err := aes.NewCipher(key2)
+	aead2, err := chacha20poly1305.New(key2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	gcm2, err := cipher.NewGCM(block2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	opened, err = gcm2.Open(nil, backup[32:44], backup[44:], backup[:32])
+	opened, err = aead2.Open(nil, backup[32:44], backup[44:], backup[:32])
 	if err != nil || !bytes.Equal(opened, payload) {
 		t.Fatalf("could not independently open production backup: %v", err)
 	}
 	clear(opened)
+}
+
+func TestKeystoreRejectsRetiredProfile(t *testing.T) {
+	// A profile-1 header must be rejected before any KDF admission, for both key
+	// purposes. Synthetic bytes suffice because retired ciphertext is never opened.
+	kdfSlot <- struct{}{}
+	defer func() { <-kdfSlot }()
+	for _, purpose := range []Purpose{MemberKey, ReviewerKey} {
+		t.Run(fmt.Sprintf("purpose=%d", purpose), func(t *testing.T) {
+			backup := formatOnlyBackup(48)
+			backup[9], backup[10] = 1, byte(purpose)
+			original := bytes.Clone(backup)
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			opened, err := Open(ctx, purpose, []byte("synthetic test password"), backup)
+			if opened != nil || !errors.Is(err, ErrInvalidBackup) || !bytes.Equal(backup, original) {
+				t.Fatalf("retired profile reached derivation, changed input, or returned output: %v", err)
+			}
+		})
+	}
 }
 
 func TestKeystoreCancellation(t *testing.T) {
@@ -361,7 +373,7 @@ func (c *cancelOnCheck) Err() error {
 // formatOnlyBackup is deliberately unauthenticated, synthetic parser input.
 func formatOnlyBackup(size int) []byte {
 	backup := make([]byte, 32+28+size)
-	copy(backup, "ANONCEKS\x01\x01\x01\x00")
+	copy(backup, "ANONCEKS\x01\x02\x01\x00")
 	binary.BigEndian.PutUint32(backup[28:32], uint32(28+size))
 	return backup
 }
@@ -378,6 +390,9 @@ func FuzzBackup(f *testing.F) {
 	unknownProfile := formatOnlyBackup(1)
 	unknownProfile[9] = 255
 	f.Add(byte(MemberKey), unknownProfile)
+	retiredProfile := formatOnlyBackup(48)
+	retiredProfile[9] = 1
+	f.Add(byte(MemberKey), retiredProfile)
 	f.Add(byte(MemberKey), []byte("synthetic malformed input"))
 	f.Add(byte(0), []byte{})
 	f.Fuzz(func(t *testing.T, purpose byte, backup []byte) {
@@ -390,7 +405,7 @@ func FuzzBackup(f *testing.F) {
 			return
 		}
 		if len(backup) < 61 || len(backup) > 65596 ||
-			string(backup[:8]) != "ANONCEKS" || backup[8] != 1 || backup[9] != 1 ||
+			string(backup[:8]) != "ANONCEKS" || backup[8] != 1 || backup[9] != 2 ||
 			(purpose != 1 && purpose != 2) || backup[10] != purpose || backup[11] != 0 ||
 			uint64(binary.BigEndian.Uint32(backup[28:32]))+32 != uint64(len(backup)) {
 			t.Fatal("parser accepted a noncanonical or unbounded backup")

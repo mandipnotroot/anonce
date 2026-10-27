@@ -67,10 +67,12 @@ CI's restrictive `umask 077` cannot make a public-file case owner-only. Tests do
 not change the process-wide mask while parallel tests run. Reproduce CI defaults
 locally with `BASH_ENV="$PWD/scripts/ci-shell.sh" bash -c 'make check'`.
 
-The keystore's single `G407` annotation documents a scanner false positive:
-`NewGCMWithRandomNonce` requires an empty nonce argument and generates the nonce
-itself. `TestKeystoreFreshRandomness` and `TestKeystoreLibraryCompatibility` check
-its nonce-prefix behavior. Production code does not use ordinary fixed-nonce GCM.
+The keystore uses the library's RFC 8439 ChaCha20-Poly1305 AEAD with explicit
+`crypto/rand` nonces and one export per freshly salted derived key.
+`TestKeystoreFreshRandomness` and `TestKeystoreLibraryCompatibility` check the
+profile-2 nonce prefix and library composition. Retired AES headers fail before
+KDF admission in `TestKeystoreRejectsRetiredProfile`; no scanner suppression or
+legacy algorithm fallback is used.
 
 ### Implemented test mapping
 
@@ -82,6 +84,8 @@ its nonce-prefix behavior. Production code does not use ordinary fixed-nonce GCM
 | Shell paths, development gate, SRI, headers, methods, HEAD, no body reads/reflection | `TestSite`, `TestStylesheetIntegrity`, `TestSiteRejectsBrokenAssets`, `TestWebServiceBoundary`, `TestWebDelivery`, `TestDevelopmentStyleGuideFlag` |
 | Rejection of scripts, handlers, remote assets, active controls, malformed markup, wrong asset hashes | `scripts/test_web_check.py` |
 | Device-backup size, purpose, version/profile, reserved-byte and length validation before KDF work | `TestKeystoreRejectsInvalidInputs`, `TestKeystoreRejectsUnsafeParameters`, `FuzzBackup` |
+| Retired AES profile rejection for both key purposes before KDF admission, without output or input mutation | `TestKeystoreRejectsRetiredProfile`, `TestKeystoreRejectsUnsafeParameters`, `FuzzBackup` |
+| CLI inspection, rewrapping, and member CSR rejection of retired backups without stdout, files, input mutation, or sensitive error reflection | `TestClientRejectsRetiredBackup` |
 | Backup round trips, owned buffers, fresh salt/nonce, wrong passwords, header/ciphertext tampering, independent library composition | `TestKeystoreRoundTrip`, `TestKeystoreFreshRandomness`, `TestKeystoreRejectsTampering`, `TestKeystoreLibraryCompatibility` |
 | Backup cancelled/queued calls, cancellation at admission/derivation/output boundaries, and concurrent derivation admission | `TestKeystoreCancellation`, `TestKeystoreCancellationBoundaries`, `TestKeystoreConcurrent` |
 | Fresh member keys, usable signatures, backup round trips, buffer ownership, fresh exports, independent library encoding | `TestMemberKeyGenerate`, `TestMemberKeyRoundTrip`, `TestMemberKeyLibraryCompatibility` |
@@ -197,7 +201,7 @@ PostgreSQL tests, not mock success or a CLI-only substitute.
 | --- | --- |
 | Ordinary member journey | Fresh browser, account creation/sign-in, verified enrollment, automatic key/CSR/backup setup, common review link or dashboard, local encryption, anonymous submission, and locally verified receipt; no installed tooling or manual key files |
 | Browser support | Record browser/OS/authenticator/provider versions, PRF extension results, user verification, synced and cross-device behavior; publish unsupported paths honestly |
-| Local unlocking | Login can succeed without PRF; configured browser-passphrase unlocking works without weakening profile 1; missing PRF, failed authentication, corrupt backups, wrong passphrase, and cancelled ceremonies never trigger server decrypt or silent fallback |
+| Local unlocking | Login can succeed without PRF; configured browser-passphrase unlocking works without weakening profile 2; missing PRF, failed authentication, corrupt backups, wrong passphrase, and cancelled ceremonies never trigger server decrypt or silent fallback |
 | New device and credentials | Restore the same enrolled key locally; authorize adding/removing passkeys and wrapping methods, handle different PRF secrets, reject unauthorized replacement and account/key mismatch |
 | Vault authorization and races | Another dummy account cannot read/write/delete backups; require CSRF and recent authentication for sensitive changes; bound input/work and reject stale concurrent replacement |
 | Recovery | Distinguish login reset from key restoration; exercise reviewed recovery material, revoked credentials, all-methods-lost messaging, preserved quotas, and no expired reviewer-key reactivation |

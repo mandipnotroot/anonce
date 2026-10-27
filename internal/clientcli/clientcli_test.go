@@ -326,6 +326,50 @@ func TestClientInheritedPipeCancellation(t *testing.T) {
 	}
 }
 
+func TestClientRejectsRetiredBackup(t *testing.T) {
+	for _, tc := range []struct {
+		command, kind, passwords string
+	}{
+		{"inspect", "member", "synthetic old\n"},
+		{"inspect", "reviewer", "synthetic old\n"},
+		{"rewrap", "member", "synthetic old\nsynthetic new\nsynthetic new\n"},
+		{"rewrap", "reviewer", "synthetic old\nsynthetic new\nsynthetic new\n"},
+		{"csr", "member", "synthetic old\n"},
+	} {
+		t.Run(tc.command+"/"+tc.kind, func(t *testing.T) {
+			// Synthetic retired-profile framing, not encrypted private-key data.
+			backup := make([]byte, 108)
+			copy(backup, "ANONCEKS\x01\x01")
+			backup[10], backup[31] = byte(keystore.MemberKey), 76
+			if tc.kind == "reviewer" {
+				backup[10] = byte(keystore.ReviewerKey)
+			}
+			directory := privateDirectory(t)
+			input, output := filepath.Join(directory, "old"), filepath.Join(directory, "new")
+			if err := writeBackup(t.Context(), input, backup); err != nil {
+				t.Fatal(err)
+			}
+			var stdout bytes.Buffer
+			args := []string{tc.command, "-kind", tc.kind, "-in", input, "-out", output}
+			err := run(t.Context(), args, passwordFile(t, tc.passwords), &stdout)
+			if !errors.Is(err, keystore.ErrInvalidBackup) || stdout.Len() != 0 {
+				t.Fatalf("retired backup returned output or wrong error: %v", err)
+			}
+			if strings.Contains(err.Error(), directory) || strings.Contains(err.Error(), "synthetic") {
+				t.Fatal("retired-backup error reflected sensitive input")
+			}
+			entries, err := os.ReadDir(directory)
+			if err != nil || len(entries) != 1 || entries[0].Name() != "old" {
+				t.Fatal("retired backup created an output or temporary file")
+			}
+			original, err := os.ReadFile(input)
+			if err != nil || !bytes.Equal(original, backup) {
+				t.Fatal("retired-backup rejection changed the input")
+			}
+		})
+	}
+}
+
 func TestClientRoundTrip(t *testing.T) {
 	for _, kind := range []string{"member", "reviewer"} {
 		t.Run(kind, func(t *testing.T) {
@@ -344,8 +388,8 @@ func TestClientRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(backup) != 108 {
-				t.Fatal("generation did not preserve the existing backup profile")
+			if len(backup) != 108 || backup[9] != 2 {
+				t.Fatal("generation did not use backup profile 2")
 			}
 			var public []byte
 			if kind == "member" {

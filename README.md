@@ -78,7 +78,7 @@ See [deployment](docs/deployment.md#local-development) for flags and limits and
 
 Optional local development key tools are also available:
 
-- Shared Go packages for [backup encryption](docs/cryptography.md#device-backup-profile-1)
+- Shared Go packages for [ChaCha20-Poly1305 backup encryption](docs/cryptography.md#device-backup-profile-2)
   and [member/reviewer-key generation, encrypted export, and validated import](docs/key-management.md#device-keystores).
 - An [offline CLI](docs/key-management.md#local-key-cli) for encrypted backup
   generation, public-key-only inspection, backup password changes, and local member

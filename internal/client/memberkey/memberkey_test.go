@@ -54,8 +54,8 @@ func TestMemberKeyRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(backup) != 108 {
-		t.Fatal("unexpected member-key backup size")
+	if len(backup) != 108 || backup[8] != 1 || backup[9] != 2 {
+		t.Fatal("unexpected member-key backup size or profile")
 	}
 	backupCopy := bytes.Clone(backup)
 	opened, err := Open(t.Context(), password, backup)

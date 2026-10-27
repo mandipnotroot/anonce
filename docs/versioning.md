@@ -33,18 +33,18 @@ is a documentation requirement, not a new supported API or cryptographic profile
 Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional
 for product use does not remove its documented interfaces. Before implementation,
 review account/vault APIs, recovery and wrapping formats, credential binding, and
-anonymous handoff compatibility explicitly. Do not silently reinterpret profile 1
+anonymous handoff compatibility explicitly. Do not silently reinterpret profile 2
 as a PRF-based format or migrate keys during a failed unlock.
 
 ### Cryptographic file compatibility
 
 The following formats are unreleased breaking additions requiring `semver:major`
-review and independent security review before real-key use. None has a prior
-supported format or legacy migration.
+review and independent security review before real-key use. No released
+compatibility baseline or automatic legacy migration exists.
 
 | Contract | Compatibility boundary |
 | --- | --- |
-| [Device-backup profile 1](cryptography.md#device-backup-profile-1) | Defines the outer encrypted file. Unknown versions/profiles fail closed; future format or parameter changes require breaking review and an explicit migration plan |
+| [Device-backup profile 2](cryptography.md#device-backup-profile-2) | Argon2id and ChaCha20-Poly1305; format version 1/profile byte 2; retired AES profile 1 and unknown profiles fail before derivation |
 | [Member-key payload profile 1](cryptography.md#member-key-payload-profile-1) | Canonical Ed25519 PKCS #8 inside member-purpose backups |
 | [Reviewer-key payload profile 1](cryptography.md#reviewer-key-payload-profile-1) | Canonical X25519 PKCS #8 inside reviewer-purpose backups |
 | [Member CSR profile 1](cryptography.md#member-csr-profile-1) | Fixed identity-free Ed25519 PKCS #10 DER; no legacy decoder, alternate claims, or enrollment transport |
@@ -52,6 +52,14 @@ supported format or legacy migration.
 Typed key importers reject opaque, wrong-algorithm, and noncanonical payloads.
 Their addition does not change the outer format, generic opaque keystore API,
 or HTTP/CLI contracts.
+
+Replacing AES profile 1 with ChaCha20-Poly1305 profile 2 is an unreleased breaking
+change requiring `semver:major` review even though file sizes, payload profiles,
+CLI flags/password framing, and HTTP/WASM interfaces are unchanged. Readers and
+writers support only profile 2. Never relabel old ciphertext, silently try AES, or
+claim `rewrap` converts legacy files. There is no migration command. Preserve old
+backups and use only a trusted compatible earlier checkout for recovery under the
+[retired-profile limits](cryptography.md#device-backup-profile-1).
 
 ### Shell compatibility
 
