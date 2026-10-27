@@ -29,8 +29,8 @@ Distinguish implemented from planned behavior.
 - `internal/clientcli`, `cmd/client`: offline backup generation and public-only
   inspection plus password rewrapping; bounded stdin passwords and no-replace
   encrypted files, plus identity-free member CSR stdout or no-replace file output
-  and password-free request verification, with no old-backup
-  revocation, key rotation, or enrollment.
+  and password-free request verification with optional expected-public-key matching;
+  no old-backup revocation, key rotation, or enrollment.
 - `internal/client/membercsr`: local Ed25519 certificate requests and bounded
   profile validation; no identity claims, certificate issuance, or transport.
 - `cmd/wasm`, `internal/clientwasm`: public-only member request verification using

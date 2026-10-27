@@ -72,7 +72,9 @@ member and atomically consume a code. See [compatibility](versioning.md).
 The offline [`verify-csr` command](key-management.md#local-member-request-verification)
 reuses this parser and library signature check without changing the profile.
 It prints only the validated public key and makes no certificate-trust or
-enrollment-authorization decision.
+enrollment-authorization decision. Its optional expected-public-key check compares
+the complete public key only after profile and signature validation. This adds
+no cryptographic format, primitive, or trust-discovery mechanism.
 
 The optional [`csr -out` file export](key-management.md#local-member-certificate-requests)
 publishes the same public DER without encryption or private-key serialization.

@@ -334,7 +334,7 @@ func TestClientCSRFileConcurrentPublication(t *testing.T) {
 		t.Fatal("request publication did not have exactly one winner")
 	}
 	var stdout bytes.Buffer
-	if err := verifyCSR(t.Context(), path, &stdout); err != nil {
+	if err := verifyCSR(t.Context(), path, nil, &stdout); err != nil {
 		t.Fatal(err)
 	}
 	public, err := inspect(t.Context(), "member", password, backup)

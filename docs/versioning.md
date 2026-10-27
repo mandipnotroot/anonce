@@ -80,6 +80,11 @@ It reads an owner-only request file, does not read stdin, and prints the same
 public-key line as `inspect` after validating the existing CSR profile. Existing
 commands, password framing, cryptographic formats, and HTTP behavior are unchanged.
 
+The optional `client verify-csr -expect-public-key HEX` is an additive interface
+requiring `semver:minor` review. It checks the complete expected public key after
+validating the request, before output. Omitting the flag preserves existing
+behavior. Cryptographic profiles and the WASM interface are unchanged.
+
 ### WASM verifier compatibility
 
 The [public-only WASM verifier](key-management.md#local-wasm-request-verification)

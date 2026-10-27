@@ -4,7 +4,9 @@
 package clientcli
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"io"
@@ -51,7 +53,7 @@ func writeCSR(ctx context.Context, password, backup []byte, output io.Writer) er
 	return nil
 }
 
-func verifyCSR(ctx context.Context, path string, output io.Writer) error {
+func verifyCSR(ctx context.Context, path string, expected ed25519.PublicKey, output io.Writer) error {
 	der, err := readOwnedFile(ctx, path, membercsr.DERSize)
 	if err != nil {
 		return fmt.Errorf("verify member request: %w", err)
@@ -62,6 +64,11 @@ func verifyCSR(ctx context.Context, path string, output io.Writer) error {
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("verify member request: %w", err)
+	}
+	// Both keys are public. Compare only after the shared profile/signature check;
+	// a matching key alone must never make a malformed request acceptable.
+	if expected != nil && !bytes.Equal(public, expected) {
+		return errors.New("verify member request: public key does not match expected key")
 	}
 	line := fmt.Sprintf("member:%x\n", public)
 	if n, err := io.WriteString(output, line); err != nil || n != len(line) {

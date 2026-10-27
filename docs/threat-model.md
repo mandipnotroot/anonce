@@ -72,6 +72,10 @@ properties described below.
 - Local `verify-csr` uses the same bounded profile and signature validation before
   printing a public key, without passwords or private keys. File checks do not
   make that key trusted, prove freshness, or authorize enrollment.
+  Its optional expected-key check rejects a valid request for a different key
+  without public output. It prevents substitution only when the expected key was
+  obtained independently and trusted. Public key arguments remain linkable and
+  may be visible in local process listings or shell history.
 
 ### Public-only WASM verifier
 

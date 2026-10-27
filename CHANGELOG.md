@@ -10,6 +10,10 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional `client verify-csr -expect-public-key HEX` to reject requests for a
+  different member key before public output. Malformed or repeated expected-key
+  flags fail before file access. Existing verification, cryptographic profiles,
+  and WASM behavior are unchanged; the expected key must be independently trusted.
 - Optional `client csr -out PATH` for owner-only, synced, no-replace public request
   files that can be used directly by `verify-csr`. Existing stdout behavior,
   passwords, cryptographic formats, and HTTP services are unchanged. This does not

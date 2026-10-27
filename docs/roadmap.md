@@ -37,7 +37,8 @@ Available foundations:
   with bounded password input and no-replace encrypted files. Rewrapping preserves
   the key and does not revoke old backups. Local member CSR generation and bounded
   validation use an identity-free profile, with optional owner-only no-replace
-  request export and password-free `verify-csr` public-key inspection; enrollment
+  request export and password-free `verify-csr` public-key inspection with optional
+  independently trusted expected-key matching; enrollment
   and certificate issuance remain unavailable.
 - **Public-only WASM verifier:** [member-request validation](key-management.md#local-wasm-request-verification)
   reuses the shared parser, with matching loader/notices, hashes, a size gate, and

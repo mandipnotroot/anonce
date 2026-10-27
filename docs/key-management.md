@@ -104,7 +104,7 @@ not make a key trusted or authorized.
 | `client inspect` | `-kind member\|reviewer -in PATH` | Validated backup; public key only on stdout |
 | `client rewrap` | `-kind member\|reviewer -in PATH -out PATH` | Validated existing key, freshly encrypted backup under the replacement password; no stdout |
 | `client csr` | `-kind member -in PATH`, optional `-out PATH` | Validated member backup; signed identity-free binary DER on stdout, or in a new owner-only file with no stdout |
-| `client verify-csr` | `-kind member -in PATH` | Validated member request and signature; public key only on stdout, no password input |
+| `client verify-csr` | `-kind member -in PATH`, optional `-expect-public-key HEX` | Validated member request and signature, optionally matched to an expected key; public key only on stdout, no password input |
 | `client -help` | None | Static help on stdout; no password read |
 
 - `inspect` prints exactly `member:<hex>\n` or `reviewer:<hex>\n`, using the
@@ -243,8 +243,9 @@ origin. No CA transport or code-consumption workflow exists.
 
 `verify-csr` reads a request file and reuses `membercsr.Parse` to enforce the
 unchanged member CSR profile 1 and verify its signature through `crypto/x509`.
-It accepts only `-kind member -in PATH`, never reads stdin, and performs no password
-derivation, private-key operation, network call, or file write. Success prints
+It accepts `-kind member -in PATH` and an optional `-expect-public-key HEX`. It
+never reads stdin or performs password derivation, private-key operations, network
+calls, or file writes. Success prints
 exactly `member:<hex>\n`, matching the public-key encoding from `inspect`.
 
 Use an owner-only regular file in an owner-only trusted directory, under the same
@@ -253,6 +254,20 @@ parsing; reads are bounded to 130 bytes to detect growth. Symlinks, devices,
 directories, PEM, extra claims, trailing data, and invalid signatures fail without
 stdout. Cancellation is checked before reading, after reading, and before output.
 Output failures can leave a partial public-key line, which must be discarded.
+
+With `-expect-public-key HEX`, the validated request must contain that exact
+32-byte public key before any stdout is written. Supply exactly 64 ASCII hex
+characters in either case, without a `member:` prefix, whitespace, or newline.
+Empty, malformed, oversized, or repeated expected-key flags fail as invalid
+arguments before reading the request. Other operations reject the flag.
+Omitting it preserves ordinary request verification and public-key output.
+
+Obtain the expected key through an independently trusted channel, for example
+the hex portion of `inspect` output for a trusted local member backup. Copying
+the key from the untrusted request being checked provides no substitution
+protection. The expected key is public but linkable; command arguments can be
+visible to local process inspection and shell history. Errors include neither
+the expected key nor the request key.
 
 A valid request does not establish freshness, identity, eligibility, certificate
 trust, revocation, or enrollment authorization. Its public key remains linkable

@@ -11,6 +11,7 @@ import (
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -32,7 +33,7 @@ Usage:
   client inspect -kind member|reviewer -in PATH
   client rewrap -kind member|reviewer -in PATH -out PATH
   client csr -kind member -in PATH [-out PATH]
-  client verify-csr -kind member -in PATH
+  client verify-csr -kind member -in PATH [-expect-public-key HEX]
   client -help
 
 Backup passwords come only from a pipe or regular file on stdin, never a terminal.
@@ -50,6 +51,9 @@ CSR prints a signed identity-free DER request, not a certificate or enrollment.
 CSR -out publishes the public request in a new owner-only file without stdout.
 Request publication never overwrites a path; requests are public, not encrypted.
 Verify-csr checks a request and prints only its public key; it never reads stdin.
+With -expect-public-key, require an independently trusted 64-character hex public key.
+Empty, malformed, or repeated expected-key flags fail; mismatches print nothing.
+Public keys in arguments remain linkable and may appear in process listings/history.
 Request inputs require owner-only files and parents, just like backup inputs.
 Request verification establishes neither certificate trust nor enrollment authority.
 No enrollment, round binding, expiry enforcement, or network operations exist.
@@ -60,10 +64,11 @@ const maxArgumentBytes = 8192
 var errArguments = errors.New("configure client: invalid arguments; use -help")
 
 type config struct {
-	operation string
-	kind      string
-	input     string
-	output    string
+	operation         string
+	kind              string
+	input             string
+	output            string
+	expectedPublicKey ed25519.PublicKey
 }
 
 // Main returns the process exit code after signal-aware execution.
@@ -107,6 +112,19 @@ func parse(args []string) (config, error) {
 	}
 	if cfg.operation != "generate" {
 		flags.StringVar(&cfg.input, "in", "", "input file")
+	}
+	if cfg.operation == "verify-csr" {
+		flags.Func("expect-public-key", "expected member public key in hexadecimal", func(value string) error {
+			if cfg.expectedPublicKey != nil || len(value) != 2*ed25519.PublicKeySize {
+				return errArguments
+			}
+			public, err := hex.DecodeString(value)
+			if err != nil {
+				return errArguments
+			}
+			cfg.expectedPublicKey = public
+			return nil
+		})
 	}
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -152,7 +170,7 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 		return fmt.Errorf("client: %w", err)
 	}
 	if cfg.operation == "verify-csr" {
-		return verifyCSR(ctx, cfg.input, output)
+		return verifyCSR(ctx, cfg.input, cfg.expectedPublicKey, output)
 	}
 	if cfg.operation == "rewrap" {
 		return runRewrap(ctx, cfg, input)
