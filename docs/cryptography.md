@@ -116,6 +116,8 @@ evidence does not cover device backups or private-key custody in browsers.
 
 The offline CLI's optional [backup key matching](key-management.md#local-backup-key-matching)
 compares complete public keys only after typed backup authentication and validation.
+Rewrapping can require the same match before replacement-password derivation or
+file creation, using the validated key in memory without reopening the backup.
 It adds no primitive or format and does not establish freshness or round binding.
 
 ### Reviewer-key payload profile 1

@@ -65,6 +65,12 @@ breaking-impact or independent-review requirements for those unreleased formats.
 Its three-line password framing applies only to that command. Existing commands,
 password framing, backup/payload formats, and HTTP behavior remain unchanged.
 
+The optional `client rewrap -expect-public-key HEX` is an additive interface requiring
+`semver:minor` review. It checks the complete public key after typed backup validation,
+before replacement-password derivation or file creation. Omitting it preserves
+existing rewrapping. Password framing, backup/payload formats, other commands,
+WASM, and HTTP behavior are unchanged.
+
 The optional `client inspect -expect-public-key HEX` is an additive interface
 requiring `semver:minor` review. For either supported key kind it checks the complete
 public key after typed backup validation, before output. Omitting it preserves

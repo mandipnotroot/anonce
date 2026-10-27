@@ -10,6 +10,11 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional `client rewrap -expect-public-key HEX` to reject a substituted member or
+  reviewer backup after typed validation, before replacement encryption or file
+  creation. The expected key must be independently trusted. Existing rewrapping,
+  password framing, cryptographic formats, WASM, and HTTP behavior are unchanged;
+  matching does not establish freshness, revocation, or reviewer round binding.
 - Optional `client inspect -expect-public-key HEX` for validated member/reviewer
   backup key matching before public output. Malformed or repeated flags fail before
   password/file access; mismatches print nothing. The expected key must be

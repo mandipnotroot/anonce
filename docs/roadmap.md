@@ -37,6 +37,8 @@ Available foundations:
   with bounded password input and no-replace encrypted files. Rewrapping preserves
   the key and does not revoke old backups. Optional independently trusted
   expected-key matching checks member/reviewer backups before public output.
+  Password replacement can also require an independently trusted expected key
+  before re-encryption or file creation.
   Local member CSR generation and bounded
   validation use an identity-free profile, with optional owner-only no-replace
   request export and password-free `verify-csr` public-key inspection with optional

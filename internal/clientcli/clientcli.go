@@ -31,7 +31,7 @@ const usage = `Development-only local keys; independent review is required befor
 Usage:
   client generate -kind member|reviewer -out PATH
   client inspect -kind member|reviewer -in PATH [-expect-public-key HEX]
-  client rewrap -kind member|reviewer -in PATH -out PATH
+  client rewrap -kind member|reviewer -in PATH -out PATH [-expect-public-key HEX]
   client csr -kind member -in PATH [-out PATH]
   client verify-csr -kind member -in PATH [-expect-public-key HEX]
   client -help
@@ -51,9 +51,10 @@ CSR prints a signed identity-free DER request, not a certificate or enrollment.
 CSR -out publishes the public request in a new owner-only file without stdout.
 Request publication never overwrites a path; requests are public, not encrypted.
 Verify-csr checks a request and prints only its public key; it never reads stdin.
-Inspect and verify-csr accept -expect-public-key with an independently trusted
+Inspect, rewrap, and verify-csr accept -expect-public-key with an independently trusted
 64-character hex public key for the selected kind.
 Empty, malformed, or repeated expected-key flags fail; mismatches print nothing.
+Rewrap checks the key before re-encryption or output-file creation.
 Public keys in arguments remain linkable and may appear in process listings/history.
 Request inputs require owner-only files and parents, just like backup inputs.
 Request verification establishes neither certificate trust nor enrollment authority.
@@ -114,7 +115,7 @@ func parse(args []string) (config, error) {
 	if cfg.operation != "generate" {
 		flags.StringVar(&cfg.input, "in", "", "input file")
 	}
-	if cfg.operation == "verify-csr" || cfg.operation == "inspect" {
+	if cfg.operation == "verify-csr" || cfg.operation == "inspect" || cfg.operation == "rewrap" {
 		// Both supported key kinds have exactly 32 public bytes.
 		flags.Func("expect-public-key", "expected public key in hexadecimal", func(value string) error {
 			if cfg.expectedPublicKey != nil || len(value) != 2*ed25519.PublicKeySize {

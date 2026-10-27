@@ -27,7 +27,7 @@ Distinguish implemented from planned behavior.
 - `internal/client/reviewerkey`: local X25519 reviewer keys and validated encrypted
   backups; offline CLI integration, no browser, round-binding, or decryption integration.
 - `internal/clientcli`, `cmd/client`: offline backup generation and public-only
-  inspection with optional expected-public-key matching plus password rewrapping;
+  inspection and password rewrapping with optional expected-public-key matching;
   bounded stdin passwords and no-replace
   encrypted files, plus identity-free member CSR stdout or no-replace file output
   and password-free request verification with optional expected-public-key matching;

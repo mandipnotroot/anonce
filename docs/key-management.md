@@ -102,7 +102,7 @@ not make a key trusted or authorized.
 | --- | --- | --- |
 | `client generate` | `-kind member\|reviewer -out PATH` | Fresh key, encrypted backup file; no stdout |
 | `client inspect` | `-kind member\|reviewer -in PATH`, optional `-expect-public-key HEX` | Validated backup, optionally matched to an expected key; public key only on stdout |
-| `client rewrap` | `-kind member\|reviewer -in PATH -out PATH` | Validated existing key, freshly encrypted backup under the replacement password; no stdout |
+| `client rewrap` | `-kind member\|reviewer -in PATH -out PATH`, optional `-expect-public-key HEX` | Validated existing key, optionally matched to an expected key, freshly encrypted backup under the replacement password; no stdout |
 | `client csr` | `-kind member -in PATH`, optional `-out PATH` | Validated member backup; signed identity-free binary DER on stdout, or in a new owner-only file with no stdout |
 | `client verify-csr` | `-kind member -in PATH`, optional `-expect-public-key HEX` | Validated member request and signature, optionally matched to an expected key; public key only on stdout, no password input |
 | `client -help` | None | Static help on stdout; no password read |
@@ -198,6 +198,13 @@ under the same no-replace publication rules as generation. Verify the new backup
 with `inspect` before managing old copies under an independently reviewed retention
 procedure.
 
+To reject a substituted input before re-encryption, pass `-expect-public-key HEX`
+with an independently retained public key. Matching occurs after typed backup
+authentication and payload validation, using that same in-memory key before
+replacement-password derivation or file creation. A mismatch leaves the source
+unchanged, creates no output or temporary file, and writes nothing to stdout.
+There is no fallback to unpinned rewrapping.
+
 To check that the replacement still holds the expected key, use
 [`inspect -expect-public-key`](#local-backup-key-matching) with the independently
 retained public key from the trusted original backup.
@@ -212,10 +219,12 @@ See [testing](testing.md#implemented-test-mapping) for executable evidence and
 ### Local backup key matching
 
 `inspect -expect-public-key HEX` requires the validated member or reviewer backup
-to contain that exact public key before stdout is written. Supply exactly 64 ASCII
-hexadecimal characters in either case, without a kind prefix, whitespace, or newline.
+to contain that exact public key before stdout is written. `rewrap` supports the
+same flag before [password replacement](#backup-password-changes). Supply exactly
+64 ASCII hexadecimal characters in either case, without a kind prefix, whitespace,
+or newline.
 Empty, malformed, oversized, and repeated flags fail before password input or file
-access. Omitting the flag preserves ordinary inspection. Generation, rewrapping,
+access. Omitting the flag preserves ordinary inspection or rewrapping. Generation
 and CSR creation reject it; request verification supports it separately below.
 
 Inspection still requires the usual one-line password input, trusted-file checks,
@@ -289,8 +298,9 @@ With `-expect-public-key HEX`, the validated request must contain that exact
 characters in either case, without a `member:` prefix, whitespace, or newline.
 Empty, malformed, oversized, or repeated expected-key flags fail as invalid
 arguments before reading the request. Backup inspection supports the same flag
-under [backup key matching](#local-backup-key-matching); other operations reject it.
-Omitting it preserves ordinary request verification and public-key output.
+under [backup key matching](#local-backup-key-matching), as does rewrapping; generation
+and CSR creation reject it. Omitting it preserves ordinary request verification
+and public-key output.
 
 Obtain the expected key through an independently trusted channel, for example
 the hex portion of `inspect` output for a trusted local member backup. Copying

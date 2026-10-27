@@ -60,6 +60,8 @@ properties described below.
   remain, and independent device-workflow review is still required.
 - Optional [backup key matching](key-management.md#local-backup-key-matching) rejects
   a different member/reviewer public key after full backup validation, without stdout.
+  With `rewrap`, a mismatch also prevents replacement-password derivation and file
+  creation; matching uses the authenticated in-memory key, not a separate file read.
   It requires an independently trusted expected key. Old backups for the same key
   still match, so this does not detect rollback, expiry, or revocation. Public-key
   arguments may appear in process listings and shell history.

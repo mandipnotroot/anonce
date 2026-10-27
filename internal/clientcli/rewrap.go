@@ -6,6 +6,8 @@ package clientcli
 import (
 	"bytes"
 	"context"
+	"crypto/ecdh"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"os"
@@ -32,7 +34,7 @@ func runRewrap(ctx context.Context, cfg config, input *os.File) error {
 		return err
 	}
 	defer clear(backup)
-	sealed, err := rewrap(ctx, cfg.kind, current, replacement, backup)
+	sealed, err := rewrap(ctx, cfg.kind, current, replacement, backup, cfg.expectedPublicKey)
 	if err != nil {
 		return fmt.Errorf("rewrap backup: %w", err)
 	}
@@ -55,8 +57,9 @@ func parseRewrapPasswords(data []byte) ([]byte, []byte, error) {
 }
 
 // rewrap validates through the typed importer before re-exporting the same key.
+// A non-nil expected public key must match before replacement encryption.
 // It does not change key identity, revoke previous backups, or enforce retention.
-func rewrap(ctx context.Context, kind string, current, replacement, backup []byte) ([]byte, error) {
+func rewrap(ctx context.Context, kind string, current, replacement, backup, expected []byte) ([]byte, error) {
 	if kind != "member" && kind != "reviewer" {
 		return nil, errArguments
 	}
@@ -66,6 +69,11 @@ func rewrap(ctx context.Context, kind string, current, replacement, backup []byt
 			return nil, err
 		}
 		defer clear(key)
+		// The typed importer has authenticated and validated the key. Compare
+		// public bytes before deriving a replacement key or creating any file.
+		if expected != nil && !bytes.Equal(key[ed25519.SeedSize:], expected) {
+			return nil, errors.New("public key does not match expected key")
+		}
 		return memberkey.Seal(ctx, replacement, key)
 	}
 	key, err := reviewerkey.Open(ctx, current, backup)
@@ -73,5 +81,14 @@ func rewrap(ctx context.Context, kind string, current, replacement, backup []byt
 		return nil, err
 	}
 	defer clear(key)
+	if expected != nil {
+		private, err := ecdh.X25519().NewPrivateKey(key)
+		if err != nil {
+			return nil, errors.New("invalid reviewer key")
+		}
+		if !bytes.Equal(private.PublicKey().Bytes(), expected) {
+			return nil, errors.New("public key does not match expected key")
+		}
+	}
 	return reviewerkey.Seal(ctx, replacement, key)
 }

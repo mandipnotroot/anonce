@@ -104,6 +104,8 @@ func TestClientExpectedPublicKeyArguments(t *testing.T) {
 		{"verify-csr", "-kind=member", "-in=request"},
 		{"inspect", "-kind=member", "-in=backup"},
 		{"inspect", "-kind=reviewer", "-in=backup"},
+		{"rewrap", "-kind=member", "-in=old", "-out=new"},
+		{"rewrap", "-kind=reviewer", "-in=old", "-out=new"},
 	} {
 		t.Run(base[0]+"/"+base[1], func(t *testing.T) {
 			t.Parallel()
@@ -164,7 +166,7 @@ func TestClientExpectedPublicKeyArguments(t *testing.T) {
 			}
 		})
 	}
-	for _, operation := range []string{"generate", "rewrap", "csr"} {
+	for _, operation := range []string{"generate", "csr"} {
 		t.Run(operation, func(t *testing.T) {
 			t.Parallel()
 			args := []string{operation, "-kind=member"}
@@ -488,6 +490,11 @@ func FuzzClientArguments(f *testing.F) {
 		f.Add(base + strings.Repeat("AB", ed25519.PublicKeySize))
 		f.Add(base)
 		f.Add(base + strings.Repeat("ab", ed25519.PublicKeySize) + "\x00-expect-public-key=")
+		rewrapBase := "rewrap\x00-kind=" + kind + "\x00-in=old\x00-out=new\x00-expect-public-key="
+		f.Add(rewrapBase + strings.Repeat("ab", ed25519.PublicKeySize))
+		f.Add(rewrapBase + strings.Repeat("AB", ed25519.PublicKeySize))
+		f.Add(rewrapBase)
+		f.Add(rewrapBase + strings.Repeat("ab", ed25519.PublicKeySize) + "\x00-expect-public-key=")
 	}
 	f.Add("rewrap\x00-kind=member\x00-in=old\x00-out=new")
 	f.Add("csr\x00-kind=member\x00-in=backup")
@@ -510,7 +517,7 @@ func FuzzClientArguments(f *testing.F) {
 			(cfg.operation == "csr" || cfg.operation == "verify-csr") && cfg.kind != "member" ||
 			cfg.operation != "generate" && cfg.input == "" ||
 			cfg.output != "" && cfg.operation != "generate" && cfg.operation != "rewrap" && cfg.operation != "csr" ||
-			cfg.expectedPublicKey != nil && ((cfg.operation != "verify-csr" && cfg.operation != "inspect") || len(cfg.expectedPublicKey) != ed25519.PublicKeySize) ||
+			cfg.expectedPublicKey != nil && ((cfg.operation != "verify-csr" && cfg.operation != "inspect" && cfg.operation != "rewrap") || len(cfg.expectedPublicKey) != ed25519.PublicKeySize) ||
 			strings.ContainsRune(cfg.input+cfg.output, 0) ||
 			(cfg.operation == "generate" || cfg.operation == "rewrap") && cfg.output == "") {
 			t.Fatal("parser accepted unsupported configuration")
