@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -31,9 +32,10 @@ Usage:
   client inspect -kind member|reviewer -in PATH
   client rewrap -kind member|reviewer -in PATH -out PATH
   client csr -kind member -in PATH
+  client verify-csr -kind member -in PATH
   client -help
 
-Passwords come only from a pipe or regular file on stdin, never a terminal.
+Backup passwords come only from a pipe or regular file on stdin, never a terminal.
 Generate requires two matching LF-terminated password lines and EOF.
 Inspect requires one LF-terminated password line and EOF.
 CSR requires one LF-terminated password line and EOF.
@@ -45,6 +47,9 @@ Generate publishes an encrypted backup without overwriting any existing path.
 Rewrap preserves the key in a new backup; it neither replaces nor revokes old copies.
 Inspect validates the backup and prints only its public key, not authorization.
 CSR prints a signed identity-free DER request, not a certificate or enrollment.
+Verify-csr checks a request and prints only its public key; it never reads stdin.
+Request inputs require owner-only files and parents, just like backup inputs.
+Request verification establishes neither certificate trust nor enrollment authority.
 No enrollment, round binding, expiry enforcement, or network operations exist.
 `
 
@@ -84,7 +89,7 @@ func parse(args []string) (config, error) {
 	if len(args) == 1 && (args[0] == "-help" || args[0] == "-h") {
 		return config{}, flag.ErrHelp
 	}
-	if len(args) == 0 || (args[0] != "generate" && args[0] != "inspect" && args[0] != "rewrap" && args[0] != "csr") {
+	if len(args) == 0 || !slices.Contains([]string{"generate", "inspect", "rewrap", "csr", "verify-csr"}, args[0]) {
 		return config{}, errArguments
 	}
 	cfg := config{operation: args[0]}
@@ -96,7 +101,7 @@ func parse(args []string) (config, error) {
 		flags.StringVar(&cfg.output, "out", "", "new encrypted backup output")
 	}
 	if cfg.operation != "generate" {
-		flags.StringVar(&cfg.input, "in", "", "encrypted backup input")
+		flags.StringVar(&cfg.input, "in", "", "input file")
 	}
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -105,7 +110,7 @@ func parse(args []string) (config, error) {
 		return config{}, errArguments
 	}
 	if flags.NArg() != 0 || (cfg.kind != "member" && cfg.kind != "reviewer") ||
-		(cfg.operation == "csr" && cfg.kind != "member") ||
+		((cfg.operation == "csr" || cfg.operation == "verify-csr") && cfg.kind != "member") ||
 		strings.ContainsRune(cfg.input+cfg.output, 0) {
 		return config{}, errArguments
 	}
@@ -129,6 +134,9 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("client: %w", err)
+	}
+	if cfg.operation == "verify-csr" {
+		return verifyCSR(ctx, cfg.input, output)
 	}
 	if cfg.operation == "rewrap" {
 		return runRewrap(ctx, cfg, input)

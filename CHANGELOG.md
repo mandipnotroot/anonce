@@ -10,6 +10,10 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Offline `client verify-csr` for bounded member request and signature validation,
+  with public-key-only output, owner-only file imports, and no stdin or private-key
+  access. Existing cryptographic formats and commands are unchanged. Verification
+  does not authorize enrollment or establish certificate trust.
 - Offline `client csr` for identity-free member certificate requests using existing
   encrypted backups, bounded password input, and public-only binary DER output.
   Shared validation and race/fuzz tests reject invalid signatures and extra claims.

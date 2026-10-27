@@ -31,3 +31,22 @@ func writeCSR(ctx context.Context, password, backup []byte, output io.Writer) er
 	}
 	return nil
 }
+
+func verifyCSR(ctx context.Context, path string, output io.Writer) error {
+	der, err := readOwnedFile(ctx, path, membercsr.DERSize)
+	if err != nil {
+		return fmt.Errorf("verify member request: %w", err)
+	}
+	public, err := membercsr.Parse(der)
+	if err != nil {
+		return fmt.Errorf("verify member request: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("verify member request: %w", err)
+	}
+	line := fmt.Sprintf("member:%x\n", public)
+	if n, err := io.WriteString(output, line); err != nil || n != len(line) {
+		return errors.New("verify member request: write public key")
+	}
+	return nil
+}

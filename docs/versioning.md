@@ -70,6 +70,11 @@ binary DER stdout. The new cryptographic request profile requires `semver:major`
 review under the format policy above. Existing commands, encrypted backups, and
 HTTP behavior are unchanged. No certificate or enrollment compatibility is claimed.
 
+`client verify-csr` is an additive opt-in command requiring `semver:minor` review.
+It reads an owner-only request file, does not read stdin, and prints the same
+public-key line as `inspect` after validating the existing CSR profile. Existing
+commands, password framing, cryptographic formats, and HTTP behavior are unchanged.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

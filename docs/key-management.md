@@ -104,6 +104,7 @@ not make a key trusted or authorized.
 | `client inspect` | `-kind member\|reviewer -in PATH` | Validated backup; public key only on stdout |
 | `client rewrap` | `-kind member\|reviewer -in PATH -out PATH` | Validated existing key, freshly encrypted backup under the replacement password; no stdout |
 | `client csr` | `-kind member -in PATH` | Validated member backup; signed identity-free request as binary DER on stdout |
+| `client verify-csr` | `-kind member -in PATH` | Validated member request and signature; public key only on stdout, no password input |
 | `client -help` | None | Static help on stdout; no password read |
 
 - `inspect` prints exactly `member:<hex>\n` or `reviewer:<hex>\n`, using the
@@ -118,9 +119,9 @@ not make a key trusted or authorized.
 
 ### Password input
 
-Standard input must be a pipe or regular file, never a terminal or device. There
-is no interactive prompt or terminal-echo management. Use a trusted password
-manager that emits the framing below without exposing passwords in arguments,
+For backup operations, standard input must be a pipe or regular file, never a
+terminal or device. There is no interactive prompt or terminal-echo management.
+Use a trusted password manager that emits the framing below without exposing passwords in arguments,
 shell history, environment variables, or logs.
 
 Each line must end in LF, and the final line must be followed by EOF. Extra bytes fail.
@@ -221,6 +222,26 @@ A request is not a certificate, fresh challenge, enrollment proof, or authorizat
 It includes no identity, cohort, enrollment code, or requested privileges. It is
 linkable to the membership public key and must not reach the anonymous submission
 origin. No CA transport or code-consumption workflow exists.
+
+### Local member request verification
+
+`verify-csr` reads a request file and reuses `membercsr.Parse` to enforce the
+unchanged member CSR profile 1 and verify its signature through `crypto/x509`.
+It accepts only `-kind member -in PATH`, never reads stdin, and performs no password
+derivation, private-key operation, network call, or file write. Success prints
+exactly `member:<hex>\n`, matching the public-key encoding from `inspect`.
+
+Use an owner-only regular file in an owner-only trusted directory, under the same
+[import rules](#file-custody) as backups. The file is capped at 129 bytes before
+parsing; reads are bounded to 130 bytes to detect growth. Symlinks, devices,
+directories, PEM, extra claims, trailing data, and invalid signatures fail without
+stdout. Cancellation is checked before reading, after reading, and before output.
+Output failures can leave a partial public-key line, which must be discarded.
+
+A valid request does not establish freshness, identity, eligibility, certificate
+trust, revocation, or enrollment authorization. Its public key remains linkable
+and must not reach the anonymous submission origin. Independent review is required
+before real use.
 
 ## Retention and destruction
 

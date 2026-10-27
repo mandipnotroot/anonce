@@ -38,6 +38,16 @@ func TestClientArguments(t *testing.T) {
 		{"rewrap help", []string{"rewrap", "-help"}, flag.ErrHelp},
 		{"csr member", []string{"csr", "-kind=member", "-in=backup"}, nil},
 		{"csr help", []string{"csr", "-help"}, flag.ErrHelp},
+		{"verify csr member", []string{"verify-csr", "-kind=member", "-in=request"}, nil},
+		{"verify csr help", []string{"verify-csr", "-help"}, flag.ErrHelp},
+		{"verify csr missing input", []string{"verify-csr", "-kind=member"}, errArguments},
+		{"verify csr missing kind", []string{"verify-csr", "-in=request"}, errArguments},
+		{"verify csr reviewer", []string{"verify-csr", "-kind=reviewer", "-in=request"}, errArguments},
+		{"verify csr output flag", []string{"verify-csr", "-kind=member", "-in=request", "-out=result"}, errArguments},
+		{"verify csr password flag", []string{"verify-csr", "-password=synthetic"}, errArguments},
+		{"verify csr positional", []string{"verify-csr", "-kind=member", "-in=request", "extra"}, errArguments},
+		{"verify csr empty path", []string{"verify-csr", "-kind=member", "-in="}, errArguments},
+		{"verify csr null path", []string{"verify-csr", "-kind=member", "-in=a\x00b"}, errArguments},
 		{"csr missing input", []string{"csr", "-kind=member"}, errArguments},
 		{"csr missing kind", []string{"csr", "-in=backup"}, errArguments},
 		{"csr reviewer", []string{"csr", "-kind=reviewer", "-in=backup"}, errArguments},
@@ -364,6 +374,8 @@ func FuzzClientArguments(f *testing.F) {
 	f.Add("inspect\x00-kind=reviewer\x00-in=backup")
 	f.Add("rewrap\x00-kind=member\x00-in=old\x00-out=new")
 	f.Add("csr\x00-kind=member\x00-in=backup")
+	f.Add("verify-csr\x00-kind=member\x00-in=request")
+	f.Add("verify-csr\x00-kind=reviewer\x00-in=request")
 	f.Add("-help")
 	f.Fuzz(func(t *testing.T, input string) {
 		if len(input) > maxArgumentBytes+1 {
@@ -371,8 +383,8 @@ func FuzzClientArguments(f *testing.F) {
 		}
 		cfg, err := parse(strings.Split(input, "\x00"))
 		if err == nil && (cfg.kind != "member" && cfg.kind != "reviewer" ||
-			cfg.operation != "generate" && cfg.operation != "inspect" && cfg.operation != "rewrap" && cfg.operation != "csr" ||
-			cfg.operation == "csr" && cfg.kind != "member" ||
+			cfg.operation != "generate" && cfg.operation != "inspect" && cfg.operation != "rewrap" && cfg.operation != "csr" && cfg.operation != "verify-csr" ||
+			(cfg.operation == "csr" || cfg.operation == "verify-csr") && cfg.kind != "member" ||
 			cfg.operation != "generate" && cfg.input == "" ||
 			(cfg.operation == "generate" || cfg.operation == "rewrap") && cfg.output == "") {
 			t.Fatal("parser accepted unsupported configuration")

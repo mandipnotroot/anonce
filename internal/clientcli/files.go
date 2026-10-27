@@ -39,8 +39,18 @@ func openParent(path string) (*os.Root, string, error) {
 }
 
 func readBackup(ctx context.Context, path string) ([]byte, error) {
-	if err := ctx.Err(); err != nil {
+	data, err := readOwnedFile(ctx, path, keystore.MaxBackupSize)
+	if err != nil {
 		return nil, fmt.Errorf("read backup: %w", err)
+	}
+	return data, nil
+}
+
+// readOwnedFile shares trusted-directory and bounded regular-file import checks.
+// The selected directory must not contain hostile same-user writers.
+func readOwnedFile(ctx context.Context, path string, maxSize int64) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("read input: %w", err)
 	}
 	root, name, err := openParent(path)
 	if err != nil {
@@ -49,28 +59,28 @@ func readBackup(ctx context.Context, path string) ([]byte, error) {
 	defer func() { _ = root.Close() }()
 	info, err := root.Lstat(name)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 ||
-		info.Size() < 1 || info.Size() > keystore.MaxBackupSize {
-		return nil, errors.New("read backup: expected bounded owner-only regular file, not a symlink")
+		info.Size() < 1 || info.Size() > maxSize {
+		return nil, errors.New("read input: expected bounded owner-only regular file, not a symlink")
 	}
 	file, err := root.Open(name)
 	if err != nil {
-		return nil, errors.New("read backup: open file")
+		return nil, errors.New("read input: open file")
 	}
 	defer func() { _ = file.Close() }()
 	opened, err := file.Stat()
 	if err != nil || !os.SameFile(info, opened) || !opened.Mode().IsRegular() || opened.Mode().Perm()&0o077 != 0 {
-		return nil, errors.New("read backup: file changed while opening")
+		return nil, errors.New("read input: file changed while opening")
 	}
-	backup, err := io.ReadAll(io.LimitReader(file, keystore.MaxBackupSize+1))
-	if err != nil || len(backup) > keystore.MaxBackupSize {
-		clear(backup)
-		return nil, errors.New("read backup: unreadable or oversized file")
+	data, err := io.ReadAll(io.LimitReader(file, maxSize+1))
+	if err != nil || int64(len(data)) > maxSize {
+		clear(data)
+		return nil, errors.New("read input: unreadable or oversized file")
 	}
 	if err := ctx.Err(); err != nil {
-		clear(backup)
-		return nil, fmt.Errorf("read backup: %w", err)
+		clear(data)
+		return nil, fmt.Errorf("read input: %w", err)
 	}
-	return backup, nil
+	return data, nil
 }
 
 // writeBackup publishes only a complete, synced encrypted file. Hard-link

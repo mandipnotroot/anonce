@@ -69,6 +69,11 @@ The profile adds no certificate policy, CA trust, enrollment-code handling, repl
 protection, or HTTP route. Future enrollment must separately authenticate the
 member and atomically consume a code. See [compatibility](versioning.md).
 
+The offline [`verify-csr` command](key-management.md#local-member-request-verification)
+reuses this parser and library signature check without changing the profile.
+It prints only the validated public key and makes no certificate-trust or
+enrollment-authorization decision.
+
 ## Encryption and public proofs
 
 - HPKE base mode avoids identifying sender keys; token verification authorizes submission.

@@ -45,6 +45,21 @@ func TestClientCSRRoundTrip(t *testing.T) {
 	if err != nil || !bytes.Equal(public, key[32:]) || stdout.Len() != membercsr.DERSize {
 		t.Fatal("CLI did not output exactly the matching public DER request")
 	}
+	requestPath := filepath.Join(privateDirectory(t), "request")
+	if err := os.WriteFile(requestPath, stdout.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	if err := run(t.Context(), []string{"verify-csr", "-kind=member", "-in", requestPath}, nil, &stdout); err != nil {
+		t.Fatal(err)
+	}
+	var inspected bytes.Buffer
+	if err := run(t.Context(), []string{"inspect", "-kind=member", "-in", path}, passwordFile(t, "synthetic\n"), &inspected); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(stdout.Bytes(), inspected.Bytes()) {
+		t.Fatal("request verification disagreed with backup inspection")
+	}
 	original, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(original, backup) {
 		t.Fatal("CSR changed the input backup")
