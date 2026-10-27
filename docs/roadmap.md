@@ -39,6 +39,8 @@ Available foundations:
   expected-key matching checks member/reviewer backups before public output.
   Inspection and request verification can export their public-key line to a new
   owner-only, no-replace file without stdout or a new cryptographic format.
+  Expected-key checks can read those independently trusted exports directly using
+  `-expect-public-key-file`, with bounded kind-specific parsing before password input.
   Password replacement can also require an independently trusted expected key
   before re-encryption or file creation.
   Local member CSR generation and bounded

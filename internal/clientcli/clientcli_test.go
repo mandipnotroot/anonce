@@ -478,6 +478,20 @@ func passwordFile(t *testing.T, data string) *os.File {
 }
 
 func FuzzClientArguments(f *testing.F) {
+	for _, base := range []string{
+		"inspect\x00-kind=member\x00-in=backup",
+		"inspect\x00-kind=reviewer\x00-in=backup",
+		"rewrap\x00-kind=member\x00-in=old\x00-out=new",
+		"rewrap\x00-kind=reviewer\x00-in=old\x00-out=new",
+		"csr\x00-kind=member\x00-in=backup",
+		"verify-csr\x00-kind=member\x00-in=request",
+		"generate\x00-kind=member\x00-out=backup",
+	} {
+		f.Add(base + "\x00-expect-public-key-file=trusted")
+		f.Add(base + "\x00-expect-public-key-file=")
+		f.Add(base + "\x00-expect-public-key-file=trusted\x00-expect-public-key-file=trusted")
+		f.Add(base + "\x00-expect-public-key-file=trusted\x00-expect-public-key=" + strings.Repeat("ab", ed25519.PublicKeySize))
+	}
 	f.Add("generate\x00-kind\x00member\x00-out\x00backup")
 	f.Add("inspect\x00-kind=reviewer\x00-in=backup")
 	for _, base := range []string{"inspect\x00-kind=member\x00-in=backup", "inspect\x00-kind=reviewer\x00-in=backup", "verify-csr\x00-kind=member\x00-in=request"} {
@@ -525,7 +539,8 @@ func FuzzClientArguments(f *testing.F) {
 			(cfg.operation == "csr" || cfg.operation == "verify-csr") && cfg.kind != "member" ||
 			cfg.operation != "generate" && cfg.input == "" ||
 			cfg.expectedPublicKey != nil && (cfg.operation == "generate" || len(cfg.expectedPublicKey) != ed25519.PublicKeySize) ||
-			strings.ContainsRune(cfg.input+cfg.output, 0) ||
+			cfg.expectedKeyFile != "" && (cfg.operation == "generate" || cfg.expectedPublicKey != nil) ||
+			strings.ContainsRune(cfg.input+cfg.output+cfg.expectedKeyFile, 0) ||
 			(cfg.operation == "generate" || cfg.operation == "rewrap") && cfg.output == "") {
 			t.Fatal("parser accepted unsupported configuration")
 		}

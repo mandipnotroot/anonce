@@ -15,7 +15,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make build` | All Go commands with Go 1.27.3 |
 | `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no native-package exclusions, including wrappers and signal handling. JS-only code is checked separately below |
 | `make lint` | Native and WASM entry-point vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 | `make wasm` | Go `js/wasm` public-request verifier; matching reviewed loader/notices, SHA-256 manifest, 8 MiB uncompressed size gate |
@@ -36,6 +36,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Member CSR | 130-byte fuzz input cap, 129-byte DER profile; bounded ASN.1 and signature verification, no KDF work |
 | WASM request adapter | 259-byte request fuzz input cap, exact 258-byte ASCII hex representation before bounded shared CSR parsing; expected-key fuzzing also caps the key input at 65 bytes for an exact 64-byte ASCII hex representation; no KDF work |
 | CLI arguments | 8193-byte fuzz input cap; no file, network, or KDF work |
+| CLI expected-key record | 75-byte data and 9-byte kind fuzz caps; exact 72/74-byte lowercase kind-tagged lines, no file, network, or KDF work |
 | CLI password framing | 2051 bytes for ordinary framing, 3076 for rewrap; no file, network, or KDF work |
 
 Review and license synthetic regression inputs before committing. Retain failures
@@ -49,6 +50,8 @@ in the relevant package's `testdata/fuzz/<target>` directory:
 - `internal/clientwasm`: `FuzzWASMRequest` and `FuzzWASMExpectedKey`, public hex
   requests/expected keys or malformed data only.
 - `internal/client/reviewerkey`: `FuzzReviewerKeyPayload`.
+- `internal/clientcli`: `FuzzClientArguments`, `FuzzClientPublicKeyLine`,
+  `FuzzClientPassword`, and `FuzzClientRewrapPasswords`.
 
 Key-payload seeds contain only malformed non-key data and public DER structure.
 CLI seeds are synthetic, not credentials. Never retain real passwords or private
@@ -103,6 +106,7 @@ its nonce-prefix behavior. Production code does not use ordinary fixed-nonce GCM
 | Password-free CSR verification, exact matching public key, concurrent calls, unchanged input, malformed/claimed/tampered requests, owner-only bounded files, symlink rejection, cancellation and short/failed writes | `TestClientVerifyCSRRoundTrip`, `TestClientVerifyCSRRejectsInvalidRequests`, `TestClientVerifyCSRRejectsUnsafeFiles`, `TestClientVerifyCSRFailsClosed`, `TestClientCSRRoundTrip`, `FuzzClientArguments`, `FuzzMemberCSR` |
 | Optional expected-key checking, either-case bounded hex, malformed/empty/repeated flag rejection before file access, every-byte key mismatches without output, and unchanged profile/signature checks | `TestClientExpectedPublicKeyArguments`, `TestClientVerifyCSRExpectedKey`, `TestClientVerifyCSRRoundTrip`, `TestClientVerifyCSRRejectsInvalidRequests`, `TestClientVerifyCSRFailsClosed`, `FuzzClientArguments` |
 | Optional inspection/request-verification public-key file export, exact public-only lines, unchanged input, owner-only/no-replace paths, no stdout fallback, validation and expected-key checks before file creation, cancellation before/after publication, concurrent publication and cleanup | `TestClientPublicKeyFileArguments`, `TestClientPublicKeyFile`, `TestClientPublicKeyFileValidation`, `TestClientPublicKeyFileRejectsUnsafePaths`, `TestClientPublicKeyFileCancellation`, `TestClientPublicKeyFileConcurrentPublication`, `TestClientInspectExpectedKeyRejectsInvalidPayload`, `TestClientVerifyCSRRejectsInvalidRequests`, `TestClientExpectedPublicKeyArguments`, `FuzzClientArguments` |
+| Expected-key file argument conflicts/bounds before file or stdin access, canonical kind-specific records, direct reuse of exports for all supported commands, mismatch and invalid-subject rejection, unchanged sources, no overwrite, unsafe files, cancellation, concurrent calls, and bounded record fuzzing | `TestClientExpectedKeyFileArguments`, `TestClientPublicKeyLine`, `TestClientExpectedKeyFile`, `TestClientExpectedKeyFileValidation`, `TestClientExpectedKeyFileRejectsUnsafePaths`, `TestClientExpectedKeyFileCancellation`, `TestClientExpectedKeyFileConcurrent`, `FuzzClientArguments`, `FuzzClientPublicKeyLine` |
 | WASM adapter valid/malformed hex, shared profile rejection, every-byte request mutations, concurrent native calls, bounded fuzzing | `TestWASMVerifyCSR`, `TestWASMVerifyCSRRejectsInvalidInput`, `FuzzWASMRequest` |
 | WASM expected-key matching in either hex case, malformed/empty/oversized keys, every-byte key mismatches, unchanged profile/signature rejection, concurrent calls and bounded two-input fuzzing | `TestWASMVerifyCSRForKey`, `TestWASMVerifyCSRForKeyRejectsInvalidInput`, `FuzzWASMExpectedKey` |
 | Actual WASM bridge, type/arity/size rejection without object coercion, native/public result parity, shutdown and namespace collisions | `TestClientNativeWASMCompatibility` with `scripts/wasm_test.mjs`, through `make wasm-test` |

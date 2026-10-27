@@ -101,15 +101,17 @@ not make a key trusted or authorized.
 | Command | Required flags | Result |
 | --- | --- | --- |
 | `client generate` | `-kind member\|reviewer -out PATH` | Fresh key, encrypted backup file; no stdout |
-| `client inspect` | `-kind member\|reviewer -in PATH`, optional `-out PATH` and `-expect-public-key HEX` | Validated backup, optionally matched to an expected key; public key on stdout or in a new owner-only file |
-| `client rewrap` | `-kind member\|reviewer -in PATH -out PATH`, optional `-expect-public-key HEX` | Validated existing key, optionally matched to an expected key, freshly encrypted backup under the replacement password; no stdout |
-| `client csr` | `-kind member -in PATH`, optional `-out PATH` and `-expect-public-key HEX` | Validated member backup, optionally matched to an expected key; signed identity-free binary DER on stdout, or in a new owner-only file with no stdout |
-| `client verify-csr` | `-kind member -in PATH`, optional `-out PATH` and `-expect-public-key HEX` | Validated member request and signature, optionally matched to an expected key; public key on stdout or in a new owner-only file, no password input |
+| `client inspect` | `-kind member\|reviewer -in PATH`, optional `-out PATH` and expected-key flag below | Validated backup, optionally matched to an expected key; public key on stdout or in a new owner-only file |
+| `client rewrap` | `-kind member\|reviewer -in PATH -out PATH`, optional expected-key flag below | Validated existing key, optionally matched to an expected key, freshly encrypted backup under the replacement password; no stdout |
+| `client csr` | `-kind member -in PATH`, optional `-out PATH` and expected-key flag below | Validated member backup, optionally matched to an expected key; signed identity-free binary DER on stdout, or in a new owner-only file with no stdout |
+| `client verify-csr` | `-kind member -in PATH`, optional `-out PATH` and expected-key flag below | Validated member request and signature, optionally matched to an expected key; public key on stdout or in a new owner-only file, no password input |
 | `client -help` | None | Static help on stdout; no password read |
 
 - `inspect` prints exactly `member:<hex>\n` or `reviewer:<hex>\n`, using the
   32-byte public key in lowercase hexadecimal. Optional `-out` selects
   [public-key file export](#local-public-key-file-export) instead of stdout.
+- Expected-key checks accept either `-expect-public-key HEX` or
+  [`-expect-public-key-file PATH`](#local-expected-key-files), never both.
 - Each operation also supports `-help`/`-h`. Unknown flags, positional arguments,
   missing values, unsupported kinds, and flags for another operation fail.
   Arguments are bounded to 8192 bytes including separators.
@@ -271,9 +273,42 @@ Cleanup failures are reported; sync durability depends on the filesystem and dev
 These files are public and linkable, not encrypted, signed attestations, or independent
 trust anchors. Retaining a record from a trusted original backup can support later
 expected-key checks; exporting an untrusted input's key does not make it trusted.
-The expected-key flag accepts only its existing 64-character hex encoding, not this
-file or its kind prefix. Matching still establishes no freshness, identity,
+The hex flag accepts only its existing 64-character encoding; use
+[`-expect-public-key-file`](#local-expected-key-files) to read this file directly.
+Matching still establishes no freshness, identity,
 revocation, enrollment authority, reviewer round binding, or expiry.
+
+### Local expected-key files
+
+`inspect`, `rewrap`, `csr`, and `verify-csr` accept `-expect-public-key-file PATH`
+instead of `-expect-public-key HEX`. Retain an independently trusted export from
+`inspect -out` or `verify-csr -out`; copying a key from the input being checked
+provides no substitution protection. Generation rejects both expected-key flags.
+
+The file must contain exactly the existing lowercase public-key line for the
+selected kind: `member:<64 lowercase hex characters>\n` (72 bytes) or
+`reviewer:<64 lowercase hex characters>\n` (74 bytes). Uppercase hex or kind names,
+bare hex, CRLF, missing LF, whitespace, extra lines, trailing bytes, and wrong-kind
+records fail. No trimming, format detection, or fallback is performed.
+
+The same [trusted owner-only file and parent checks](#file-custody) apply. Reads
+are capped at the selected kind's line length plus one byte to detect growth.
+The file is read once before password input or backup/request access; its public
+key is retained in memory for the existing post-validation comparison. Failures
+write no stdout and create no output or temporary files. `verify-csr` still never
+reads stdin. Empty, NUL-containing, repeated, oversized, or conflicting flags fail
+at argument parsing, before any file or password access.
+
+Matching still precedes output, CSR signing, or replacement encryption and does
+not weaken typed backup or request signature validation. Existing output and
+no-replace rules apply, including when the output names the expected-key file.
+Neither input file is modified. Cancellation propagates without unpinned fallback.
+
+The file must remain independently trusted, including its directory and ancestors.
+Permissions do not authenticate its contents or protect against hostile same-user
+writers. Its path can appear in process listings and shell history, and the public
+record remains linkable. Matching adds no freshness, revocation, identity,
+enrollment authority, reviewer round binding, or expiry guarantee.
 
 ### Local member certificate requests
 

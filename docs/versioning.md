@@ -109,6 +109,14 @@ publication of the existing public-key line after validation and optional expect
 matching. Omitting the flag preserves stdout behavior. Password framing, cryptographic
 profiles, WASM, and HTTP behavior are unchanged.
 
+Optional `-expect-public-key-file PATH` on `inspect`, `rewrap`, `csr`, and
+`verify-csr` is an additive interface requiring `semver:minor` review. It reads the
+existing canonical public-key export for the selected kind and is mutually exclusive
+with `-expect-public-key HEX`. Omitting it preserves existing behavior. Password
+framing, output, cryptographic profiles, WASM, and HTTP behavior are unchanged.
+See [expected-key files](key-management.md#local-expected-key-files) for exact grammar,
+file-custody requirements, and trust limits.
+
 ### WASM verifier compatibility
 
 The [public-only WASM verifier](key-management.md#local-wasm-request-verification)

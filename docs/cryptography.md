@@ -81,6 +81,12 @@ from `inspect` and `verify-csr` publishes their existing public-key line only af
 validation and optional expected-key matching. It adds no primitive, cryptographic
 format, signed attestation, or trust-discovery mechanism.
 
+Optional [expected-key file input](key-management.md#local-expected-key-files)
+reads that unchanged, kind-tagged lowercase public-key line through bounded
+owner-only file checks. It supplies the existing complete public-key comparison,
+not a new cryptographic profile, trust anchor, or primitive. The expected record
+must be independently trusted; validation and signing/encryption order are unchanged.
+
 The [WASM verifier's `verifyCSRForKey` method](key-management.md#local-wasm-request-verification)
 uses the same parser and full public-key comparison after signature validation.
 It changes no profile or primitive and requires an independently trusted expected

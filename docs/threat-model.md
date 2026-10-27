@@ -96,6 +96,13 @@ properties described below.
   can leave a complete file, and crashes can leave public temporary files. These
   records are linkable and neither encrypted nor signed attestations. Saving a key
   from an untrusted input does not establish independent trust or freshness.
+- Optional [expected-key file input](key-management.md#local-expected-key-files)
+  snapshots a bounded, kind-matched public record before password or subject-file
+  access, then uses the existing post-validation comparison without fallback.
+  Invalid records fail without output or file creation. This avoids a raw public-key
+  argument but exposes the file path; the record remains linkable. Owner-only file
+  checks do not authenticate the record or defeat hostile same-user writers. It
+  must be independently trusted and adds no freshness or authorization guarantee.
 
 ### Public-only WASM verifier
 

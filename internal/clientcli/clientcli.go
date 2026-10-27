@@ -30,12 +30,13 @@ import (
 const usage = `Development-only local keys; independent review is required before real use.
 Usage:
   client generate -kind member|reviewer -out PATH
-  client inspect -kind member|reviewer -in PATH [-out PATH] [-expect-public-key HEX]
-  client rewrap -kind member|reviewer -in PATH -out PATH [-expect-public-key HEX]
-  client csr -kind member -in PATH [-out PATH] [-expect-public-key HEX]
-  client verify-csr -kind member -in PATH [-out PATH] [-expect-public-key HEX]
+  client inspect -kind member|reviewer -in PATH [-out PATH] [EXPECTED-KEY]
+  client rewrap -kind member|reviewer -in PATH -out PATH [EXPECTED-KEY]
+  client csr -kind member -in PATH [-out PATH] [EXPECTED-KEY]
+  client verify-csr -kind member -in PATH [-out PATH] [EXPECTED-KEY]
   client -help
 
+EXPECTED-KEY: -expect-public-key HEX or -expect-public-key-file PATH, never both.
 Backup passwords come only from a pipe or regular file on stdin, never a terminal.
 Generate requires two matching LF-terminated password lines and EOF.
 Inspect requires one LF-terminated password line and EOF.
@@ -55,10 +56,14 @@ Request publication never overwrites a path; requests are public, not encrypted.
 Verify-csr checks a request and prints only its public key; it never reads stdin.
 Inspect, rewrap, csr, and verify-csr accept -expect-public-key with an independently trusted
 64-character hex public key for the selected kind.
+Alternatively, -expect-public-key-file reads an independently trusted owner-only export
+before password or backup/request access. It requires the exact lowercase kind:hex line
+with LF, as emitted by inspect/verify-csr; malformed or wrong-kind records fail closed.
 Empty, malformed, or repeated expected-key flags fail; mismatches print nothing.
 Rewrap checks the key before re-encryption or output-file creation.
 CSR checks the key before request signing or output-file creation.
 Public keys in arguments remain linkable and may appear in process listings/history.
+Expected-key file paths are also visible; file permissions do not establish trust.
 Request inputs require owner-only files and parents, just like backup inputs.
 Request verification establishes neither certificate trust nor enrollment authority.
 No enrollment, round binding, expiry enforcement, or network operations exist.
@@ -74,6 +79,7 @@ type config struct {
 	input             string
 	output            string
 	expectedPublicKey []byte
+	expectedKeyFile   string
 }
 
 // Main returns the process exit code after signal-aware execution.
@@ -124,7 +130,7 @@ func parse(args []string) (config, error) {
 	if cfg.operation != "generate" {
 		// Both supported key kinds have exactly 32 public bytes.
 		flags.Func("expect-public-key", "expected public key in hexadecimal", func(value string) error {
-			if cfg.expectedPublicKey != nil || len(value) != 2*ed25519.PublicKeySize {
+			if cfg.expectedPublicKey != nil || cfg.expectedKeyFile != "" || len(value) != 2*ed25519.PublicKeySize {
 				return errArguments
 			}
 			public, err := hex.DecodeString(value)
@@ -132,6 +138,13 @@ func parse(args []string) (config, error) {
 				return errArguments
 			}
 			cfg.expectedPublicKey = public
+			return nil
+		})
+		flags.Func("expect-public-key-file", "independently trusted public key file", func(value string) error {
+			if value == "" || strings.ContainsRune(value, 0) || cfg.expectedKeyFile != "" || cfg.expectedPublicKey != nil {
+				return errArguments
+			}
+			cfg.expectedKeyFile = value
 			return nil
 		})
 	}
@@ -177,6 +190,12 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("client: %w", err)
+	}
+	if cfg.expectedKeyFile != "" {
+		cfg.expectedPublicKey, err = readExpectedPublicKey(ctx, cfg.kind, cfg.expectedKeyFile)
+		if err != nil {
+			return err
+		}
 	}
 	if cfg.operation == "verify-csr" {
 		return verifyCSR(ctx, cfg.input, cfg.expectedPublicKey, cfg.output, output)

@@ -10,6 +10,14 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional `-expect-public-key-file PATH` on `client inspect`, `rewrap`, `csr`, and
+  `verify-csr` to read an independently trusted public-key export instead of a hex
+  argument. Bounded owner-only imports reject malformed or wrong-kind records before
+  password/input access; conflicting or repeated expected-key flags fail closed.
+  Matching still follows typed backup or request validation, before output, signing,
+  or replacement encryption. Existing formats, password framing, default behavior,
+  WASM, and HTTP are unchanged. Records remain public and linkable, not proof of
+  freshness, revocation, round binding, or enrollment authority.
 - Optional `client inspect -out PATH` and `client verify-csr -out PATH` for owner-only,
   synced, no-replace public-key files instead of stdout. Validation and optional
   expected-key matching precede file creation; publication failures never fall back
