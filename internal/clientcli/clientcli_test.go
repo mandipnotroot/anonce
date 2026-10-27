@@ -326,7 +326,7 @@ func TestClientInheritedPipeCancellation(t *testing.T) {
 	}
 }
 
-func TestClientRejectsRetiredBackup(t *testing.T) {
+func TestClientRejectsUnsupportedBackup(t *testing.T) {
 	for _, tc := range []struct {
 		command, kind, passwords string
 	}{
@@ -337,9 +337,9 @@ func TestClientRejectsRetiredBackup(t *testing.T) {
 		{"csr", "member", "synthetic old\n"},
 	} {
 		t.Run(tc.command+"/"+tc.kind, func(t *testing.T) {
-			// Synthetic retired-profile framing, not encrypted private-key data.
+			// Synthetic unsupported-profile framing, not encrypted private-key data.
 			backup := make([]byte, 108)
-			copy(backup, "ANONCEKS\x01\x01")
+			copy(backup, "ANONCEKS\x01\xff")
 			backup[10], backup[31] = byte(keystore.MemberKey), 76
 			if tc.kind == "reviewer" {
 				backup[10] = byte(keystore.ReviewerKey)
@@ -353,18 +353,18 @@ func TestClientRejectsRetiredBackup(t *testing.T) {
 			args := []string{tc.command, "-kind", tc.kind, "-in", input, "-out", output}
 			err := run(t.Context(), args, passwordFile(t, tc.passwords), &stdout)
 			if !errors.Is(err, keystore.ErrInvalidBackup) || stdout.Len() != 0 {
-				t.Fatalf("retired backup returned output or wrong error: %v", err)
+				t.Fatalf("unsupported backup returned output or wrong error: %v", err)
 			}
 			if strings.Contains(err.Error(), directory) || strings.Contains(err.Error(), "synthetic") {
-				t.Fatal("retired-backup error reflected sensitive input")
+				t.Fatal("unsupported-backup error reflected sensitive input")
 			}
 			entries, err := os.ReadDir(directory)
 			if err != nil || len(entries) != 1 || entries[0].Name() != "old" {
-				t.Fatal("retired backup created an output or temporary file")
+				t.Fatal("unsupported backup created an output or temporary file")
 			}
 			original, err := os.ReadFile(input)
 			if err != nil || !bytes.Equal(original, backup) {
-				t.Fatal("retired-backup rejection changed the input")
+				t.Fatal("unsupported-backup rejection changed the input")
 			}
 		})
 	}

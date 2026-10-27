@@ -192,8 +192,6 @@ All three packages follow these custody boundaries:
 - File permissions, atomic writes, password entry/confirmation, and browser
   persistence are caller responsibilities. The offline CLI implements the subset
   below. Never store a raw key beside its backup.
-- The generic keystore leaves serialization and purpose selection to callers;
-  typed wrappers fix both.
 - The format neither detects a restored old backup nor enforces revocation or
   reviewer-key expiry. Do not use it as evidence of safe retention/recovery.
 
@@ -215,13 +213,6 @@ Remaining custody requirements:
 `make build` builds `bin/client`, an optional development-only offline command using
 the shared key profiles. It is not product onboarding or a browser prerequisite.
 Independent review is required before real-key use.
-
-All current backup commands use ChaCha20-Poly1305 profile 2. Retired AES profile 1
-backups are rejected, including by `inspect`, `rewrap`, and `csr`; `rewrap` is not
-a format-migration command. Preserve old files and consult the
-[retired-profile recovery limits](cryptography.md#device-backup-profile-1) before
-changing tools. Flags and password framing are unchanged, but backup compatibility
-is intentionally breaking.
 
 The CLI performs no network calls, enrollment, general-purpose signing, reviewer
 round binding, expiry checks, or submission decryption. A local CSR signature does

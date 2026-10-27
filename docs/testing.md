@@ -70,9 +70,7 @@ locally with `BASH_ENV="$PWD/scripts/ci-shell.sh" bash -c 'make check'`.
 The keystore uses the library's RFC 8439 ChaCha20-Poly1305 AEAD with explicit
 `crypto/rand` nonces and one export per freshly salted derived key.
 `TestKeystoreFreshRandomness` and `TestKeystoreLibraryCompatibility` check the
-profile-2 nonce prefix and library composition. Retired AES headers fail before
-KDF admission in `TestKeystoreRejectsRetiredProfile`; no scanner suppression or
-legacy algorithm fallback is used.
+profile-2 nonce prefix and library composition.
 
 ### Implemented test mapping
 
@@ -83,9 +81,8 @@ legacy algorithm fallback is used.
 | Lifecycle and limits | `TestServeLifecycle`, `TestServePropagatesCancellationToRequests`, `TestServeClosesUnresponsiveRequests`, `TestServeListenerFailureClosesRequests`, `TestConnectionLimitAndClose`, `TestServerBounds` |
 | Shell paths, development gate, SRI, headers, methods, HEAD, no body reads/reflection | `TestSite`, `TestStylesheetIntegrity`, `TestSiteRejectsBrokenAssets`, `TestWebServiceBoundary`, `TestWebDelivery`, `TestDevelopmentStyleGuideFlag` |
 | Rejection of scripts, handlers, remote assets, active controls, malformed markup, wrong asset hashes | `scripts/test_web_check.py` |
-| Device-backup size, purpose, version/profile, reserved-byte and length validation before KDF work | `TestKeystoreRejectsInvalidInputs`, `TestKeystoreRejectsUnsafeParameters`, `FuzzBackup` |
-| Retired AES profile rejection for both key purposes before KDF admission, without output or input mutation | `TestKeystoreRejectsRetiredProfile`, `TestKeystoreRejectsUnsafeParameters`, `FuzzBackup` |
-| CLI inspection, rewrapping, and member CSR rejection of retired backups without stdout, files, input mutation, or sensitive error reflection | `TestClientRejectsRetiredBackup` |
+| Device-backup size, purpose, version/profile, reserved-byte and length validation for both key purposes before KDF work, without output or input mutation | `TestKeystoreRejectsInvalidInputs`, `TestKeystoreRejectsUnsafeParameters`, `FuzzBackup` |
+| CLI inspection, rewrapping, and member CSR rejection of unsupported profiles without stdout, files, input mutation, or sensitive error reflection | `TestClientRejectsUnsupportedBackup` |
 | Backup round trips, owned buffers, fresh salt/nonce, wrong passwords, header/ciphertext tampering, independent library composition | `TestKeystoreRoundTrip`, `TestKeystoreFreshRandomness`, `TestKeystoreRejectsTampering`, `TestKeystoreLibraryCompatibility` |
 | Backup cancelled/queued calls, cancellation at admission/derivation/output boundaries, and concurrent derivation admission | `TestKeystoreCancellation`, `TestKeystoreCancellationBoundaries`, `TestKeystoreConcurrent` |
 | Fresh member keys, usable signatures, backup round trips, buffer ownership, fresh exports, independent library encoding | `TestMemberKeyGenerate`, `TestMemberKeyRoundTrip`, `TestMemberKeyLibraryCompatibility` |

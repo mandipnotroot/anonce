@@ -108,50 +108,64 @@ func TestKeystoreRejectsUnsafeParameters(t *testing.T) {
 	// Occupy the KDF slot: malformed imports must fail without waiting for it.
 	kdfSlot <- struct{}{}
 	defer func() { <-kdfSlot }()
-	reject := func(t *testing.T, backup []byte) {
-		t.Helper()
-		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-		defer cancel()
-		secret, err := Open(ctx, MemberKey, []byte("synthetic test password"), backup)
-		if secret != nil || !errors.Is(err, ErrInvalidBackup) {
-			t.Fatalf("malformed import reached derivation or returned output: %v", err)
-		}
-	}
-	cases := []struct {
-		name   string
-		offset int
-		value  byte
-	}{
-		{"magic", 0, 0},
-		{"old version", 8, 0},
-		{"future version", 8, 2},
-		{"downgrade profile", 9, 0},
-		{"retired AES profile", 9, 1},
-		{"future profile", 9, 3},
-		{"unknown cost profile", 9, 255},
-		{"missing purpose", 10, 0},
-		{"other purpose", 10, byte(ReviewerKey)},
-		{"unknown purpose", 10, 255},
-		{"reserved", 11, 1},
-		{"overflow length", 28, 255},
-		{"wrong length", 31, 0},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, purpose := range []Purpose{MemberKey, ReviewerKey} {
+		t.Run(fmt.Sprintf("purpose=%d", purpose), func(t *testing.T) {
+			reject := func(t *testing.T, backup []byte) {
+				t.Helper()
+				original := bytes.Clone(backup)
+				ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+				defer cancel()
+				secret, err := Open(ctx, purpose, []byte("synthetic test password"), backup)
+				if secret != nil || !errors.Is(err, ErrInvalidBackup) || !bytes.Equal(backup, original) {
+					t.Fatalf("malformed import reached derivation, changed input, or returned output: %v", err)
+				}
+			}
+			otherPurpose := MemberKey
+			if purpose == MemberKey {
+				otherPurpose = ReviewerKey
+			}
+			cases := []struct {
+				name   string
+				offset int
+				value  byte
+			}{
+				{"magic", 0, 0},
+				{"zero version", 8, 0},
+				{"unsupported version", 8, 2},
+				{"zero profile", 9, 0},
+				{"unsupported profile", 9, 1},
+				{"unknown profile", 9, 3},
+				{"maximum profile", 9, 255},
+				{"missing purpose", 10, 0},
+				{"other purpose", 10, byte(otherPurpose)},
+				{"unknown purpose", 10, 255},
+				{"reserved", 11, 1},
+				{"overflow length", 28, 255},
+				{"wrong length", 31, 0},
+			}
 			backup := formatOnlyBackup(24)
-			backup[tc.offset] = tc.value
-			reject(t, backup)
+			backup[10] = byte(purpose)
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					mutated := bytes.Clone(backup)
+					mutated[tc.offset] = tc.value
+					reject(t, mutated)
+				})
+			}
+			for end := range len(backup) {
+				reject(t, backup[:end])
+			}
+			reject(t, append(bytes.Clone(backup), 0))
+			for _, size := range []int{0, 1, MaxSecretSize, MaxSecretSize + 1} {
+				boundary := formatOnlyBackup(size)
+				boundary[10] = byte(purpose)
+				if size == 0 || size > MaxSecretSize {
+					reject(t, boundary)
+				} else if !validBackup(purpose, boundary) {
+					t.Fatal("rejected valid size boundary")
+				}
+			}
 		})
-	}
-	backup := formatOnlyBackup(24)
-	for end := range len(backup) {
-		reject(t, backup[:end])
-	}
-	reject(t, append(backup, 0))
-	reject(t, formatOnlyBackup(0))
-	reject(t, formatOnlyBackup(MaxSecretSize+1))
-	if !validBackup(MemberKey, formatOnlyBackup(1)) || !validBackup(MemberKey, formatOnlyBackup(MaxSecretSize)) {
-		t.Fatal("rejected valid size boundaries")
 	}
 }
 
@@ -237,26 +251,6 @@ func TestKeystoreLibraryCompatibility(t *testing.T) {
 		t.Fatalf("could not independently open production backup: %v", err)
 	}
 	clear(opened)
-}
-
-func TestKeystoreRejectsRetiredProfile(t *testing.T) {
-	// A profile-1 header must be rejected before any KDF admission, for both key
-	// purposes. Synthetic bytes suffice because retired ciphertext is never opened.
-	kdfSlot <- struct{}{}
-	defer func() { <-kdfSlot }()
-	for _, purpose := range []Purpose{MemberKey, ReviewerKey} {
-		t.Run(fmt.Sprintf("purpose=%d", purpose), func(t *testing.T) {
-			backup := formatOnlyBackup(48)
-			backup[9], backup[10] = 1, byte(purpose)
-			original := bytes.Clone(backup)
-			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-			defer cancel()
-			opened, err := Open(ctx, purpose, []byte("synthetic test password"), backup)
-			if opened != nil || !errors.Is(err, ErrInvalidBackup) || !bytes.Equal(backup, original) {
-				t.Fatalf("retired profile reached derivation, changed input, or returned output: %v", err)
-			}
-		})
-	}
 }
 
 func TestKeystoreCancellation(t *testing.T) {
@@ -390,9 +384,6 @@ func FuzzBackup(f *testing.F) {
 	unknownProfile := formatOnlyBackup(1)
 	unknownProfile[9] = 255
 	f.Add(byte(MemberKey), unknownProfile)
-	retiredProfile := formatOnlyBackup(48)
-	retiredProfile[9] = 1
-	f.Add(byte(MemberKey), retiredProfile)
 	f.Add(byte(MemberKey), []byte("synthetic malformed input"))
 	f.Add(byte(0), []byte{})
 	f.Fuzz(func(t *testing.T, purpose byte, backup []byte) {

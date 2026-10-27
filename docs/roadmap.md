@@ -42,7 +42,7 @@ Available foundations:
 - **Read-only shell:** embedded pages and opt-in style guide, with markup, CSS,
   integrity, and delivery checks. Browser/accessibility evidence remains outstanding.
 - **Device backups:** [profile 2](cryptography.md#device-backup-profile-2) uses
-  Argon2id and ChaCha20-Poly1305, rejects retired AES profile 1, and provides
+  Argon2id and ChaCha20-Poly1305 and provides
   bounded parsing, authenticated headers, cancellation-aware admission, tests,
   and native benchmarks. Typed wrappers generate member/reviewer keys and validate
   encrypted PKCS #8 backups.

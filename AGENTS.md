@@ -21,8 +21,8 @@ Distinguish implemented from planned behavior.
 - `.github/`: collaboration templates and supported CI workflows.
 - `cmd/`, `internal/`: local CA, issuer, and submission HTTP infrastructure.
 - `internal/client/keystore`: bounded, in-memory device-backup encryption, used by
-  typed key wrappers; profile 2 uses Argon2id and ChaCha20-Poly1305 and rejects
-  retired AES profile 1 before derivation; no browser or service integration.
+  typed key wrappers; profile 2 uses Argon2id and ChaCha20-Poly1305;
+  no browser or service integration.
 - `internal/client/memberkey`: local Ed25519 member keys and validated encrypted
   backups; offline CLI integration, no browser or enrollment integration.
 - `internal/client/reviewerkey`: local X25519 reviewer keys and validated encrypted

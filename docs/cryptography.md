@@ -268,33 +268,13 @@ before returning output. Argon2id itself is not interruptible: cancellation duri
 it waits for that bounded computation to finish, then discards the result.
 See [key management](key-management.md#device-keystores) for buffer ownership and limits.
 
-The offline CLI's [password-change operation](key-management.md#backup-password-changes)
-validates an existing typed key before re-exporting it with fresh salt and nonce.
-It changes neither this format nor either key payload profile, preserves private
-key bytes, and introduces no new primitive or fallback. Previous profile-2 backups
-remain valid; password replacement is not key rotation or revocation.
-
 The construction follows [RFC 8439, section 2.8](https://www.rfc-editor.org/rfc/rfc8439.html#section-2.8)
 and the pinned [Go ChaCha20-Poly1305 API](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/chacha20poly1305)
-(consulted 2026-10-27). Argon2id parameters, header length, payload encodings, and
-total size bounds are unchanged from the retired profile, but the profile byte
-and encryption algorithm are incompatible. Independent review remains required.
+(consulted 2026-10-27). Independent review remains required.
 
 Native benchmarks are available, but browser performance and native/WASM
 interoperability remain untested. Do not weaken this profile to make an interface
 responsive; introduce a separately reviewed profile and compatibility plan if needed.
-
-### Device-backup profile 1
-
-Retired unreleased profile: format version `1`, profile byte `1`, Argon2id and
-AES-256-GCM. Current readers reject it before password derivation; writers emit
-only profile `2`. Changing its header byte does not convert its ciphertext.
-There is no automatic migration or legacy decrypt fallback. Preserve an old file
-unchanged if recovery is needed. A trusted compatible earlier checkout is needed
-for recovery; any migration must be separately reviewed, local-only, preserve the
-key and purpose, validate the new backup, and never overwrite the original or
-write plaintext keys to disk. No migration command is provided. See
-[compatibility](versioning.md#cryptographic-file-compatibility).
 
 ### Browser vault profile boundary
 

@@ -99,12 +99,9 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Breaking backup-format change: replace unreleased AES-256-GCM profile 1 with
-  RFC 8439 ChaCha20-Poly1305 profile 2. Keep Argon2id costs, payload encodings,
-  size bounds, CLI flags, and password framing unchanged. Generate a fresh nonce
-  and salt per export and authenticate the complete header. Reject retired AES
-  backups before derivation without fallback; no migration command is provided.
-  Preserve old files for recovery with a trusted earlier implementation.
+- Document only the supported ChaCha20-Poly1305 device-backup profile, remove repeated
+  custody guidance, and consolidate parser-rejection tests across both key purposes.
+  Backup formats and runtime behavior are unchanged.
 - Set the planned product direction to browser-only accounts, shared review links
   and an eligible-round dashboard, with automatic device-side key management and
   identity-side encrypted member-key backups. Document researched passkey/PRF
@@ -129,10 +126,6 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
   wrong-algorithm, and noncanonical payloads. Independent review is still required.
 - Modernize internal Go cleanup, slice searches, and test contexts without changing
   HTTP responses, command interfaces, or device-backup formats.
-- Original unreleased device-backup profile 1 introduced the bounded backup
-  grammar. It is now retired in favor of profile 2, without a legacy decoder or
-  parameter fallback. Independent review and native/WASM interoperability
-  evidence are still required before real-key use.
 - Shorten documentation, improve scanning, and link named standards without changing
   requirements or behavior.
 - Breaking HTTP behavior: the submission process now serves HTML at `/` instead

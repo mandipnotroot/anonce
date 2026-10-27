@@ -47,10 +47,9 @@ or AEAD. Admission for device-backup profile 2 includes Argon2id, BLAKE2b,
 ChaCha20-Poly1305, its ChaCha20/Poly1305 and alias helpers, and CPU-feature detection.
 The standard 12-byte-nonce `New` API is selected, not `NewX` or a custom primitive.
 The [pinned API and source](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/chacha20poly1305)
-were reviewed against RFC 8439 on 2026-10-27. No module version or hash changes are
-needed; package admission does not establish independent cryptographic review or
-browser performance. FIPS-only configurations may reject this algorithm; there
-is no AES fallback or FIPS-validation claim.
+were reviewed against RFC 8439 on 2026-10-27. Package admission does not establish
+independent cryptographic review or browser performance. FIPS-only configurations
+may reject this algorithm; there is no algorithm fallback or FIPS-validation claim.
 
 - **Licensing:** both pinned module `LICENSE` files use BSD-3-Clause and retain
   the original Go copyright holder; `PATENTS` grants remain upstream. No source is

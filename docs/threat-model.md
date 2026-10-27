@@ -43,10 +43,9 @@ properties described below.
   Owned private buffers require caller cleanup; library/runtime copies prevent
   complete erasure. See [custody limits](key-management.md#device-keystores).
 - Profile 2 uses ChaCha20-Poly1305 with one encryption per freshly salted derived
-  key and a fresh 96-bit nonce. Do not reuse the key for multiple exports. Retired
-  AES profile 1 is rejected before derivation, not tried as a decryption fallback.
-  Existing old backups need a trusted earlier implementation for recovery; no
-  automatic migration is provided. This is not a FIPS-validation claim.
+  key and a fresh 96-bit nonce. Do not reuse the key for multiple exports.
+  Unsupported profiles fail before derivation, with no algorithm fallback.
+  This is not a FIPS-validation claim.
 
 ### Offline key CLI
 
