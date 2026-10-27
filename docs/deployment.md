@@ -59,6 +59,11 @@ body-bearing requests without reading or draining; the network stack may buffer 
 Loopback is not authentication or isolation from local users/processes.
 **Do not expose these services through an external proxy.**
 
+The separate [WASM verifier](key-management.md#local-wasm-request-verification)
+builds with `make wasm`; `make wasm-test` requires development-only Node.js 22.23.3.
+Artifacts remain in `bin/wasm/` and are not served by the HTTP commands. This does
+not add a browser deployment or change the shell's CSP.
+
 Required future local stack:
 
 - Reproducible Docker/Podman-compatible image; Compose issuer, submission/web,

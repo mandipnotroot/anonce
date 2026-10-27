@@ -6,10 +6,11 @@ GO ?= go
 export GOTOOLCHAIN := go1.27.3
 FUZZTIME ?= 15s
 
-.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint
+.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test
 help:
 	@echo 'setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check'
 	@echo 'build test lint fuzz vuln web-lint'
+	@echo 'wasm wasm-test'
 
 setup:
 	git config --local core.hooksPath .githooks
@@ -51,6 +52,13 @@ labels:
 build:
 	$(GO) build -trimpath -o bin/ ./cmd/...
 
+wasm:
+	python3 scripts/build_wasm.py --go '$(GO)'
+
+wasm-test: wasm
+	$(GO) test -race -count=1 -tags=wasmintegration -run='^TestClientNativeWASMCompatibility$$' ./internal/clientwasm
+	GOOS=js GOARCH=wasm PATH="$$($(GO) env GOROOT)/lib/wasm:$$PATH" $(GO) test ./internal/clientwasm
+
 test:
 	mkdir -p coverage
 	$(GO) test -race -coverprofile=coverage/out ./...
@@ -58,6 +66,7 @@ test:
 
 lint:
 	$(GO) vet ./...
+	GOOS=js GOARCH=wasm $(GO) vet ./cmd/wasm ./internal/clientwasm
 	$(GO) run mvdan.cc/gofumpt@v0.12.0 -d cmd internal web
 	test -z "$$($(GO) run mvdan.cc/gofumpt@v0.12.0 -l cmd internal web)"
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run
@@ -70,6 +79,7 @@ fuzz:
 	$(GO) test ./internal/client/keystore -run='^$$' -fuzz='^FuzzBackup$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/memberkey -run='^$$' -fuzz='^FuzzMemberKeyPayload$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/membercsr -run='^$$' -fuzz='^FuzzMemberCSR$$' -fuzztime=$(FUZZTIME) -parallel=2
+	$(GO) test ./internal/clientwasm -run='^$$' -fuzz='^FuzzWASMRequest$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/reviewerkey -run='^$$' -fuzz='^FuzzReviewerKeyPayload$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/clientcli -run='^$$' -fuzz='^FuzzClientArguments$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/clientcli -run='^$$' -fuzz='^FuzzClientPassword$$' -fuzztime=$(FUZZTIME) -parallel=2
@@ -85,4 +95,4 @@ vuln:
 	$(GO) list -m all
 	$(GO) run github.com/zricethezav/gitleaks/v8@v8.30.1 dir --redact --no-banner .
 
-check: policy-test attribution commitlint reuse docs-lint docs-links build test lint fuzz vuln web-lint
+check: policy-test attribution commitlint reuse docs-lint docs-links build test lint fuzz vuln web-lint wasm-test

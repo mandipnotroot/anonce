@@ -74,6 +74,11 @@ reuses this parser and library signature check without changing the profile.
 It prints only the validated public key and makes no certificate-trust or
 enrollment-authorization decision.
 
+The [local WASM verifier](key-management.md#local-wasm-request-verification) uses
+the same parser and unchanged DER profile. Hexadecimal is only its bounded bridge
+input representation, not a new request format. Its native/Node compatibility
+evidence does not cover device backups or private-key custody in browsers.
+
 ## Encryption and public proofs
 
 - HPKE base mode avoids identifying sender keys; token verification authorizes submission.

@@ -10,6 +10,10 @@ uses the official [OpenAPI 3.1.0 specification](https://spec.openapis.org/oas/v3
 and separates implemented endpoints from proposed discovery APIs. Cryptographic
 schemas await encoding and profile review.
 
+The separate [local WASM verifier](key-management.md#local-wasm-request-verification)
+has an in-process JavaScript interface, not an HTTP route. Its artifacts are not
+served by these commands; the HTTP contract and OpenAPI definition are unchanged.
+
 ## Implemented infrastructure
 
 All three commands expose:

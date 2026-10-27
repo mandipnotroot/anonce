@@ -13,11 +13,13 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Target | Current checks |
 | --- | --- |
 | `make build` | All Go commands with Go 1.27.3 |
-| `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no exclusions, including wrappers and signal handling |
-| `make lint` | vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no native-package exclusions, including wrappers and signal handling. JS-only code is checked separately below |
+| `make lint` | Native and WASM entry-point vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
+| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzWASMRequest`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
+| `make wasm` | Go `js/wasm` public-request verifier; matching reviewed loader/notices, SHA-256 manifest, 8 MiB uncompressed size gate |
+| `make wasm-test` | Rebuild artifacts, compare native and Node WASM public-request results, exercise the actual bridge, and run adapter unit tests under the Go JS/WASM runner |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -32,6 +34,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Backup structure | Maximum backup size plus one byte; allocation-free parser, no Argon2id |
 | Member/reviewer payload | 49-byte input cap, 48-byte ASN.1 profile; no KDF work |
 | Member CSR | 130-byte fuzz input cap, 129-byte DER profile; bounded ASN.1 and signature verification, no KDF work |
+| WASM request adapter | 259-byte fuzz input cap, exact 258-byte ASCII hex representation before bounded shared CSR parsing; no KDF work |
 | CLI arguments | 8193-byte fuzz input cap; no file, network, or KDF work |
 | CLI password framing | 2051 bytes for ordinary framing, 3076 for rewrap; no file, network, or KDF work |
 
@@ -43,6 +46,7 @@ in the relevant package's `testdata/fuzz/<target>` directory:
 - `internal/client/keystore`: `FuzzBackup`.
 - `internal/client/memberkey`: `FuzzMemberKeyPayload`.
 - `internal/client/membercsr`: `FuzzMemberCSR`, public requests or malformed data only.
+- `internal/clientwasm`: `FuzzWASMRequest`, public hex requests or malformed data only.
 - `internal/client/reviewerkey`: `FuzzReviewerKeyPayload`.
 
 Key-payload seeds contain only malformed non-key data and public DER structure.
@@ -87,10 +91,13 @@ its nonce-prefix behavior. Production code does not use ordinary fixed-nonce GCM
 | Member CSR library verification, deterministic fixed profile, buffer ownership, invalid/inconsistent keys, extra claims, algorithms, byte mutations, cancellation, concurrent calls | `TestMemberCSRRoundTrip`, `TestMemberCSRRejectsInvalidKeys`, `TestMemberCSRRejectsInvalidRequests`, `TestMemberCSRCancellation`, `TestMemberCSRConcurrent`, `FuzzMemberCSR` |
 | CLI member CSR exact public DER, unchanged backup, wrong password/purpose, authenticated non-key or tampered input, secret-free errors, cancellation, help, short/failed writes | `TestClientCSRRoundTrip`, `TestClientCSRRejectsInvalidBackup`, `TestClientCSRFailsClosed`, `TestClientArguments`, `FuzzClientArguments` |
 | Password-free CSR verification, exact matching public key, concurrent calls, unchanged input, malformed/claimed/tampered requests, owner-only bounded files, symlink rejection, cancellation and short/failed writes | `TestClientVerifyCSRRoundTrip`, `TestClientVerifyCSRRejectsInvalidRequests`, `TestClientVerifyCSRRejectsUnsafeFiles`, `TestClientVerifyCSRFailsClosed`, `TestClientCSRRoundTrip`, `FuzzClientArguments`, `FuzzMemberCSR` |
+| WASM adapter valid/malformed hex, shared profile rejection, every-byte request mutations, concurrent native calls, bounded fuzzing | `TestWASMVerifyCSR`, `TestWASMVerifyCSRRejectsInvalidInput`, `FuzzWASMRequest` |
+| Actual WASM bridge, type/arity/size rejection without object coercion, native/public result parity, shutdown and namespace collisions | `TestClientNativeWASMCompatibility` with `scripts/wasm_test.mjs`, through `make wasm-test` |
+| Reviewed loader/notice digest rejection, invalid artifact headers and size bounds | `scripts/test_build_wasm.py` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
 Web checks validate allowlists/delivery, not full HTML/CSS grammar or browser execution.
-No JavaScript exists. Screenshots, actual CSP enforcement, keyboard access, assistive
+The shell loads no JavaScript. Screenshots, actual CSP enforcement, keyboard access, assistive
 technology, contrast, and print rendering remain untested.
 
 Native backup costs can be measured with:
@@ -100,10 +107,31 @@ go test ./internal/client/keystore -run='^$' -bench=BenchmarkKeystore -benchmem
 ```
 
 This measures the full 64 MiB, three-pass profile, not a weakened test substitute.
-Browser costs, native/WASM compatibility, independent cryptographic review,
+Browser costs, private-key/backup native/WASM compatibility, independent cryptographic review,
 independent file-custody review, certificate/enrollment integration, and end-to-end device
 confidentiality remain untested. Reviewer round binding, expiry enforcement, and
 envelope-decryption workflows are not implemented.
+
+### WASM verifier checks
+
+`make wasm-test` requires Node.js 22.23.3 on `PATH`, in addition to the pinned Go
+toolchain. No npm installation is needed. `make check` includes this target; CI
+installs the pinned external runtime. `make wasm` needs only Go and Python.
+
+`TestClientNativeWASMCompatibility` generates three fresh member requests natively,
+checks their expected public keys, and sends only public hex requests/results to
+the actual built WASM module. It checks both hex cases, every-byte mutations,
+extra claims, malformed inputs, bridge argument types/arity, oversized strings,
+hostile objects, shutdown, and namespace collisions. The runner verifies artifact
+hashes before loading and rejects unexpected `fetch` calls. Failures and missing
+tools/artifacts fail the target; it does not skip unavailable checks.
+
+The Go JS/WASM runner also executes adapter unit tests and fuzz seeds. Native race
+coverage does not instrument WASM; Node execution is not browser, CSP, accessibility,
+private-key interoperability, or independent security evidence. Loader and compiler
+must match under the official [Go WASM guidance](https://go.dev/wiki/WebAssembly)
+(accessed 2026-10-27). See the [interface](key-management.md#local-wasm-request-verification)
+and [dependency review](dependencies.md#wasm-runtime-support).
 
 ## Required runtime command contract
 
@@ -118,7 +146,6 @@ JavaScript and full syntax validation.
 | Target | Required behavior |
 | --- | --- |
 | `make db-test` | Migrations, privileges, concurrency, backup/restore on real PostgreSQL |
-| `make wasm` | Shared Go client build for `js/wasm`, matching loader, hash and size gate |
 | `make e2e` | Headless browser checks against the Compose stack |
 | `make up` | `docker compose up --build --wait` with loopback-only demo exposure |
 | `make smoke` | Health/readiness checks and service isolation checks |
@@ -201,7 +228,6 @@ All named protocol tests below are **planned**, not present.
 | Unauthorized review or plaintext export upload | Access denied; decrypted data stays local | `TestReviewPreservesDeviceBoundary` |
 | Wrong, expired, replayed, or cross-round reply capability | Rejected without an identity or mailbox existence oracle | `TestReplyEnforcesCapabilityPolicy` |
 | Unauthorized or cross-round abuse action | No flag/block change or identity lookup | `TestAbuseEnforcesRoundScope` |
-| Native/WASM format or vector mismatch | Compatibility gate fails | `TestClientNativeWASMCompatibility` |
 | Restored expired round key | Controlled backup restoration rejects active reuse | `TestRetentionRejectsExpiredKeyRestore` |
 
 ## Fuzz plan

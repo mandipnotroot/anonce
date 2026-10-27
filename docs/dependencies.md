@@ -23,7 +23,8 @@ advisories before further imports.
 | REUSE 6.2.0 | GPL-3.0-or-later upstream tool | External compliance check; [REUSE 3.3 specification](https://reuse.software/spec-3.3/) |
 | [mdBook 0.5.4](https://github.com/rust-lang/mdBook/releases/tag/v0.5.4) | MPL-2.0 | Documentation-only tool; official release archives and asset notices pinned in `scripts/mdbook.toml` |
 | pip-tools 7.6.2 | BSD-3-Clause | External documentation lock compiler |
-| [Go 1.27.3](https://go.dev/dl/?mode=json) | BSD-3-Clause | Pinned standard-library runtime and external compiler |
+| [Go 1.27.3](https://go.dev/dl/?mode=json) | BSD-3-Clause | Pinned standard-library runtime and external compiler; WASM build copies the matching loader and original notices unchanged |
+| [Node.js 22.23.3](https://nodejs.org/dist/v22.23.3/) | MIT with bundled third-party notices | External development-only WASM test runtime; no npm dependencies or Node product build |
 | [x/crypto 0.58.0](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/argon2) | BSD-3-Clause | Admitted Argon2id and its BLAKE2b dependency for device-backup profile 1; exact hashes in `go.sum` |
 | [x/sys 0.49.0](https://pkg.go.dev/golang.org/x/sys@v0.49.0/cpu) | BSD-3-Clause | Indirect CPU-feature detection for x/crypto; exact hashes in `go.sum` |
 | [gofumpt 0.12.0](https://github.com/mvdan/gofumpt) | BSD-3-Clause | External Go formatter |
@@ -58,6 +59,24 @@ detection only.
   [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) in x/crypto's unmaintained
   OpenPGP package, with no fixed version. It is neither imported nor reachable.
   Do not introduce OpenPGP through this dependency.
+
+### WASM runtime support
+
+The public-only verifier imports only standard-library packages and the shared
+member-request parser. `make wasm` copies Go 1.27.3's unmodified
+[loader](https://github.com/golang/go/blob/go1.27.3/lib/wasm/wasm_exec.js),
+[license](https://github.com/golang/go/blob/go1.27.3/LICENSE), and
+[patent grant](https://github.com/golang/go/blob/go1.27.3/PATENTS) beside the build.
+Their reviewed SHA-256 hashes are pinned in `scripts/wasm.toml`; original upstream
+notices stay intact. No upstream asset or generated WASM is checked in or served
+by the shell. Updating Go requires reviewing these pins and rerunning compatibility
+and security checks (sources accessed 2026-10-27).
+
+Node.js is pinned in the same manifest and CI. Use official
+[22.23.3 archives and checksums](https://nodejs.org/dist/v22.23.3/SHASUMS256.txt)
+and retain its upstream notices if redistributing that external test runtime.
+Only built-in assertion, crypto, filesystem, module, and path facilities are used
+by the test runner. No Node code handles passwords or private-key fixtures.
 
 ### Documentation theme
 

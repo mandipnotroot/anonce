@@ -33,6 +33,9 @@ Distinguish implemented from planned behavior.
   revocation, key rotation, or enrollment.
 - `internal/client/membercsr`: local Ed25519 certificate requests and bounded
   profile validation; no identity claims, certificate issuance, or transport.
+- `cmd/wasm`, `internal/clientwasm`: public-only member request verification using
+  the shared parser; local WASM artifacts and Node compatibility checks, no page
+  integration, device-key access, or enrollment.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
 
@@ -80,10 +83,13 @@ make lint             # Go analysis, formatting, and module checks
 make fuzz             # bounded configuration, shell-route, backup, key, and CLI parser fuzzing
 make vuln             # Go vulnerability, static security, and secret checks
 make web-lint         # rendered inert markup, local CSS, SRI, and HTTP delivery checks
+make wasm             # public-only Go WASM verifier, matching loader, hashes, size gate
+make wasm-test        # native/WASM public-request compatibility and bridge checks
 ```
 
-See [testing](docs/testing.md) for required database, WASM, container, browser, and
-protocol targets, none available yet. Add real Make targets with implementation.
+See [testing](docs/testing.md) for required database, container, browser, and
+protocol targets, none available yet. WASM evidence covers request verification
+only. Add real Make targets with implementation.
 No successful no-op checks or claims that unavailable commands passed.
 
 ## Engineering boundaries

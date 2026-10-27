@@ -10,6 +10,10 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Public-only Go WASM member request verifier using the existing CSR profile and
+  parser, with bounded input, explicit shutdown, reviewed loader hashes/notices,
+  an artifact size gate, and native/WASM compatibility checks. No page integration,
+  private-key access, enrollment, or certificate trust is implemented.
 - Offline `client verify-csr` for bounded member request and signature validation,
   with public-key-only output, owner-only file imports, and no stdin or private-key
   access. Existing cryptographic formats and commands are unchanged. Verification

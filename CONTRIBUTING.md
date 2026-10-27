@@ -49,7 +49,9 @@ documents; do not maintain separate site copies.
 and rendered-shell checks. Go 1.27.3 and tools are pinned in `Makefile`; downloads
 use the Go module proxy/checksum service. See [testing](docs/testing.md) for evidence
 limits and [deployment](docs/deployment.md#local-development) for process flags.
-Container and database setup are not available.
+`make check` also requires Node.js 22.23.3 for public-request WASM compatibility
+checks. No npm install or Node product build is used; `make wasm` builds with Go
+alone. Container and database setup are not available.
 
 ## Documentation site
 

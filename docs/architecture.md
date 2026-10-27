@@ -7,7 +7,8 @@ Audience: implementers, reviewers, and operators evaluating system boundaries.
 
 Status: proposed application architecture. Local HTTP services, a read-only shell,
 device-backup encryption, local member/reviewer keys, and an offline key CLI exist.
-Domain policy, browser clients, storage, and the submission protocol are unimplemented.
+A local public-only WASM request verifier exists without browser page integration.
+Domain policy, browser key custody, storage, and the submission protocol are unimplemented.
 
 ## Components and ownership
 
@@ -61,7 +62,8 @@ validly signed forms served to different members.
 | `cmd/server`, `cmd/issuer`, `cmd/ca` | Process configuration and lifecycle |
 | `internal/app`, `internal/service` | Implemented command configuration, bounded local HTTP, and unavailable-operation responses |
 | `cmd/client`, `internal/clientcli` | Implemented offline key CLI and file custody |
-| `cmd/cli`, `cmd/wasm` | Planned protocol CLI and browser entry points |
+| `cmd/wasm`, `internal/clientwasm` | Implemented public-only member-request verifier; no page integration or device-key access |
+| `cmd/cli` | Planned protocol CLI |
 | `internal/client` | Shared composition, validation, and local state |
 | `internal/client/keystore` | Implemented in-memory device-backup encryption; no transport or persistence |
 | `internal/client/memberkey` | Implemented local Ed25519 member-key generation and typed encrypted backups; no transport or persistence |
@@ -85,9 +87,11 @@ Current implementation limits:
 - No databases or membership, issuance, or submission domain packages exist.
 - `internal/web` pre-renders fixed pages at startup using escaped templates and
   first-party CSS embedded in `web/`. Request data never enters templates.
-  Only the submission service serves these pages; no executable browser code exists.
+  Only the submission service serves these pages; they load no executable browser code.
 - The offline CLI uses the shared key packages; HTTP services do not import them.
   See [cryptography](cryptography.md#keystore-composition) for their profiles and limits.
+- The separate [WASM artifact](key-management.md#local-wasm-request-verification)
+  shares member-request validation with the CLI. No HTTP service serves it.
 
 ## Availability and failure
 

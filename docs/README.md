@@ -9,7 +9,7 @@ Audience: readers choosing the appropriate project reference.
 
 | Status | Scope |
 | --- | --- |
-| Implemented | Repository and documentation checks; local HTTP services and read-only shell; device-backup encryption, local member/reviewer keys, and offline key CLI. See [testing](testing.md) |
+| Implemented | Repository and documentation checks; local HTTP services and read-only shell; device-backup encryption, local member/reviewer keys, offline key CLI, and public-only WASM request verification. See [testing](testing.md) |
 | Designed | Application, cryptography, product UI, database boundaries, releases |
 | Unavailable | Working protocol/product, screenshots, production deployment, protocol security results |
 

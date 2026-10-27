@@ -10,7 +10,7 @@ promises. Track tasks in issues and requirements in the linked references.
 
 ## Now
 
-- Extend the local Go services with CLI/WASM entry points and a Compose environment using
+- Extend the local Go services and client entry points with a Compose environment using
   the boundaries in [architecture](architecture.md) and [deployment](deployment.md).
 - Extend the implemented build, race, lint, fuzz, and security targets with database,
   client, container, and browser checks from [testing](testing.md).
@@ -38,6 +38,9 @@ Available foundations:
   the key and does not revoke old backups. Local member CSR generation and bounded
   validation use an identity-free profile, with password-free `verify-csr` public-key
   inspection; enrollment and certificate issuance remain unavailable.
+- **Public-only WASM verifier:** [member-request validation](key-management.md#local-wasm-request-verification)
+  reuses the shared parser, with matching loader/notices, hashes, a size gate, and
+  native/Node compatibility tests. No page integration or private-key access exists.
 
 These foundations do not establish protocol or storage security. Browser custody,
 enrollment, signing-service integration, reviewer round binding, expiry, submission

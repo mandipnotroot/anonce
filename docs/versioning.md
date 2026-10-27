@@ -75,6 +75,14 @@ It reads an owner-only request file, does not read stdin, and prints the same
 public-key line as `inspect` after validating the existing CSR profile. Existing
 commands, password framing, cryptographic formats, and HTTP behavior are unchanged.
 
+### WASM verifier compatibility
+
+The [public-only WASM verifier](key-management.md#local-wasm-request-verification)
+is an additive opt-in development interface requiring `semver:minor` review. Its
+namespace, methods, bounded hex input, public-key output, rejection, and shutdown
+behavior are new contracts. Existing CLI commands, HTTP behavior, and cryptographic
+profiles are unchanged. No browser delivery or private-key compatibility is claimed.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

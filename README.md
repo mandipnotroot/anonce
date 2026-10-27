@@ -32,7 +32,7 @@ a round. Changing the published limit requires a new round ID.
 
 ## Contribute now
 
-Use Go 1.27.3, Python 3.11 or newer, Git, GNU Make, and REUSE 6.2.0 for local checks.
+Use Go 1.27.3, Python 3.11 or newer, Node.js 22.23.3, Git, GNU Make, and REUSE 6.2.0 for local checks.
 The Go launcher can download the pinned toolchain. ExifTool is required when tracked
 binary images, fonts, or PDFs are added.
 
@@ -74,8 +74,10 @@ Local key tools are also available:
 - An [offline CLI](docs/key-management.md#local-key-cli) for encrypted backup
   generation, public-key-only inspection, backup password changes, and local member
   certificate requests. Requests do not enroll a member or issue a certificate.
+- A [public-only WASM request verifier](docs/key-management.md#local-wasm-request-verification),
+  built with `make wasm` and checked with `make wasm-test`.
 
-Browser integration is unavailable. Independent review is required before real-key use.
+Browser page and private-key integration are unavailable. Independent review is required before real-key use.
 
 ## Architecture at a glance
 

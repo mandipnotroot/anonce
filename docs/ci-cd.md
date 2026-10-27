@@ -10,7 +10,7 @@ Audience: contributors, repository administrators, and release maintainers.
 | Workflow/check | Coverage |
 | --- | --- |
 | Policy | Current files, full reachable history, PR text/commit range/title grammar, exactly one SemVer label, Unreleased change or maintainer exception |
-| Runtime | HTTP commands and offline key CLI; race/coverage, lint, 15-second parser fuzzing, vulnerability/secret scans, and shell-delivery checks. See [testing](testing.md#current-executable-checks) |
+| Runtime | HTTP commands, offline key CLI, and public-only WASM verifier; race/coverage, lint, 15-second parser fuzzing, vulnerability/secret scans, shell delivery, and native/Node request compatibility. See [testing](testing.md#current-executable-checks) |
 | Documentation / Pages | Pinned mdBook and upstream notices via `make docs-setup`, offline build, source/rendered links; `book.toml` and `SUMMARY.md` configure the site |
 | Nightly | Full-history policy run |
 | Weekly dependency updates | GitHub Actions, Python check tools, Go modules |
@@ -21,7 +21,7 @@ Audience: contributors, repository administrators, and release maintainers.
   and local runner hardening.
 - Hardening sets restrictive defaults and validates checkout context, not hosted-runner
   network isolation. No proprietary monitoring service is required.
-- Runtime does not test protocols, databases, browsers, containers, or WASM.
+- Runtime does not test protocols, databases, browsers, containers, or WASM private-key custody.
 - Manually review Make-target pins and the mdBook manifest, including licenses/advisories;
   weekly updates do not cover them. See [dependency identity rules](../CONTRIBUTING.md#dependency-updates).
 - Never combine privileged write credentials with untrusted PR execution. Publish
@@ -34,7 +34,7 @@ Planned, not implemented. Track work in the [roadmap](roadmap.md).
 
 | Workflow | Intended checks |
 | --- | --- |
-| Runtime checks | Extend the infrastructure job with database, browser, WASM, container, and simulation targets in [testing](testing.md#required-runtime-command-contract) |
+| Runtime checks | Extend the infrastructure job with database, browser, container, and simulation targets in [testing](testing.md#required-runtime-command-contract); extend WASM evidence beyond public requests |
 | Nightly extension | Longer fuzzing and Scorecard beyond the existing vulnerability and complete repository/history checks |
 | PR reporting | Coverage artifact and restricted comment publication without executing PR content |
 | Release | Enforce the [release checklist](releasing.md#maintainer-release-checklist) in trusted publication jobs |

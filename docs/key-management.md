@@ -243,6 +243,42 @@ trust, revocation, or enrollment authorization. Its public key remains linkable
 and must not reach the anonymous submission origin. Independent review is required
 before real use.
 
+## Local WASM request verification
+
+`make wasm` builds a development-only `js/wasm` entry point in `bin/wasm/` using
+Go 1.27.3. It reuses `membercsr.Parse`; no cryptographic profile changes. The
+directory contains `client.wasm`, the matching unmodified `wasm_exec.js`, Go
+`LICENSE`/`PATENTS`, `LICENSE.anonce`, and `SHA256SUMS`. The build checks reviewed
+loader/notice hashes and an 8 MiB uncompressed WASM ceiling in `scripts/wasm.toml`.
+Generated files are disposable, not signed releases or independently trusted hashes.
+
+After a trusted host loads the matching Go runtime and starts the module with
+`Go.run`, `globalThis.anonce` exposes only:
+
+| Method | Contract |
+| --- | --- |
+| `verifyCSR(hex)` | Exactly one primitive string containing 258 ASCII hexadecimal characters, either case, encoding the unchanged 129-byte DER profile; returns exactly `member:<lowercase hex>\n` on success, JavaScript `null` on invalid input |
+| `close()` | No arguments; removes the namespace, releases callbacks, and lets `Go.run` finish. Extra arguments return `null` without shutting down |
+
+The bridge checks the JavaScript string length before copying into Go, then
+bounds hex decoding and calls the shared profile/signature validator. It rejects
+objects without inspecting or coercing them. PEM, trailing bytes, extra claims,
+and invalid signatures fail without public output. Calls are synchronous; hosts
+must bound repeated calls and must not reuse saved callbacks after shutdown.
+An existing `anonce` namespace is never overwritten; the new instance exits instead.
+
+There is no file, password, private-key, network, storage, or enrollment interface.
+Public requests and keys remain linkable and must not reach the anonymous submission
+origin. The loading realm and its built-ins must be trusted; WASM does not isolate
+the verifier from its host. Do not change the inert shell's CSP to load this artifact.
+No browser page, delivery loader, CSP integration, or supported-browser evidence is
+provided. See [testing](testing.md#wasm-verifier-checks) for Node-only evidence and
+[compatibility](versioning.md#wasm-verifier-compatibility) for review requirements.
+
+This follows the official [Go WebAssembly build/runtime guidance](https://go.dev/wiki/WebAssembly)
+and [Go 1.27.3 JavaScript bindings](https://pkg.go.dev/syscall/js@go1.27.3)
+(accessed 2026-10-27). No Node product build or npm dependencies are introduced.
+
 ## Retention and destruction
 
 - Destroy controlled round-key copies after the retention deadline. Record the public

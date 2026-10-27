@@ -67,6 +67,20 @@ properties described below.
   printing a public key, without passwords or private keys. File checks do not
   make that key trusted, prove freshness, or authorize enrollment.
 
+### Public-only WASM verifier
+
+- The [local verifier](key-management.md#local-wasm-request-verification) exposes
+  only the existing member-request parser and public output. It bounds primitive
+  string input before Go copies/decoding and does not inspect caller objects.
+- Requests remain linkable and replayable; signature validation establishes no
+  identity, certificate trust, freshness, or enrollment authority. Do not load
+  membership requests on the anonymous submission origin.
+- Build hashes detect changed local artifacts, not a hostile distributor. The
+  host realm and built-ins are trusted. Repeated calls, host allocations, and Go
+  runtime memory are not bounded by the per-request size limit.
+- Node compatibility tests are not browser execution, CSP, private-key custody,
+  or independent security evidence. The HTTP shell still loads no executable code.
+
 ## Assets and principals
 
 - **Assets:** membership identities, eligibility, keys, answers, token unlinkability,
