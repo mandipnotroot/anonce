@@ -36,8 +36,9 @@ Available foundations:
 - **Offline CLI:** [generation, public-key inspection, and password changes](key-management.md#local-key-cli)
   with bounded password input and no-replace encrypted files. Rewrapping preserves
   the key and does not revoke old backups. Local member CSR generation and bounded
-  validation use an identity-free profile, with password-free `verify-csr` public-key
-  inspection; enrollment and certificate issuance remain unavailable.
+  validation use an identity-free profile, with optional owner-only no-replace
+  request export and password-free `verify-csr` public-key inspection; enrollment
+  and certificate issuance remain unavailable.
 - **Public-only WASM verifier:** [member-request validation](key-management.md#local-wasm-request-verification)
   reuses the shared parser, with matching loader/notices, hashes, a size gate, and
   native/Node compatibility tests. No page integration or private-key access exists.

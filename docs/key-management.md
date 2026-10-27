@@ -103,7 +103,7 @@ not make a key trusted or authorized.
 | `client generate` | `-kind member\|reviewer -out PATH` | Fresh key, encrypted backup file; no stdout |
 | `client inspect` | `-kind member\|reviewer -in PATH` | Validated backup; public key only on stdout |
 | `client rewrap` | `-kind member\|reviewer -in PATH -out PATH` | Validated existing key, freshly encrypted backup under the replacement password; no stdout |
-| `client csr` | `-kind member -in PATH` | Validated member backup; signed identity-free request as binary DER on stdout |
+| `client csr` | `-kind member -in PATH`, optional `-out PATH` | Validated member backup; signed identity-free binary DER on stdout, or in a new owner-only file with no stdout |
 | `client verify-csr` | `-kind member -in PATH` | Validated member request and signature; public key only on stdout, no password input |
 | `client -help` | None | Static help on stdout; no password read |
 
@@ -209,14 +209,30 @@ See [testing](testing.md#implemented-test-mapping) for executable evidence and
 
 `csr` opens a member-purpose backup through `memberkey` and uses the shared
 `membercsr` package to create [member CSR profile 1](cryptography.md#member-csr-profile-1).
-Stdout contains exactly 129 bytes of binary DER without a label, PEM armor, or
-additional newline. Only `-kind member` is accepted; subject, extension, password,
-and output-path flags are unavailable. Existing backup files are unchanged.
+Without `-out`, stdout contains exactly 129 bytes of binary DER without a label,
+PEM armor, or additional newline. Only `-kind member` is accepted; subject,
+extension, and password flags are unavailable. Existing backup files are unchanged.
 
 The command uses the same bounded one-line stdin and trusted-file import rules as
 `inspect`. Validation or cancellation before writing produces no stdout; an output
 failure can leave a partial public request, which must be discarded. Password and
 owned private buffers are cleared on return, subject to the runtime limits above.
+
+With `-out PATH`, the command publishes the same 129 public bytes in a new regular
+file with permissions at most `0600` and writes nothing to stdout. An explicitly
+empty output path fails rather than selecting stdout. Use an existing owner-only
+trusted parent directory under the [file-custody rules](#file-custody). The shared
+publication helper syncs and closes a same-directory temporary file, then creates
+the destination with a no-replace hard link and syncs the directory. Existing
+files, directories, and symlinks, including the input backup, are never replaced.
+Unsupported hard-link filesystems fail closed without a rename fallback.
+
+Validation failure creates no output. Cancellation before publication removes the
+temporary file when possible; an error or cancellation after publication can leave
+a complete request. A crash can leave a public `.anonce-request-` temporary file.
+Check the destination before retrying. File requests are not encrypted: they
+contain only the linkable public key and its signature, never private-key bytes.
+They can be passed directly to `verify-csr` without changing permissions.
 
 A request is not a certificate, fresh challenge, enrollment proof, or authorization.
 It includes no identity, cohort, enrollment code, or requested privileges. It is

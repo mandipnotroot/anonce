@@ -63,6 +63,12 @@ properties described below.
   invalid signatures. Requests are public but linkable and replayable; they do not
   authenticate enrollment or belong on the anonymous submission path. HTTP
   services still perform no signing or request handling.
+- Optional [request file export](key-management.md#local-member-certificate-requests)
+  shares the owner-only, no-replace publication path but stores public DER, not
+  encrypted data. Failed validation creates no file; interruption after publication
+  can leave a complete request, and crashes can leave public temporary files.
+  File permissions do not establish confidentiality from the device owner or make
+  a request trusted.
 - Local `verify-csr` uses the same bounded profile and signature validation before
   printing a public key, without passwords or private keys. File checks do not
   make that key trusted, prove freshness, or authorize enrollment.

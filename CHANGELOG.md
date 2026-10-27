@@ -10,6 +10,10 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional `client csr -out PATH` for owner-only, synced, no-replace public request
+  files that can be used directly by `verify-csr`. Existing stdout behavior,
+  passwords, cryptographic formats, and HTTP services are unchanged. This does not
+  implement enrollment or certificate issuance.
 - Public-only Go WASM member request verifier using the existing CSR profile and
   parser, with bounded input, explicit shutdown, reviewed loader hashes/notices,
   an artifact size gate, and native/WASM compatibility checks. No page integration,

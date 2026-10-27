@@ -13,13 +13,32 @@ import (
 	"github.com/mandipnotroot/anonce/internal/client/memberkey"
 )
 
-func writeCSR(ctx context.Context, password, backup []byte, output io.Writer) error {
+func createCSR(ctx context.Context, password, backup []byte) ([]byte, error) {
 	key, err := memberkey.Open(ctx, password, backup)
 	if err != nil {
-		return fmt.Errorf("member request: %w", err)
+		return nil, fmt.Errorf("member request: %w", err)
 	}
 	defer clear(key)
 	der, err := membercsr.Create(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return der, nil
+}
+
+func writeCSRFile(ctx context.Context, password, backup []byte, path string) error {
+	der, err := createCSR(ctx, password, backup)
+	if err != nil {
+		return err
+	}
+	if err := writeOwnedFile(ctx, path, der, ".anonce-request-"); err != nil {
+		return fmt.Errorf("member request: %w", err)
+	}
+	return nil
+}
+
+func writeCSR(ctx context.Context, password, backup []byte, output io.Writer) error {
+	der, err := createCSR(ctx, password, backup)
 	if err != nil {
 		return err
 	}

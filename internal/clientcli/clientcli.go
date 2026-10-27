@@ -31,7 +31,7 @@ Usage:
   client generate -kind member|reviewer -out PATH
   client inspect -kind member|reviewer -in PATH
   client rewrap -kind member|reviewer -in PATH -out PATH
-  client csr -kind member -in PATH
+  client csr -kind member -in PATH [-out PATH]
   client verify-csr -kind member -in PATH
   client -help
 
@@ -47,6 +47,8 @@ Generate publishes an encrypted backup without overwriting any existing path.
 Rewrap preserves the key in a new backup; it neither replaces nor revokes old copies.
 Inspect validates the backup and prints only its public key, not authorization.
 CSR prints a signed identity-free DER request, not a certificate or enrollment.
+CSR -out publishes the public request in a new owner-only file without stdout.
+Request publication never overwrites a path; requests are public, not encrypted.
 Verify-csr checks a request and prints only its public key; it never reads stdin.
 Request inputs require owner-only files and parents, just like backup inputs.
 Request verification establishes neither certificate trust nor enrollment authority.
@@ -100,6 +102,9 @@ func parse(args []string) (config, error) {
 	if cfg.operation == "generate" || cfg.operation == "rewrap" {
 		flags.StringVar(&cfg.output, "out", "", "new encrypted backup output")
 	}
+	if cfg.operation == "csr" {
+		flags.StringVar(&cfg.output, "out", "", "new public request output instead of stdout")
+	}
 	if cfg.operation != "generate" {
 		flags.StringVar(&cfg.input, "in", "", "input file")
 	}
@@ -117,6 +122,17 @@ func parse(args []string) (config, error) {
 	if (cfg.operation == "generate" || cfg.operation == "rewrap") && cfg.output == "" ||
 		cfg.operation != "generate" && cfg.input == "" {
 		return config{}, errArguments
+	}
+	if cfg.operation == "csr" && cfg.output == "" {
+		var emptyOutput bool
+		flags.Visit(func(f *flag.Flag) {
+			if f.Name == "out" {
+				emptyOutput = true
+			}
+		})
+		if emptyOutput {
+			return config{}, errArguments
+		}
 	}
 	return cfg, nil
 }
@@ -160,6 +176,9 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 	}
 	defer clear(backup)
 	if cfg.operation == "csr" {
+		if cfg.output != "" {
+			return writeCSRFile(ctx, password, backup, cfg.output)
+		}
 		return writeCSR(ctx, password, backup, output)
 	}
 	public, err := inspect(ctx, cfg.kind, password, backup)

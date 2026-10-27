@@ -70,6 +70,11 @@ binary DER stdout. The new cryptographic request profile requires `semver:major`
 review under the format policy above. Existing commands, encrypted backups, and
 HTTP behavior are unchanged. No certificate or enrollment compatibility is claimed.
 
+The optional `client csr -out PATH` is an additive interface requiring
+`semver:minor` review. It selects owner-only, no-replace file publication instead
+of stdout. Omitting it preserves the existing stdout contract; other commands,
+password framing, cryptographic profiles, and HTTP behavior are unchanged.
+
 `client verify-csr` is an additive opt-in command requiring `semver:minor` review.
 It reads an owner-only request file, does not read stdin, and prints the same
 public-key line as `inspect` after validating the existing CSR profile. Existing
