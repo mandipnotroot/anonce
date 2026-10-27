@@ -32,6 +32,7 @@ Distinguish implemented from planned behavior.
   encrypted files, plus identity-free member CSR stdout or no-replace file output
   with optional expected-public-key matching before signing
   and password-free request verification with optional expected-public-key matching;
+  inspection and request verification support owner-only no-replace public-key files;
   no old-backup revocation, key rotation, or enrollment.
 - `internal/client/membercsr`: local Ed25519 certificate requests and bounded
   profile validation; no identity claims, certificate issuance, or transport.

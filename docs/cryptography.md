@@ -76,6 +76,11 @@ enrollment-authorization decision. Its optional expected-public-key check compar
 the complete public key only after profile and signature validation. This adds
 no cryptographic format, primitive, or trust-discovery mechanism.
 
+Optional [public-key file export](key-management.md#local-public-key-file-export)
+from `inspect` and `verify-csr` publishes their existing public-key line only after
+validation and optional expected-key matching. It adds no primitive, cryptographic
+format, signed attestation, or trust-discovery mechanism.
+
 The [WASM verifier's `verifyCSRForKey` method](key-management.md#local-wasm-request-verification)
 uses the same parser and full public-key comparison after signature validation.
 It changes no profile or primitive and requires an independently trusted expected

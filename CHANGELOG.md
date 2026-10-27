@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional `client inspect -out PATH` and `client verify-csr -out PATH` for owner-only,
+  synced, no-replace public-key files instead of stdout. Validation and optional
+  expected-key matching precede file creation; publication failures never fall back
+  to stdout. Default output, password framing, cryptographic formats, WASM, and HTTP
+  behavior are unchanged. Exported keys remain public and linkable, not trusted
+  attestations or evidence of freshness or enrollment authority.
 - Optional `client csr -expect-public-key HEX` to reject a substituted member
   backup after typed validation, before signing or creating a request file. Works
   with stdout and `-out`; mismatches produce no output. The expected key must be

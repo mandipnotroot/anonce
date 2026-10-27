@@ -58,7 +58,7 @@ func writeCSR(ctx context.Context, password, backup, expected []byte, output io.
 	return nil
 }
 
-func verifyCSR(ctx context.Context, path string, expected ed25519.PublicKey, output io.Writer) error {
+func verifyCSR(ctx context.Context, path string, expected ed25519.PublicKey, destination string, output io.Writer) error {
 	der, err := readOwnedFile(ctx, path, membercsr.DERSize)
 	if err != nil {
 		return fmt.Errorf("verify member request: %w", err)
@@ -75,9 +75,8 @@ func verifyCSR(ctx context.Context, path string, expected ed25519.PublicKey, out
 	if expected != nil && !bytes.Equal(public, expected) {
 		return errors.New("verify member request: public key does not match expected key")
 	}
-	line := fmt.Sprintf("member:%x\n", public)
-	if n, err := io.WriteString(output, line); err != nil || n != len(line) {
-		return errors.New("verify member request: write public key")
+	if err := outputPublicKey(ctx, "member", public, destination, output); err != nil {
+		return fmt.Errorf("verify member request: %w", err)
 	}
 	return nil
 }

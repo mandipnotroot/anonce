@@ -30,10 +30,10 @@ import (
 const usage = `Development-only local keys; independent review is required before real use.
 Usage:
   client generate -kind member|reviewer -out PATH
-  client inspect -kind member|reviewer -in PATH [-expect-public-key HEX]
+  client inspect -kind member|reviewer -in PATH [-out PATH] [-expect-public-key HEX]
   client rewrap -kind member|reviewer -in PATH -out PATH [-expect-public-key HEX]
   client csr -kind member -in PATH [-out PATH] [-expect-public-key HEX]
-  client verify-csr -kind member -in PATH [-expect-public-key HEX]
+  client verify-csr -kind member -in PATH [-out PATH] [-expect-public-key HEX]
   client -help
 
 Backup passwords come only from a pipe or regular file on stdin, never a terminal.
@@ -47,6 +47,8 @@ Backup parents must already exist with owner-only permissions.
 Generate publishes an encrypted backup without overwriting any existing path.
 Rewrap preserves the key in a new backup; it neither replaces nor revokes old copies.
 Inspect validates the backup and prints only its public key, not authorization.
+Inspect and verify-csr -out publish the public-key line in a new owner-only file,
+without stdout or overwriting an existing path. Public keys are linkable, not encrypted.
 CSR prints a signed identity-free DER request, not a certificate or enrollment.
 CSR -out publishes the public request in a new owner-only file without stdout.
 Request publication never overwrites a path; requests are public, not encrypted.
@@ -113,6 +115,9 @@ func parse(args []string) (config, error) {
 	if cfg.operation == "csr" {
 		flags.StringVar(&cfg.output, "out", "", "new public request output instead of stdout")
 	}
+	if cfg.operation == "inspect" || cfg.operation == "verify-csr" {
+		flags.StringVar(&cfg.output, "out", "", "new public key output instead of stdout")
+	}
 	if cfg.operation != "generate" {
 		flags.StringVar(&cfg.input, "in", "", "input file")
 	}
@@ -145,7 +150,7 @@ func parse(args []string) (config, error) {
 		cfg.operation != "generate" && cfg.input == "" {
 		return config{}, errArguments
 	}
-	if cfg.operation == "csr" && cfg.output == "" {
+	if cfg.output == "" {
 		var emptyOutput bool
 		flags.Visit(func(f *flag.Flag) {
 			if f.Name == "out" {
@@ -174,7 +179,7 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 		return fmt.Errorf("client: %w", err)
 	}
 	if cfg.operation == "verify-csr" {
-		return verifyCSR(ctx, cfg.input, cfg.expectedPublicKey, output)
+		return verifyCSR(ctx, cfg.input, cfg.expectedPublicKey, cfg.output, output)
 	}
 	if cfg.operation == "rewrap" {
 		return runRewrap(ctx, cfg, input)
@@ -215,9 +220,8 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 	if cfg.expectedPublicKey != nil && !bytes.Equal(public, cfg.expectedPublicKey) {
 		return errors.New("inspect backup: public key does not match expected key")
 	}
-	line := fmt.Sprintf("%s:%x\n", cfg.kind, public)
-	if n, err := io.WriteString(output, line); err != nil || n != len(line) {
-		return errors.New("inspect backup: write public key")
+	if err := outputPublicKey(ctx, cfg.kind, public, cfg.output, output); err != nil {
+		return fmt.Errorf("inspect backup: %w", err)
 	}
 	return nil
 }

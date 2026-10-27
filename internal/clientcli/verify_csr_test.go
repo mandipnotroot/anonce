@@ -166,6 +166,11 @@ func TestClientVerifyCSRRejectsInvalidRequests(t *testing.T) {
 				if strings.Contains(err.Error(), path) || strings.Contains(err.Error(), "synthetic") {
 					t.Fatal("failure reflected request input")
 				}
+				args = append(args, "-out", filepath.Join(filepath.Dir(path), "public"))
+				if err := run(t.Context(), args, nil, &stdout); err == nil || stdout.Len() != 0 {
+					t.Fatal("invalid request produced a public-key file or stdout")
+				}
+				assertPublicKeyFiles(t, filepath.Dir(path), 1)
 			}
 		})
 	}

@@ -47,7 +47,7 @@ func TestClientArguments(t *testing.T) {
 		{"verify csr missing input", []string{"verify-csr", "-kind=member"}, errArguments},
 		{"verify csr missing kind", []string{"verify-csr", "-in=request"}, errArguments},
 		{"verify csr reviewer", []string{"verify-csr", "-kind=reviewer", "-in=request"}, errArguments},
-		{"verify csr output flag", []string{"verify-csr", "-kind=member", "-in=request", "-out=result"}, errArguments},
+		{"verify csr output flag", []string{"verify-csr", "-kind=member", "-in=request", "-out=result"}, nil},
 		{"verify csr password flag", []string{"verify-csr", "-password=synthetic"}, errArguments},
 		{"verify csr positional", []string{"verify-csr", "-kind=member", "-in=request", "extra"}, errArguments},
 		{"verify csr empty path", []string{"verify-csr", "-kind=member", "-in="}, errArguments},
@@ -74,7 +74,7 @@ func TestClientArguments(t *testing.T) {
 		{"rewrap unknown kind", []string{"rewrap", "-kind", "ca", "-in", "old", "-out", "new"}, errArguments},
 		{"rewrap password flag", []string{"rewrap", "-password=synthetic-input"}, errArguments},
 		{"input on generate", []string{"generate", "-kind", "member", "-out", "b", "-in", "a"}, errArguments},
-		{"output on inspect", []string{"inspect", "-kind", "member", "-in", "a", "-out", "b"}, errArguments},
+		{"output on inspect", []string{"inspect", "-kind", "member", "-in", "a", "-out", "b"}, nil},
 		{"empty input on generate", []string{"generate", "-kind", "member", "-out", "b", "-in="}, errArguments},
 		{"empty output on inspect", []string{"inspect", "-kind", "member", "-in", "a", "-out="}, errArguments},
 		{"unknown flag", []string{"generate", "-password=synthetic-input"}, errArguments},
@@ -104,6 +104,9 @@ func TestClientExpectedPublicKeyArguments(t *testing.T) {
 		{"verify-csr", "-kind=member", "-in=request"},
 		{"inspect", "-kind=member", "-in=backup"},
 		{"inspect", "-kind=reviewer", "-in=backup"},
+		{"inspect", "-kind=member", "-in=backup", "-out=public"},
+		{"inspect", "-kind=reviewer", "-in=backup", "-out=public"},
+		{"verify-csr", "-kind=member", "-in=request", "-out=public"},
 		{"rewrap", "-kind=member", "-in=old", "-out=new"},
 		{"rewrap", "-kind=reviewer", "-in=old", "-out=new"},
 		{"csr", "-kind=member", "-in=backup"},
@@ -477,6 +480,11 @@ func passwordFile(t *testing.T, data string) *os.File {
 func FuzzClientArguments(f *testing.F) {
 	f.Add("generate\x00-kind\x00member\x00-out\x00backup")
 	f.Add("inspect\x00-kind=reviewer\x00-in=backup")
+	for _, base := range []string{"inspect\x00-kind=member\x00-in=backup", "inspect\x00-kind=reviewer\x00-in=backup", "verify-csr\x00-kind=member\x00-in=request"} {
+		f.Add(base + "\x00-out=public")
+		f.Add(base + "\x00-out=")
+		f.Add(base + "\x00-out=public\x00-expect-public-key=" + strings.Repeat("ab", ed25519.PublicKeySize))
+	}
 	for _, kind := range []string{"member", "reviewer"} {
 		base := "inspect\x00-kind=" + kind + "\x00-in=backup\x00-expect-public-key="
 		f.Add(base + strings.Repeat("ab", ed25519.PublicKeySize))
@@ -516,7 +524,6 @@ func FuzzClientArguments(f *testing.F) {
 			cfg.operation != "generate" && cfg.operation != "inspect" && cfg.operation != "rewrap" && cfg.operation != "csr" && cfg.operation != "verify-csr" ||
 			(cfg.operation == "csr" || cfg.operation == "verify-csr") && cfg.kind != "member" ||
 			cfg.operation != "generate" && cfg.input == "" ||
-			cfg.output != "" && cfg.operation != "generate" && cfg.operation != "rewrap" && cfg.operation != "csr" ||
 			cfg.expectedPublicKey != nil && (cfg.operation == "generate" || len(cfg.expectedPublicKey) != ed25519.PublicKeySize) ||
 			strings.ContainsRune(cfg.input+cfg.output, 0) ||
 			(cfg.operation == "generate" || cfg.operation == "rewrap") && cfg.output == "") {

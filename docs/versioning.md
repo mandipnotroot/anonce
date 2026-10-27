@@ -103,6 +103,12 @@ requiring `semver:minor` review. It checks the complete expected public key afte
 validating the request, before output. Omitting the flag preserves existing
 behavior. Cryptographic profiles and the WASM interface are unchanged.
 
+Optional `client inspect -out PATH` and `client verify-csr -out PATH` are additive
+interfaces requiring `semver:minor` review. They select owner-only, no-replace file
+publication of the existing public-key line after validation and optional expected-key
+matching. Omitting the flag preserves stdout behavior. Password framing, cryptographic
+profiles, WASM, and HTTP behavior are unchanged.
+
 ### WASM verifier compatibility
 
 The [public-only WASM verifier](key-management.md#local-wasm-request-verification)

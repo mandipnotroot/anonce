@@ -89,6 +89,13 @@ properties described below.
   without public output. It prevents substitution only when the expected key was
   obtained independently and trusted. Public key arguments remain linkable and
   may be visible in local process listings or shell history.
+- Optional [public-key file export](key-management.md#local-public-key-file-export)
+  from `inspect` and `verify-csr` uses owner-only, no-replace publication after
+  validation and optional expected-key matching. A mismatch creates no file;
+  publication failures never fall back to stdout. Interruption after publication
+  can leave a complete file, and crashes can leave public temporary files. These
+  records are linkable and neither encrypted nor signed attestations. Saving a key
+  from an untrusted input does not establish independent trust or freshness.
 
 ### Public-only WASM verifier
 

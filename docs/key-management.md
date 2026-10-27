@@ -101,14 +101,15 @@ not make a key trusted or authorized.
 | Command | Required flags | Result |
 | --- | --- | --- |
 | `client generate` | `-kind member\|reviewer -out PATH` | Fresh key, encrypted backup file; no stdout |
-| `client inspect` | `-kind member\|reviewer -in PATH`, optional `-expect-public-key HEX` | Validated backup, optionally matched to an expected key; public key only on stdout |
+| `client inspect` | `-kind member\|reviewer -in PATH`, optional `-out PATH` and `-expect-public-key HEX` | Validated backup, optionally matched to an expected key; public key on stdout or in a new owner-only file |
 | `client rewrap` | `-kind member\|reviewer -in PATH -out PATH`, optional `-expect-public-key HEX` | Validated existing key, optionally matched to an expected key, freshly encrypted backup under the replacement password; no stdout |
 | `client csr` | `-kind member -in PATH`, optional `-out PATH` and `-expect-public-key HEX` | Validated member backup, optionally matched to an expected key; signed identity-free binary DER on stdout, or in a new owner-only file with no stdout |
-| `client verify-csr` | `-kind member -in PATH`, optional `-expect-public-key HEX` | Validated member request and signature, optionally matched to an expected key; public key only on stdout, no password input |
+| `client verify-csr` | `-kind member -in PATH`, optional `-out PATH` and `-expect-public-key HEX` | Validated member request and signature, optionally matched to an expected key; public key on stdout or in a new owner-only file, no password input |
 | `client -help` | None | Static help on stdout; no password read |
 
 - `inspect` prints exactly `member:<hex>\n` or `reviewer:<hex>\n`, using the
-  32-byte public key in lowercase hexadecimal.
+  32-byte public key in lowercase hexadecimal. Optional `-out` selects
+  [public-key file export](#local-public-key-file-export) instead of stdout.
 - Each operation also supports `-help`/`-h`. Unknown flags, positional arguments,
   missing values, unsupported kinds, and flags for another operation fail.
   Arguments are bounded to 8192 bytes including separators.
@@ -219,7 +220,7 @@ See [testing](testing.md#implemented-test-mapping) for executable evidence and
 ### Local backup key matching
 
 `inspect -expect-public-key HEX` requires the validated member or reviewer backup
-to contain that exact public key before stdout is written. `rewrap` supports the
+to contain that exact public key before stdout or an output file is written. `rewrap` supports the
 same flag before [password replacement](#backup-password-changes). Supply exactly
 64 ASCII hexadecimal characters in either case, without a kind prefix, whitespace,
 or newline.
@@ -229,7 +230,8 @@ rejects it; CSR creation and request verification support it separately below.
 
 Inspection still requires the usual one-line password input, trusted-file checks,
 authenticated purpose, and canonical typed payload validation. A match prints the
-unchanged `member:<hex>\n` or `reviewer:<hex>\n` line; a mismatch fails with no stdout.
+unchanged `member:<hex>\n` or `reviewer:<hex>\n` line, or publishes it with `-out`;
+a mismatch fails with no stdout or file creation.
 Errors contain neither key nor the file path. Cancellation before output prints
 nothing; output failures can leave a partial line, which must be discarded.
 
@@ -242,6 +244,36 @@ A match establishes neither freshness, revocation, identity, authorization, nor
 reviewer round binding or expiry. Older backups for the same key still match. For
 X25519, this compares public keys, not exact private encodings: equivalent private
 encodings can produce the same public key. Cryptographic profiles are unchanged.
+
+### Local public-key file export
+
+`inspect -out PATH` and `verify-csr -out PATH` publish exactly the same public-key
+line as their default stdout output in a new owner-only regular file. They write
+nothing to stdout, including on failure, and never fall back to stdout. An explicitly
+empty output path fails before password input or file access. Omitting `-out`
+preserves stdout behavior, including detection of short or failed writes.
+
+Validation and optional `-expect-public-key` matching finish before any output or
+temporary file is created. Inspection still requires its one-line password input;
+request verification never reads stdin. Neither command exports a private key.
+
+Use an existing owner-only trusted directory under the [file-custody rules](#file-custody).
+The shared publisher syncs and closes a same-directory temporary file with permissions
+at most `0600`, publishes it with a no-replace hard link, and syncs the directory.
+Existing files, directories, symlinks, and the input itself are never replaced.
+Unsupported hard-link filesystems fail closed without a rename fallback.
+
+Cancellation before publication removes the temporary file when possible. Errors or
+cancellation after publication can leave a complete final file; a crash can leave a
+public `.anonce-public-key-` temporary file. Inspect the destination before retrying.
+Cleanup failures are reported; sync durability depends on the filesystem and device.
+
+These files are public and linkable, not encrypted, signed attestations, or independent
+trust anchors. Retaining a record from a trusted original backup can support later
+expected-key checks; exporting an untrusted input's key does not make it trusted.
+The expected-key flag accepts only its existing 64-character hex encoding, not this
+file or its kind prefix. Matching still establishes no freshness, identity,
+revocation, enrollment authority, reviewer round binding, or expiry.
 
 ### Local member certificate requests
 
@@ -294,10 +326,11 @@ origin. No CA transport or code-consumption workflow exists.
 
 `verify-csr` reads a request file and reuses `membercsr.Parse` to enforce the
 unchanged member CSR profile 1 and verify its signature through `crypto/x509`.
-It accepts `-kind member -in PATH` and an optional `-expect-public-key HEX`. It
-never reads stdin or performs password derivation, private-key operations, network
-calls, or file writes. Success prints
-exactly `member:<hex>\n`, matching the public-key encoding from `inspect`.
+It accepts `-kind member -in PATH`, with optional `-out PATH` and
+`-expect-public-key HEX`. It never reads stdin or performs password derivation, private-key operations, network
+calls, or input-file writes. Success prints exactly `member:<hex>\n`, matching the
+public-key encoding from `inspect`, or publishes that line through
+[public-key file export](#local-public-key-file-export).
 
 Use an owner-only regular file in an owner-only trusted directory, under the same
 [import rules](#file-custody) as backups. The file is capped at 129 bytes before
@@ -307,8 +340,8 @@ stdout. Cancellation is checked before reading, after reading, and before output
 Output failures can leave a partial public-key line, which must be discarded.
 
 With `-expect-public-key HEX`, the validated request must contain that exact
-32-byte public key before any stdout is written. Supply exactly 64 ASCII hex
-characters in either case, without a `member:` prefix, whitespace, or newline.
+32-byte public key before any stdout or output file is written. Supply exactly
+64 ASCII hex characters in either case, without a `member:` prefix, whitespace, or newline.
 Empty, malformed, oversized, or repeated expected-key flags fail as invalid
 arguments before reading the request. Backup inspection supports the same flag
 under [backup key matching](#local-backup-key-matching), as does rewrapping; CSR

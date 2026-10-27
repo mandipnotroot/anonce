@@ -109,17 +109,24 @@ func TestClientInspectExpectedKeyRejectsInvalidPayload(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			path := filepath.Join(privateDirectory(t), "backup")
+			directory := privateDirectory(t)
+			path := filepath.Join(directory, "backup")
 			if err := writeBackup(t.Context(), path, backup); err != nil {
 				t.Fatal(err)
 			}
 			base := []string{"inspect", "-kind", kind, "-in", path}
-			for _, flags := range [][]string{nil, {"-expect-public-key", strings.Repeat("ab", 32)}} {
+			for _, flags := range [][]string{
+				nil,
+				{"-expect-public-key", strings.Repeat("ab", 32)},
+				{"-out", filepath.Join(directory, "public")},
+				{"-out", filepath.Join(directory, "public"), "-expect-public-key", strings.Repeat("ab", 32)},
+			} {
 				var stdout bytes.Buffer
 				err := run(t.Context(), append(slices.Clone(base), flags...), passwordFile(t, "synthetic\n"), &stdout)
 				if !errors.Is(err, keystore.ErrInvalidBackup) || stdout.Len() != 0 {
 					t.Fatal("authenticated non-key payload bypassed typed validation")
 				}
+				assertPublicKeyFiles(t, directory, 1)
 			}
 		})
 	}
