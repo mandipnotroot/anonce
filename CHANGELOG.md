@@ -10,6 +10,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Offline `client rewrap` for validated member/reviewer backup password changes,
+  confirmed bounded stdin input, fresh encryption, preserved key bytes, and
+  no-replace output. Old backups are unchanged and remain valid; this is not key
+  rotation, revocation, or secure deletion. Existing formats are unchanged.
 - Offline `client generate` and `client inspect` commands for encrypted member and
   reviewer backups, bounded confirmed stdin passwords, owner-only no-replace files,
   and public-key-only inspection. Existing backup formats are unchanged; browser,

@@ -41,6 +41,11 @@ same-user writers or ACLs. No protection against offline guessing, restored old
 backups, retained copies, or compromised devices is added. Process interruption
 after publication may leave a complete backup; crashes may leave encrypted temporary
 files. No plaintext private-key export or HTTP device-key route is introduced.
+The CLI's [password changes](key-management.md#backup-password-changes) preserve the
+same private key in a freshly encrypted file. They neither delete nor invalidate
+old backups, prevent guessing against retained copies, rotate a compromised key,
+nor establish freshness or expiry. Both passwords and private bytes are exposed
+to the local process and compromised-device risks still apply.
 
 The isolated reviewer-key package generates local X25519 keys and validates
 canonical reviewer-purpose encrypted backups under the

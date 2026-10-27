@@ -29,15 +29,18 @@ const usage = `Development-only local keys; independent review is required befor
 Usage:
   client generate -kind member|reviewer -out PATH
   client inspect -kind member|reviewer -in PATH
+  client rewrap -kind member|reviewer -in PATH -out PATH
   client -help
 
 Passwords come only from a pipe or regular file on stdin, never a terminal.
 Generate requires two matching LF-terminated password lines and EOF.
 Inspect requires one LF-terminated password line and EOF.
+Rewrap requires current, replacement, and matching replacement password lines and EOF.
 Each password is 1-1024 bytes, excluding LF; no trimming is performed.
 Use a trusted password manager, not literal passwords in shell commands.
 Backup parents must already exist with owner-only permissions.
 Generate publishes an encrypted backup without overwriting any existing path.
+Rewrap preserves the key in a new backup; it neither replaces nor revokes old copies.
 Inspect validates the backup and prints only its public key, not authorization.
 No enrollment, round binding, expiry enforcement, or network operations exist.
 `
@@ -78,7 +81,7 @@ func parse(args []string) (config, error) {
 	if len(args) == 1 && (args[0] == "-help" || args[0] == "-h") {
 		return config{}, flag.ErrHelp
 	}
-	if len(args) == 0 || (args[0] != "generate" && args[0] != "inspect") {
+	if len(args) == 0 || (args[0] != "generate" && args[0] != "inspect" && args[0] != "rewrap") {
 		return config{}, errArguments
 	}
 	cfg := config{operation: args[0]}
@@ -86,9 +89,10 @@ func parse(args []string) (config, error) {
 	// The flag package's errors can reflect arbitrary argument contents.
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&cfg.kind, "kind", "", "key kind")
-	if cfg.operation == "generate" {
+	if cfg.operation != "inspect" {
 		flags.StringVar(&cfg.output, "out", "", "new encrypted backup output")
-	} else {
+	}
+	if cfg.operation != "generate" {
 		flags.StringVar(&cfg.input, "in", "", "encrypted backup input")
 	}
 	if err := flags.Parse(args[1:]); err != nil {
@@ -101,8 +105,8 @@ func parse(args []string) (config, error) {
 		strings.ContainsRune(cfg.input+cfg.output, 0) {
 		return config{}, errArguments
 	}
-	if cfg.operation == "generate" && cfg.output == "" ||
-		cfg.operation == "inspect" && cfg.input == "" {
+	if cfg.operation != "inspect" && cfg.output == "" ||
+		cfg.operation != "generate" && cfg.input == "" {
 		return config{}, errArguments
 	}
 	return cfg, nil
@@ -121,6 +125,9 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("client: %w", err)
+	}
+	if cfg.operation == "rewrap" {
+		return runRewrap(ctx, cfg, input)
 	}
 	password, err := readPassword(ctx, input, cfg.operation == "generate")
 	if err != nil {
@@ -153,9 +160,23 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 	return nil
 }
 
-// readPassword owns and clears the complete bounded read buffer. Closing the
-// supplied input on cancellation unblocks pipe reads; callers must not reuse it.
 func readPassword(ctx context.Context, input *os.File, confirm bool) ([]byte, error) {
+	lines := 1
+	if confirm {
+		lines = 2
+	}
+	data, err := readPasswordInput(ctx, input, lines)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(data)
+	return parsePassword(data, confirm)
+}
+
+// readPasswordInput returns caller-owned bounded input, which must be cleared.
+// Closing the supplied input on cancellation unblocks pipe reads; callers must
+// not reuse it. Only fixed, operation-specific line counts are used.
+func readPasswordInput(ctx context.Context, input *os.File, lines int) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("read password: %w", err)
 	}
@@ -173,22 +194,19 @@ func readPassword(ctx context.Context, input *os.File, confirm bool) ([]byte, er
 	}
 	stop := context.AfterFunc(ctx, func() { _ = input.Close() })
 	defer stop()
-	lines := 1
-	if confirm {
-		lines = 2
-	}
 	limit := lines * (keystore.MaxPasswordSize + 1)
 	// Allocate the entire destination up front so failed reads can be cleared.
 	data := make([]byte, limit+1)
-	defer clear(data)
 	n, err := io.ReadFull(input, data)
 	if ctx.Err() != nil {
+		clear(data)
 		return nil, fmt.Errorf("read password: %w", ctx.Err())
 	}
 	if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		clear(data)
 		return nil, errors.New("read password: invalid or oversized input")
 	}
-	return parsePassword(data[:n], confirm)
+	return data[:n], nil
 }
 
 func parsePassword(data []byte, confirm bool) ([]byte, error) {

@@ -33,6 +33,9 @@ func TestClientArguments(t *testing.T) {
 	}{
 		{"generate member", []string{"generate", "-kind", "member", "-out", "backup"}, nil},
 		{"inspect reviewer", []string{"inspect", "-kind=reviewer", "-in=backup"}, nil},
+		{"rewrap member", []string{"rewrap", "-kind", "member", "-in", "old", "-out", "new"}, nil},
+		{"rewrap reviewer", []string{"rewrap", "-kind=reviewer", "-in=old", "-out=new"}, nil},
+		{"rewrap help", []string{"rewrap", "-help"}, flag.ErrHelp},
 		{"help", []string{"-help"}, flag.ErrHelp},
 		{"operation help", []string{"generate", "-h"}, flag.ErrHelp},
 		{"empty", nil, errArguments},
@@ -41,6 +44,10 @@ func TestClientArguments(t *testing.T) {
 		{"unknown kind", []string{"generate", "-kind", "ca", "-out", "backup"}, errArguments},
 		{"missing output", []string{"generate", "-kind", "member"}, errArguments},
 		{"missing input", []string{"inspect", "-kind", "reviewer"}, errArguments},
+		{"rewrap missing input", []string{"rewrap", "-kind", "member", "-out", "new"}, errArguments},
+		{"rewrap missing output", []string{"rewrap", "-kind", "reviewer", "-in", "old"}, errArguments},
+		{"rewrap unknown kind", []string{"rewrap", "-kind", "ca", "-in", "old", "-out", "new"}, errArguments},
+		{"rewrap password flag", []string{"rewrap", "-password=synthetic-input"}, errArguments},
 		{"input on generate", []string{"generate", "-kind", "member", "-out", "b", "-in", "a"}, errArguments},
 		{"output on inspect", []string{"inspect", "-kind", "member", "-in", "a", "-out", "b"}, errArguments},
 		{"empty input on generate", []string{"generate", "-kind", "member", "-out", "b", "-in="}, errArguments},
@@ -348,6 +355,7 @@ func passwordFile(t *testing.T, data string) *os.File {
 func FuzzClientArguments(f *testing.F) {
 	f.Add("generate\x00-kind\x00member\x00-out\x00backup")
 	f.Add("inspect\x00-kind=reviewer\x00-in=backup")
+	f.Add("rewrap\x00-kind=member\x00-in=old\x00-out=new")
 	f.Add("-help")
 	f.Fuzz(func(t *testing.T, input string) {
 		if len(input) > maxArgumentBytes+1 {
@@ -355,7 +363,8 @@ func FuzzClientArguments(f *testing.F) {
 		}
 		cfg, err := parse(strings.Split(input, "\x00"))
 		if err == nil && (cfg.kind != "member" && cfg.kind != "reviewer" ||
-			cfg.operation != "generate" && cfg.operation != "inspect") {
+			cfg.operation != "generate" && cfg.operation != "inspect" && cfg.operation != "rewrap" ||
+			cfg.operation != "generate" && cfg.input == "" || cfg.operation != "inspect" && cfg.output == "") {
 			t.Fatal("parser accepted unsupported configuration")
 		}
 	})

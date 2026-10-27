@@ -177,6 +177,12 @@ it waits for that bounded computation to finish, then discards the result.
 The package performs no file, network, or logging operations. See
 [key management](key-management.md#device-keystores) for buffer ownership and limits.
 
+The offline CLI's [password-change operation](key-management.md#backup-password-changes)
+validates an existing typed key before re-exporting it with fresh salt and nonce.
+It changes neither this format nor either key payload profile, preserves private
+key bytes, and introduces no new primitive or fallback. Old backups remain valid;
+password replacement is not key rotation or revocation.
+
 Native benchmarks are available, but browser performance and native/WASM
 interoperability remain untested. Do not weaken this profile to make an interface
 responsive; introduce a separately reviewed profile and compatibility plan if needed.

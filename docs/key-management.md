@@ -107,6 +107,7 @@ checks, or decryption of submissions. It does not make a key trusted or authoriz
 | --- | --- | --- |
 | `client generate` | `-kind member\|reviewer -out PATH` | Fresh key, encrypted backup file; no stdout |
 | `client inspect` | `-kind member\|reviewer -in PATH` | Validated backup; exactly `member:<hex>\n` or `reviewer:<hex>\n` on stdout, with the 32-byte public key in lowercase hexadecimal |
+| `client rewrap` | `-kind member\|reviewer -in PATH -out PATH` | Validated existing key, freshly encrypted backup under the replacement password; no stdout |
 | `client -help` | None | Static help on stdout; no password read |
 
 Operation-specific `-help`/`-h` is also supported. Unknown flags, positional
@@ -123,11 +124,15 @@ are no password flags or application environment settings.
   trusted password manager that emits the framing below without exposing the
   password in command arguments, shell history, environment variables, or logs.
 - `generate` requires two matching LF-terminated password lines, followed by EOF;
-  `inspect` requires one LF-terminated line, followed by EOF. Extra bytes fail.
+  `inspect` requires one LF-terminated line, followed by EOF. `rewrap` requires
+  the current password, replacement password, and matching replacement confirmation
+  as three LF-terminated lines, followed by EOF. Extra bytes fail. The replacement
+  may equal the current password; fresh salt and nonce are still generated.
 - Each password is 1–1024 opaque bytes excluding LF. Spaces, CR, NUL, and non-UTF-8
   bytes are preserved. LF cannot be represented by this interface; the underlying
   backup profile is unchanged. CRLF input includes CR in the password.
-- The read buffer is capped at 2051 bytes for generation and 1026 for inspection.
+- The read buffer is capped at 2051 bytes for generation, 1026 for inspection, and
+  3076 for rewrapping.
   Owned input/password/private-key buffers are cleared on return. The producer's
   buffers, any input file, runtime copies, and opaque library keys remain outside
   that guarantee. Protect or avoid plaintext password files.
@@ -149,8 +154,9 @@ file behavior is tested; other operating systems/filesystems are not validated.
   permission bits. Its owner, ancestors, mounts, and access-control lists must be
   trusted. Parent symlinks are not an independent trust check. These checks do not
   isolate hostile same-user processes, privileged users, or a compromised device.
-- Generation writes only ciphertext to a randomly named same-directory temporary
-  regular file with permissions at most `0600`, syncs and closes it, then publishes
+- Generation and rewrapping write only ciphertext to a randomly named
+  same-directory temporary regular file with permissions at most `0600`, sync and
+  close it, then publish
   with a no-replace hard link. Existing files, directories, and symlinks, including
   dangling symlinks, are never overwritten. Filesystems without hard-link support
   fail closed; there is no rename/overwrite fallback.
@@ -168,6 +174,23 @@ file behavior is tested; other operating systems/filesystems are not validated.
 - `inspect` emits no output on validation failure and never exports plaintext
   private keys. Successful public-key output is not a round bulletin, enrollment
   proof, authorization decision, or expiry/rollback check.
+
+### Backup password changes
+
+`rewrap` opens the input through the selected typed key package, then seals the
+same key under the replacement password using the existing backup/payload profile.
+Both derivations use full profile costs and cancellation-aware admission. Wrong
+passwords, wrong purposes, malformed or authenticated non-key payloads fail before
+any output file is created. Private bytes remain in memory and owned buffers are
+cleared on return; the runtime-erasure limits above still apply.
+
+The output must be a new path. Rewrapping never changes or deletes the input, even
+when input and output name the same file. Existing destinations and symlinks fail
+under the same no-replace publication rules as generation. Verify the new backup
+with `inspect` before managing old copies under an independently reviewed retention
+procedure. Password changes do not rotate keys, revoke old backups, repair a weak
+old password, enforce expiry, or make a compromised key safe. Retained old copies
+remain decryptable with their old password; no secure-deletion claim is made.
 
 See [testing](testing.md#implemented-test-mapping) for executable evidence and
 [threat model](threat-model.md) for remaining device and offline-guessing risks.

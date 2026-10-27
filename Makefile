@@ -72,6 +72,7 @@ fuzz:
 	$(GO) test ./internal/client/reviewerkey -run='^$$' -fuzz='^FuzzReviewerKeyPayload$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/clientcli -run='^$$' -fuzz='^FuzzClientArguments$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/clientcli -run='^$$' -fuzz='^FuzzClientPassword$$' -fuzztime=$(FUZZTIME) -parallel=2
+	$(GO) test ./internal/clientcli -run='^$$' -fuzz='^FuzzClientRewrapPasswords$$' -fuzztime=$(FUZZTIME) -parallel=2
 
 web-lint: build
 	python3 scripts/web_check.py

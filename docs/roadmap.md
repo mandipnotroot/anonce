@@ -32,6 +32,8 @@ Shared device-backup encryption implements
 authenticated headers, cancellation-aware admission, tests, and native benchmarks.
 The [offline key CLI](key-management.md#local-key-cli) now connects typed keys to
 bounded password input, no-replace encrypted files, and public-only inspection.
+It also rewraps validated keys under replacement passwords into new encrypted
+files without changing key identity or revoking retained old backups.
 Browser integration and independent review remain outstanding.
 Local member-key generation, encrypted PKCS #8 export, and validated import now
 use this backup foundation under the

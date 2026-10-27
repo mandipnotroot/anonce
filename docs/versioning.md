@@ -59,6 +59,10 @@ file-custody rules, and public-key output are documented in
 encrypted backup/payload formats are unchanged. This does not remove the existing
 breaking-impact or independent-review requirements for those unreleased formats.
 
+`client rewrap` is an additive opt-in command requiring `semver:minor` review.
+Its three-line password framing applies only to that command. Existing commands,
+password framing, backup/payload formats, and HTTP behavior remain unchanged.
+
 ## Change classification
 
 | Impact | Stable release behavior | Unstable release policy |
