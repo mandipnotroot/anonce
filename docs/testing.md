@@ -15,7 +15,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make build` | All Go commands with Go 1.27.3 |
 | `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no native-package exclusions, including wrappers and signal handling. JS-only code is checked separately below |
 | `make lint` | Native and WASM entry-point vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 | `make wasm` | Go `js/wasm` public-request verifier; matching reviewed loader/notices, SHA-256 manifest, 8 MiB uncompressed size gate |
@@ -34,6 +34,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Backup structure | Maximum backup size plus one byte; allocation-free parser, no Argon2id |
 | Member/reviewer payload | 49-byte input cap, 48-byte ASN.1 profile; no KDF work |
 | Member CSR | 130-byte fuzz input cap, 129-byte DER profile; bounded ASN.1 and signature verification, no KDF work |
+| Member session unlock admission | 1025-byte password, 65597-byte backup, and 33-byte expected-key fuzz caps; exercise invalid password/key lengths only, no KDF work; backup/payload parsing reuse the shared fuzzed implementations |
 | WASM request adapter | 259-byte request fuzz input cap, exact 258-byte ASCII hex representation before bounded shared CSR parsing; expected-key fuzzing also caps the key input at 65 bytes for an exact 64-byte ASCII hex representation; no KDF work |
 | CLI arguments | 8193-byte fuzz input cap; no file, network, or KDF work |
 | CLI expected-key record | 75-byte data and 9-byte kind fuzz caps; exact 72/74-byte lowercase kind-tagged lines, no file, network, or KDF work |
@@ -47,6 +48,8 @@ in the relevant package's `testdata/fuzz/<target>` directory:
 - `internal/client/keystore`: `FuzzBackup`.
 - `internal/client/memberkey`: `FuzzMemberKeyPayload`.
 - `internal/client/membercsr`: `FuzzMemberCSR`, public requests or malformed data only.
+- `internal/client/membersession`: `FuzzMemberSessionUnlockInputs`, synthetic
+  admission inputs only; no real passwords or private-key fixtures.
 - `internal/clientwasm`: `FuzzWASMRequest` and `FuzzWASMExpectedKey`, public hex
   requests/expected keys or malformed data only.
 - `internal/client/reviewerkey`: `FuzzReviewerKeyPayload`.
@@ -101,6 +104,7 @@ profile-2 nonce prefix and library composition.
 | Rewrap wrong passwords/purposes, malformed/tampered/authenticated non-key backups, secret-free failures, cancellation and no output on failure | `TestClientRewrapRejectsInvalidBackup`, `TestClientRewrapCancellation`, `TestClientRewrapFailsClosed` |
 | Optional rewrap expected-key matching for both kinds, either-case hex, malformed/repeated flags rejected before stdin/file access, mismatch rejection before replacement encryption or file creation, unchanged source, preserved keys, no overwrite, cancellation and concurrent matching | `TestClientExpectedPublicKeyArguments`, `TestClientRewrapExpectedKey`, `TestClientRewrapRejectsInvalidBackup`, `TestClientRewrapCancellation`, `TestClientRewrapConcurrent`, `FuzzClientArguments` |
 | Member CSR library verification, deterministic fixed profile, buffer ownership, invalid/inconsistent keys, extra claims, algorithms, byte mutations, cancellation, concurrent calls | `TestMemberCSRRoundTrip`, `TestMemberCSRRejectsInvalidKeys`, `TestMemberCSRRejectsInvalidRequests`, `TestMemberCSRCancellation`, `TestMemberCSRConcurrent`, `FuzzMemberCSR` |
+| In-memory automatic member setup/restoration, profile compatibility, public-output ownership, fresh generation, opaque bounded passwords, invalid inputs/backups, every-byte expected-key mismatches, unchanged inputs, state admission, owned-key clearing, cancellation at installation boundaries, pending lock with a blocked derivation slot, and concurrent setup/request/lock | `TestMemberSessionRoundTrip`, `TestMemberSessionFreshSetup`, `TestMemberSessionPasswordOwnership`, `TestMemberSessionRejectsInvalidInputs`, `TestMemberSessionUnlockRejectsBackup`, `TestMemberSessionExpectedKey`, `TestMemberSessionState`, `TestMemberSessionCancellation`, `TestMemberSessionPendingLock`, `TestMemberSessionConcurrent`, `FuzzMemberSessionUnlockInputs` |
 | CLI member CSR exact public DER, unchanged backup, wrong password/purpose, authenticated non-key or tampered input, secret-free errors, cancellation, help, short/failed writes | `TestClientCSRRoundTrip`, `TestClientCSRRejectsInvalidBackup`, `TestClientCSRFailsClosed`, `TestClientArguments`, `FuzzClientArguments` |
 | CSR file export matching stdout, direct password-free verification, owner-only no-replace publication, unchanged backup/destination, unsafe paths, cancellation before/after publication, concurrent export and cleanup | `TestClientCSRRoundTrip`, `TestClientCSRFileRejectsUnsafePaths`, `TestClientCSRFileCancellation`, `TestClientCSRFileConcurrentPublication`, `TestClientCSRRejectsInvalidBackup`, `TestClientArguments`, `FuzzClientArguments` |
 | Optional CSR expected-key matching for stdout/file output, either-case hex, malformed/repeated flags rejected before stdin/file access, mismatches without output/files, unchanged source/profile, no overwrite, typed validation, short/failed writes, cancellation and concurrent publication | `TestClientExpectedPublicKeyArguments`, `TestClientCSRExpectedKey`, `TestClientCSRRejectsInvalidBackup`, `TestClientCSRFileCancellation`, `TestClientCSRFileConcurrentPublication`, `FuzzClientArguments` |

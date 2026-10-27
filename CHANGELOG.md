@@ -10,6 +10,14 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Shared in-memory member sessions for automatic key, encrypted-backup, and CSR
+  preparation; restoration requires a validated backup and an independently trusted
+  expected key. Private bytes stay internal, lock clears owned key buffers and
+  cancels pending work, and concurrent setup/restoration is bounded per session.
+  Existing cryptographic profiles and CLI/HTTP/WASM contracts are unchanged.
+  Browser integration, account binding, persistence, expiry, and recovery remain
+  unavailable; native race, failure, lifecycle, and bounded admission-fuzz checks
+  cover the local component only.
 - Optional `-expect-public-key-file PATH` on `client inspect`, `rewrap`, `csr`, and
   `verify-csr` to read an independently trusted public-key export instead of a hex
   argument. Bounded owner-only imports reject malformed or wrong-kind records before

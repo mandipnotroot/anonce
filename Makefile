@@ -79,6 +79,7 @@ fuzz:
 	$(GO) test ./internal/client/keystore -run='^$$' -fuzz='^FuzzBackup$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/memberkey -run='^$$' -fuzz='^FuzzMemberKeyPayload$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/membercsr -run='^$$' -fuzz='^FuzzMemberCSR$$' -fuzztime=$(FUZZTIME) -parallel=2
+	$(GO) test ./internal/client/membersession -run='^$$' -fuzz='^FuzzMemberSessionUnlockInputs$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/clientwasm -run='^$$' -fuzz='^FuzzWASMRequest$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/clientwasm -run='^$$' -fuzz='^FuzzWASMExpectedKey$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/reviewerkey -run='^$$' -fuzz='^FuzzReviewerKeyPayload$$' -fuzztime=$(FUZZTIME) -parallel=2

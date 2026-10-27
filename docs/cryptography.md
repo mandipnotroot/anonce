@@ -108,6 +108,23 @@ the same parser and unchanged DER profile. Hexadecimal is only its bounded bridg
 input representation, not a new request format. Its native/Node compatibility
 evidence does not cover device backups or private-key custody in browsers.
 
+### In-memory member session composition
+
+`internal/client/membersession` composes the existing member-key, password-backup,
+and CSR profiles without adding a primitive, envelope, or browser interface.
+Creation generates a random key, encrypts its backup, and prepares its request
+before retaining the key. Restoration authenticates and validates the backup,
+then compares the complete public key with a required independently trusted
+expected key before preparing a request or installing the key in the session.
+
+Only public enrollment material and encrypted backups leave the session API.
+Lock clears its owned private buffer and cancels pending setup/restoration; a
+cancelled operation cannot install a key. One pending setup/restoration per session
+is admitted, including while cancellation waits for bounded Argon2id work. This
+does not bound the number of sessions a caller creates. See the
+[session lifecycle](key-management.md#in-memory-member-sessions) for ownership and
+integration limits. PRF wrapping and account recovery remain unspecified.
+
 ## Encryption and public proofs
 
 - HPKE base mode avoids identifying sender keys; token verification authorizes submission.

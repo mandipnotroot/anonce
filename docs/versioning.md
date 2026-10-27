@@ -36,6 +36,12 @@ review account/vault APIs, recovery and wrapping formats, credential binding, an
 anonymous handoff compatibility explicitly. Do not silently reinterpret profile 2
 as a PRF-based format or migrate keys during a failed unlock.
 
+The [in-memory member session](key-management.md#in-memory-member-sessions) is an
+unstable internal Go component, not a public account/vault or browser interface.
+It reuses the existing backup, member-key, and CSR profiles. No wire format,
+parameter, CLI, HTTP, or WASM contract changes; the formats' independent-review
+and breaking-impact requirements remain in force.
+
 ### Cryptographic file compatibility
 
 The following formats are unreleased breaking additions requiring `semver:major`

@@ -47,6 +47,21 @@ properties described below.
   Unsupported profiles fail before derivation, with no algorithm fallback.
   This is not a FIPS-validation claim.
 
+### In-memory member sessions
+
+- The [shared session](key-management.md#in-memory-member-sessions) retains private
+  member bytes internally and returns only encrypted backups and public enrollment
+  material. Restoring a different key fails before request signing or installation;
+  the expected key must be independently trusted. Failed unlock never creates a
+  replacement key.
+- Lock clears the owned key and cancels pending setup/restoration. Cancelled work
+  cannot later install a key, and each session admits only one pending operation.
+  This does not limit hostile callers creating many sessions, erase runtime copies,
+  or revoke already returned public material/backups.
+- There is no browser bridge, account binding, automatic expiry, cross-tab lock,
+  persistence, enrollment, or recovery. Callers still control passwords and session
+  lifetime. Native state/ownership tests are not browser custody evidence.
+
 ### Offline key CLI
 
 - The [CLI](key-management.md#local-key-cli) accepts bounded passwords through a

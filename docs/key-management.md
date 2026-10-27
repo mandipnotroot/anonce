@@ -7,8 +7,9 @@ Audience: implementers, reviewers, and operators responsible for secret custody.
 
 Status: shared in-memory device-backup encryption and local member/reviewer-key
 generation, encrypted export, validated import, and an offline backup CLI are
-implemented, along with local member certificate requests. Browser custody, round
-binding, recovery, enrollment, and signing services are not.
+implemented, along with local member certificate requests and in-memory member
+sessions. Browser custody, round binding, recovery, enrollment, and signing
+services are not.
 
 ## Browser account vault
 
@@ -156,6 +157,52 @@ requirements live in [testing](testing.md#browser-account-and-vault-acceptance).
 - Backups must define restoration authority, encrypted-copy locations, and how
   expired keys stay out of service.
 - Dual control is [optional future work](roadmap.md#later).
+
+## In-memory member sessions
+
+`internal/client/membersession` is a shared Go foundation for automatic member-key
+setup, not a browser account vault. A zero-value `Session` is locked. Its API never
+returns plaintext private bytes, accepts arbitrary messages to sign, or performs
+I/O. It uses the existing [profiles](cryptography.md#in-memory-member-session-composition).
+
+| Method | Behavior |
+| --- | --- |
+| `Create(ctx, password)` | From locked/idle state, generate a key, encrypt its backup, and prepare a CSR; retain the key only on success; return encrypted backup and public enrollment material |
+| `Unlock(ctx, password, backup, expected)` | From locked/idle state, validate a backup and require its full public key to match the supplied 32-byte expected key before preparing a CSR or retaining the key; return public enrollment material only |
+| `Request(ctx)` | Prepare the same fixed, identity-free CSR for the unlocked key; fail while locked |
+| `Lock()` | Clear the owned private buffer and cancel pending setup/restoration; safe to repeat |
+
+Public enrollment material contains an independently owned 32-byte Ed25519 public
+key and 129-byte CSR. Creation also returns the unchanged 108-byte member backup.
+The session retains neither passwords nor encrypted backups. Inputs remain
+caller-owned and must not be mutated during calls; clear passwords after use.
+Persisting a returned backup safely remains an integration responsibility. A
+successful local setup does not mean a backup was stored or enrollment completed.
+
+Unlock requires an independently trusted expected key. Copying that key from the
+backup's server metadata alone does not establish substitution protection against
+a malicious service. Matching adds no account authentication, enrollment authority,
+freshness, rollback detection, revocation, or recovery guarantee. Failed unlock
+never generates a replacement key. Public keys and CSRs remain linkable and must
+not reach the anonymous submission origin.
+
+Methods are concurrency-safe, but a session must not be copied after use. Setup
+and restoration reject an unlocked or busy session without replacing its key.
+Only one such operation is admitted per session; cancelled work holds admission
+until cleanup finishes. Lock need not wait for Argon2id, but an active derivation
+must finish before owned pending buffers can be cleared. Lock and final key
+installation are serialized, preventing cancelled pending work from unlocking the
+session later. A lock after installation may race a successful return; it does
+not invalidate public material or encrypted backups already prepared. Request
+signing is serialized with lock, which can briefly wait for that bounded call.
+
+Callers must limit session counts and unlocked lifetimes and explicitly lock on
+logout, account switch, or disposal. Operation contexts cancel individual calls,
+not the lifetime of a successfully unlocked session. No timer, cross-tab lock,
+worker termination, persistence, JS/WASM private-key bridge, passkey/PRF handling,
+account binding, or server transport exists. Library/runtime copies prevent
+complete erasure. [Native checks](testing.md#implemented-test-mapping) do not
+establish browser custody or satisfy the browser acceptance cases.
 
 ## Device keystores
 

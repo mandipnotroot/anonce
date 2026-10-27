@@ -38,6 +38,9 @@ Distinguish implemented from planned behavior.
   no old-backup revocation, key rotation, or enrollment.
 - `internal/client/membercsr`: local Ed25519 certificate requests and bounded
   profile validation; no identity claims, certificate issuance, or transport.
+- `internal/client/membersession`: in-memory member setup, required expected-key
+  restoration, fixed CSR requests, and explicit lock/cancellation; public-only
+  results and encrypted backups, no browser bridge, account binding, or persistence.
 - `cmd/wasm`, `internal/clientwasm`: public-only member request verification using
   the shared parser, with opt-in expected-public-key matching; local WASM artifacts
   and Node compatibility checks, no page integration, device-key access, or enrollment.
