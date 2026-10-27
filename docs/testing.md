@@ -186,6 +186,33 @@ JavaScript and full syntax validation.
 - Measure native/WASM interoperability, bundle size, startup, cryptographic latency,
   and memory on supported desktop/mobile browsers.
 
+## Browser account and vault acceptance
+
+These are required, **unimplemented** acceptance cases for the
+[account workflow](ui-design.md#account-and-review-workflow) and
+[vault design](key-management.md#browser-account-vault). Add real browser and
+PostgreSQL tests, not mock success or a CLI-only substitute.
+
+| Area | Required evidence |
+| --- | --- |
+| Ordinary member journey | Fresh browser, account creation/sign-in, verified enrollment, automatic key/CSR/backup setup, common review link or dashboard, local encryption, anonymous submission, and locally verified receipt; no installed tooling or manual key files |
+| Browser support | Record browser/OS/authenticator/provider versions, PRF extension results, user verification, synced and cross-device behavior; publish unsupported paths honestly |
+| Local unlocking | Login can succeed without PRF; configured browser-passphrase unlocking works without weakening profile 1; missing PRF, failed authentication, corrupt backups, wrong passphrase, and cancelled ceremonies never trigger server decrypt or silent fallback |
+| New device and credentials | Restore the same enrolled key locally; authorize adding/removing passkeys and wrapping methods, handle different PRF secrets, reject unauthorized replacement and account/key mismatch |
+| Vault authorization and races | Another dummy account cannot read/write/delete backups; require CSRF and recent authentication for sensitive changes; bound input/work and reject stale concurrent replacement |
+| Recovery | Distinguish login reset from key restoration; exercise reviewed recovery material, revoked credentials, all-methods-lost messaging, preserved quotas, and no expired reviewer-key reactivation |
+| Privacy boundary | Capture requests, headers, URLs, referrers, storage, logs, and database rows; no raw keys, unlock/recovery secrets, or PRF outputs reach services; no identity credentials or vault/account identifiers reach anonymous requests |
+| Dashboard and replies | Available rounds work without a server-side account-to-submission index; no account-linked receipt/mailbox lookup or token backup; member-key restore does not claim anonymous reply restore |
+| Lifecycle and storage | Shared/private browsing, disabled/evicted storage, logout, account switch, multiple tabs, lock/expiry, and worker termination; no persisted plaintext keys, drafts, unlock material, or PRF outputs |
+| Reviewer and accessibility | Automatic fresh round keys, authorized ciphertext retrieval and local decryption; mobile/desktop, keyboard, assistive technology, autofill/paste, safe errors, progress/cancellation, and unsent-answer warnings |
+
+Test an ordinary user on actual browsers as well as automated flows. Record prompt
+counts, task completion, startup/unlock latency, and peak memory on representative
+mobile devices. Agree and document resource/UX budgets before claiming support.
+Virtual authenticators do not establish provider sync, physical authenticator,
+cross-device PRF behavior, or usable recovery. Retain no test secrets or real user
+data in screenshots, traces, logs, or crash artifacts.
+
 ## Multi-user simulation
 
 - At least 24 dummy members across multiple cohorts/rounds, each with separate
@@ -207,6 +234,13 @@ All named protocol tests below are **planned**, not present.
 
 | Attack | Expected result | Planned test name |
 | --- | --- | --- |
+| Cross-account encrypted-backup access or replacement | Owner-scoped authorization denies read/write/delete without exposing backup contents | `TestVaultEnforcesOwnerIsolation` |
+| PRF/unlock material serialized with login or persisted locally | Boundary assertion fails; no server decrypt fallback | `TestVaultKeepsUnlockMaterialLocal` |
+| Login reset or unapproved new passkey used to open an existing vault | No key recovery without a configured local unlock/recovery method | `TestVaultSeparatesAccountAndKeyRecovery` |
+| Changed binding or stale concurrent backup replacement | Reject mismatched keys/stale writes; disclose unresolved malicious-server rollback limits | `TestVaultRejectsBindingAndVersionMismatch` |
+| Personalized round URL, session cookie, or vault ID crosses anonymous handoff | Credential-free round-scoped flow or fail closed; no identity fetch from anonymous pages | `TestBrowserPreservesAnonymousHandoff` |
+| Account dashboard or backup stores receipt/token/mailbox mapping | Privacy assertion fails without an identity-to-submission record | `TestDashboardExcludesSubmissionHistory` |
+| Logout/account switch leaves another tab unlocked | All controlled contexts lock and clear accessible buffers without an erasure guarantee | `TestVaultCoordinatesSessionLock` |
 | Untrusted CA or forged certificate | Issuance rejected | `TestIssuerRejectsUntrustedCertificate` |
 | Expired/revoked membership | Issuance rejected with fresh revocation policy | `TestIssuerRejectsRevokedOrExpired` |
 | Stale or unavailable required revocation data | Fail closed | `TestIssuerRejectsStaleRevocations` |

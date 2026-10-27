@@ -119,6 +119,9 @@ and documentation. Passing checks do not prove security. Ask about unclear
 cryptographic intent. Maintainers may request smaller changes for reliable review.
 
 New clients must reuse device-side Go cryptography and preserve origin separation.
+The [product direction](AGENTS.md#product-direction) is browser-only with automatic
+key management, not CLI-based onboarding. Review browser work against the
+[account and review workflow](docs/ui-design.md#account-and-review-workflow).
 New transports, storage backends, and integrations must retain ciphertext-only
 submission, bounded inputs, atomic spending, and the documented metadata policy.
 Update the threat model, API, and compatibility guidance when those boundaries change.

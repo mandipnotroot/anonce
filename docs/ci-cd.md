@@ -43,6 +43,10 @@ Planned, not implemented. Track work in the [roadmap](roadmap.md).
 Proposed fuzz budgets: 15 seconds/parser on PRs; nightly may use five minutes/target
 with explicit CPU/memory limits. Validate actual runtime; no idle placeholder jobs.
 
+The browser job must cover the [account/vault acceptance cases](testing.md#browser-account-and-vault-acceptance),
+not require users to install the CLI. Real browser/provider evidence and recovery
+results must remain distinct from virtual-authenticator and Node-only checks.
+
 ## Tool and licensing policy
 
 - Follow [dependency admission](dependencies.md). Required checks need openly licensed,

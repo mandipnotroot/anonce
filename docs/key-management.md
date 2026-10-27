@@ -10,6 +10,126 @@ generation, encrypted export, validated import, and an offline backup CLI are
 implemented, along with local member certificate requests. Browser custody, round
 binding, recovery, enrollment, and signing services are not.
 
+## Browser account vault
+
+### Product decision
+
+Members use accounts and review links, not key-management commands. Generate a
+random member key automatically in the browser using the shared Go packages;
+never derive the member key itself from a password. Prepare certificate requests
+and enrollment behind the [account workflow](ui-design.md#account-and-review-workflow).
+Generate reviewer keys automatically per round, separately from account credentials.
+
+Plan identity-side storage of encrypted member-key backups so another browser can
+restore the same key after authentication and local unlocking. A public key is
+linkable even though it is not secret; keep it off anonymous submission requests.
+Backup storage and automatic restoration are requirements, not available features.
+
+### Authentication and unlocking
+
+Prefer passkey account authentication with user verification. The design reference
+is [WebAuthn Level 3, Recommendation of 2026-08-25](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/).
+Verify ceremonies on the server under its relying-party rules. A successful
+assertion proves account authentication; it does not expose the authenticator's
+private key or provide an encryption key by itself.
+
+The preferred low-friction unlock candidate is the
+[WebAuthn PRF extension](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/#prf-extension).
+It can provide a credential-specific secret to the browser during a user-approved
+ceremony. It is not silent access, and ordinary passkey support does not establish
+PRF support. Check actual extension results for each credential and test the
+browser, OS, authenticator/provider, sync, and cross-device paths before advertising
+support. Do not serialize PRF outputs into the assertion payload sent to the server.
+
+| Unlock method | Decision and limits |
+| --- | --- |
+| Passkey plus PRF | Preferred candidate for combined sign-in/unlock on tested setups; wrapping profile and multi-credential behavior need review |
+| Local unlock passphrase | Browser-only compatibility path, explicitly configured by the user; use the existing password-backup profile without weakening its costs |
+| Ordinary login password reused for backup encryption | Rejected when sent to the server for authentication; server access to that password defeats the custody separation |
+| Server-held unlock key or server-side decryption | Rejected for member/reviewer private-key custody |
+
+Keep any local unlock passphrase separate from a server-verified login password.
+Prompt once per unlocked session where safe, not on each action. On a setup without
+a usable configured unlock method, explain the limitation and offer reviewed
+browser recovery or another supported device. Never silently downgrade after a
+failed decryption or require a CLI to proceed.
+
+PRF is a design direction, not an admitted cryptographic profile. Before coding,
+specify the wrapping construction, domain separation, nonce rules, credential and
+account binding, key validation, new-credential authorization, replacement, and
+recovery in [cryptography](cryptography.md#browser-vault-profile-boundary).
+Different credentials have different PRF secrets; registering a second passkey
+does not automatically grant access to an existing encrypted backup. Synced-login
+availability must not be presented as proof that vault restoration works.
+
+### Storage and lifecycle
+
+- Upload only encrypted member-key backups, public key/certificate material, and
+  the reviewed version/binding metadata needed to restore them. Unlock material,
+  plaintext private keys, and PRF results remain on the device.
+- Authorize vault access by owner on the identity service. Bound sizes, versions,
+  write rates, and concurrent updates; require recent authentication for replacement,
+  recovery changes, and deletion. Use CSRF protection and `no-store` responses.
+- Authenticate backup purpose and validate the restored key against its expected
+  enrollment binding before signing. Server-supplied metadata alone is not an
+  independent trust anchor. Resolve substitution and rollback detection before
+  claiming protection against a malicious vault service.
+- Do not put answers, blind tokens, issuance transcripts, receipts, mailbox IDs,
+  reply keys/capabilities, or per-submission state in the account-linked vault.
+  Account backup must not become an identity-to-submission index.
+- Local encrypted caching is optional and needs explicit device-retention policy.
+  Never persist plaintext keys, unlock passphrases, or PRF outputs in Web Storage,
+  IndexedDB, caches, URLs, or diagnostics. Persistent browser storage is untrusted
+  and may be cleared or evicted; it is not the only backup.
+- Bound unlocked lifetime and concurrent cryptographic work. On lock/logout or
+  account switch, clear accessible secret buffers and terminate the owning worker
+  where used; coordinate other open tabs. Do not promise complete memory erasure.
+- Reviewer-key server backup is excluded by default. Any future encrypted backup
+  needs a separately reviewed round-binding, authorization, expiry, snapshot, and
+  destruction policy. Member-key recovery must not reactivate expired review keys.
+
+### Recovery and compromise
+
+Account access recovery and encrypted-key recovery are different operations. A
+password reset, email link, TOTP code, or administrator action alone cannot decrypt
+an existing backup. Prefer an already-unlocked device or a separately reviewed
+client-held recovery secret for adding a new unlock method. A server-verified
+account recovery code is not automatically a key-recovery secret; never send a
+vault recovery secret to the server as an authentication code.
+
+Specify recovery entropy, encoding, local wrapping, authorization, replacement,
+notification, and loss handling before offering it. Optional encrypted downloads
+are an escape hatch, not required onboarding. If all unlock/recovery methods are
+lost, explain that old encrypted material is unavailable. Revoke and re-enroll
+where appropriate while preserving membership quota usage and reservation state.
+Do not promise recovery of anonymous receipts/replies through the account vault.
+
+Passphrase changes and removing a passkey do not revoke previously copied backups
+or plaintext keys. Key compromise needs a separate rotation/revocation procedure.
+Server-stored password backups permit offline guessing after theft; server rate
+limits do not prevent it. All wrapping/recovery methods contribute to the vault's
+effective security. A malicious website or compromised device can steal secrets
+while unlocked, including PRF outputs. See the [threat model](threat-model.md#browser-account-and-vault-risks).
+
+### Research basis and outstanding evidence
+
+Primary sources consulted 2026-10-27:
+
+- WebAuthn Level 3 above defines the authentication and PRF behavior. The working
+  group's [PRF explainer](https://github.com/w3c/webauthn/blob/main/explainers/prf-extension.md)
+  explains credential-specific secrets and why multiple credentials need a
+  separately designed encryption structure. It is explanatory, not the profile.
+- [OWASP browser storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#storage-apis)
+  supports treating browser databases as untrusted storage, not a secret boundary.
+- [NIST SP 800-63B-4 account recovery](https://pages.nist.gov/800-63-4/sp800-63b/events/#recovery)
+  and [customer experience](https://pages.nist.gov/800-63-4/sp800-63b/customer/)
+  inform authentication recovery and usable prompts. These references do not
+  specify encrypted-vault recovery or establish an assurance-level claim here.
+
+No supported-browser/provider matrix, vault wrapping/recovery profile, browser
+private-key bridge, server vault API, or end-to-end evidence exists yet. Acceptance
+requirements live in [testing](testing.md#browser-account-and-vault-acceptance).
+
 ## Inventory
 
 | Key or secret | Custodian | Lifetime and separation |
@@ -23,6 +143,7 @@ binding, recovery, enrollment, and signing services are not.
 | Bulletin signing key | Publication service | Separate from membership and token keys |
 | Transparency/audit signing keys | Their respective services | Separate keys and external checkpoint retention |
 | Session and recovery secrets | Identity-side authentication service | Bounded lifetime and rotation; never shared with submission service |
+| Vault unlock and key-recovery secrets | Member browser/user-controlled recovery material | Never sent to services; distinct from account recovery credentials |
 
 ## Protected CA storage
 
@@ -91,8 +212,9 @@ Remaining custody requirements:
 
 ## Local key CLI
 
-`make build` builds `bin/client`, a development-only offline command using the
-shared key profiles. Independent review is required before real-key use.
+`make build` builds `bin/client`, an optional development-only offline command using
+the shared key profiles. It is not product onboarding or a browser prerequisite.
+Independent review is required before real-key use.
 
 The CLI performs no network calls, enrollment, general-purpose signing, reviewer
 round binding, expiry checks, or submission decryption. A local CSR signature does

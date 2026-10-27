@@ -28,6 +28,14 @@ must use `/vN` module/import paths for breaking v2+ releases, even in a monorepo
 are unreleased, not stable wire profiles or a product. Future crypto formats need
 explicit breaking review.
 
+The [browser account/vault direction](key-management.md#browser-account-vault)
+is a documentation requirement, not a new supported API or cryptographic profile.
+Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional
+for product use does not remove its documented interfaces. Before implementation,
+review account/vault APIs, recovery and wrapping formats, credential binding, and
+anonymous handoff compatibility explicitly. Do not silently reinterpret profile 1
+as a PRF-based format or migrate keys during a failed unlock.
+
 ### Cryptographic file compatibility
 
 The following formats are unreleased breaking additions requiring `semver:major`

@@ -20,6 +20,8 @@ Infrastructure administrators remain a [collusion risk](threat-model.md).
 | --- | --- |
 | `admin_users`, `admin_roles` | Password hashes, role bindings, status; no plaintext passwords |
 | `admin_credentials`, `admin_sessions` | Passkey metadata, protected TOTP state, hashed session identifiers |
+| `accounts`, `account_credentials`, `account_sessions` | Account status, credential public metadata, protected session references and expiry; membership binding distinct from login; no PRF output or vault unlock secret |
+| `member_key_backups` | Owner account, public/enrollment binding, bounded encrypted backup, reviewed format metadata and concurrency version; no plaintext private key or per-submission state |
 | `cohorts`, `members`, `cohort_members` | Eligibility data and necessary delivery addresses; unique membership constraints |
 | `enrollment_codes` | Random-code digest, expiry, consumed marker; no retained printable code |
 | `certificates`, `revocations` | Serial, public certificate, validity, revocation reason and publication state |
@@ -31,6 +33,15 @@ Infrastructure administrators remain a [collusion risk](threat-model.md).
 Declare retention for identities, delivery addresses, consumed codes, challenges,
 sessions, and issuance participation. A round ID may be shared public context;
 member or per-request identity references must not enter ciphertext storage.
+
+The [browser vault](key-management.md#browser-account-vault) requires owner-scoped
+read/write/delete authorization and tested concurrent-update behavior. Do not store
+answers, tokens, receipts, mailbox identifiers, reply capabilities, or an account's
+submission history in these relations. Available-round dashboard data comes from
+eligibility and public schedules, not a join against anonymous records.
+Final vault fields, replacement/recovery transactions, rollback handling, and
+retention remain unresolved; this table is not a migration or fixed wire format.
+Reviewer-key backup is excluded until a separate retention policy is reviewed.
 
 ## Submission database
 

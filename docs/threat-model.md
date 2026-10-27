@@ -122,6 +122,29 @@ properties described below.
 - Node compatibility tests are not browser execution, CSP, private-key custody,
   or independent security evidence. The HTTP shell still loads no executable code.
 
+## Browser account and vault risks
+
+The [account vault](key-management.md#browser-account-vault) and
+[account-to-anonymous flow](architecture.md#account-and-anonymous-flow) are planned,
+not current controls. Assess them against these boundaries:
+
+| Threat | Required control | Residual risk |
+| --- | --- | --- |
+| Stolen identity database/backups | Only authenticated ciphertext for member private keys; unlock material remains client-side | Password-wrapped copies permit offline guessing; wrapping/recovery strength limits protection |
+| Account/session takeover | Owner-scoped vault access, recent authentication for changes, and separate local unlock | Attacker can deny access or replace encrypted copies; local validation/binding and recovery are still needed |
+| Unsupported or replaced passkey | Check PRF outputs and prove local restoration; authorize each added unlock method | Login can succeed while decryption is unavailable; deleting a credential does not revoke copied secrets |
+| Weak account recovery | Separate authentication recovery from client-held key recovery; no server decrypt fallback | Lost unlock/recovery material can mean permanent key loss |
+| Backup substitution or rollback | Authenticated format, expected enrollment binding, version/concurrency and recovery review | Server-held metadata alone cannot defeat a malicious vault server; no rollback protection is implemented |
+| Account-linked review history | No receipts, tokens, reply capabilities, or submission state in the account vault | Eligibility/issuance timing and user content can still correlate activity |
+| Identity leakage during handoff | Separate origins, no identity cookies/headers/referrers or link identifiers in submissions; reviewed bounded handoff | Shared infrastructure and a malicious browser distributor can still correlate or exfiltrate |
+| Shared device, stale tab, or persisted unlock | Bounded unlocked sessions, coordinated lock/logout/account switch, no persisted plaintext secrets | Browser/runtime copies prevent complete erasure; compromised devices remain outside protection |
+
+Server-stored ciphertext is not a claim that the website operator cannot access
+keys: a malicious update can capture them during unlock. Passkeys, PRF, WASM, and
+non-extractable browser keys do not make hostile page code trustworthy. See
+[browser delivery trust](#browser-delivery-trust) and the dated primary sources in
+[key management](key-management.md#research-basis-and-outstanding-evidence).
+
 ## Assets and principals
 
 - **Assets:** membership identities, eligibility, keys, answers, token unlinkability,
@@ -166,7 +189,9 @@ properties described below.
 - CSP, local assets, SRI, pinned WASM hashes, and reproducible builds aid inspection
   and reduce accidental compromise. A hostile origin can replace code and its displayed hash.
 - Stronger verification requires an independent signature/checkpoint trust anchor
-  and separately obtained CLI.
+  and independently obtained verification tooling. An optional CLI can support
+  review; it must not become a prerequisite for ordinary browser use. The web-only
+  product does not eliminate trust in the delivered client.
 - WASM does not protect secrets from its loading page. No complete-erasure or
   universally constant-time guarantee in Go/browser runtimes.
 
@@ -206,6 +231,7 @@ establish protocol security.
 | One accepted submission per token | Atomic canonical spending and payload-rebinding tests |
 | Token unlinkability | Standards vectors, shared-key checks, transcript and storage inspection |
 | Device-side confidentiality | Request capture, boundary tests, and log inspection proving no plaintext or keys cross into services |
+| Browser accounts and encrypted key custody | [Vault acceptance](testing.md#browser-account-and-vault-acceptance), owner-isolation tests, recovery and handoff inspection; no identity-to-submission index |
 | Ciphertext integrity | Tampering and cross-context rejection tests |
 | Inclusion and append-only consistency | Independent proof verification, mutation tests, and split-view detection |
 | Administrative accountability | Role tests and independently anchored audit verification |

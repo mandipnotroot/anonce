@@ -43,6 +43,32 @@ Distinguish implemented from planned behavior.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
 
+## Product direction
+
+The required product is browser-only for members, reviewers, and administrators:
+sign in, open a shared review link or an available round, complete the form, and
+submit. No app, extension, CLI, manual key generation, CSR handling, or key-file
+management may be required for ordinary use. The existing CLI is optional tooling,
+not the product onboarding path. Prioritize a complete browser workflow over
+additional optional CLI features.
+
+- Follow [account and review UX](docs/ui-design.md#account-and-review-workflow)
+  and the [browser account vault](docs/key-management.md#browser-account-vault).
+- Generate member and round-scoped reviewer keys automatically on the device.
+  Only encrypted member-key backups may enter identity-side vault storage;
+  never upload plaintext keys, unlock secrets, or passkey PRF outputs.
+- Keep account authentication, local vault unlocking, and anonymous submission
+  authorization separate. Passkey login alone does not decrypt a vault.
+- Prefer passkey-assisted unlocking after compatibility/profile review; provide
+  an explicit browser-only unlock path for unsupported setups, never a server
+  decryption fallback. Do not promise universal one-gesture access or recovery.
+- Keep submission history, receipts, reply capabilities, and tokens out of the
+  account vault. Dashboards must not create identity-to-submission records.
+- Recovery must preserve membership quotas, revocations, and round-key expiry.
+  Login reset is not recovery of encrypted keys. Reviewer-key server backup needs
+  a separately reviewed retention policy before it can be enabled.
+- These are planned requirements. Do not present them as implemented controls.
+
 ## Authorship and wording
 
 Authorship belongs to people. Credit human contributors only. This rule applies to

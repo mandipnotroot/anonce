@@ -11,6 +11,10 @@ Audience: security researchers, contributors, and operators.
   services, a read-only shell, local key/backup packages, and an offline key CLI.
   The submission protocol is unimplemented; see [project status](docs/README.md#project-status).
 - Review of `main` is best effort, not cryptographic or deployment certification.
+- Browser accounts, automatic key custody, encrypted server backups, and recovery
+  are [planned requirements](docs/key-management.md#browser-account-vault), not
+  supported security features. Do not infer that account recovery can decrypt keys
+  or that passkeys remove trust in browser-code delivery.
 - Future security fixes cover the latest release only, unless this policy says otherwise.
 
 ## Private disclosure

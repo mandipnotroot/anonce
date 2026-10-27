@@ -11,7 +11,11 @@ and must reject requests rather than simulate success.
 ## Enrollment and authentication
 
 1. The manager creates a cohort and unpredictable, expiring, single-use codes.
-2. The device generates its key and CSR locally; encrypted backup export is optional.
+   The member creates/signs in to an identity-side account; login alone does not
+   prove eligibility.
+2. The browser automatically generates the member key and CSR locally and prepares
+   the encrypted member-key backup under the [vault contract](key-management.md#browser-account-vault).
+   No manual key commands or CSR/file handling are required; downloads are optional.
 3. The CA checks proof of possession, code use, membership, and CSR policy, then
    issues a certificate and atomically consumes the code. Retain no raw code after delivery.
 
@@ -31,6 +35,21 @@ Token authentication requires a fresh, bounded-lifetime challenge bound to issue
 round, certificate, and operation. Check signature, chain, expiry, revocation, cohort,
 schedule, and issuance eligibility. Consumed challenges cannot be replayed.
 Credentials must never reach the submission origin.
+
+### Account and review-link integration
+
+Follow the [browser workflow](ui-design.md#account-and-review-workflow): open a
+common round link or dashboard entry, authenticate and unlock on the identity
+side as needed, obtain eligible issuance, then encrypt and submit anonymously.
+Do not replace certificate proof of possession with an account session or passkey
+assertion. Account recovery, a new device, or key replacement cannot reset quota.
+
+The [cross-origin handoff](architecture.md#account-and-anonymous-flow) must not
+carry member/account identifiers, certificates, vault references, login credentials,
+or personalized URL values into anonymous requests. It still needs a reviewed
+transport and replay policy. No submission token is carried in a URL. Automatic
+key custody is not permission to retain blind tokens or receipt/reply history
+on the identity service. Replies remain anonymous capability operations.
 
 ## Round response limit
 

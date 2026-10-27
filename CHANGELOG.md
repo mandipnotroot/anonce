@@ -99,6 +99,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Set the planned product direction to browser-only accounts, shared review links
+  and an eligible-round dashboard, with automatic device-side key management and
+  identity-side encrypted member-key backups. Document researched passkey/PRF
+  unlocking, browser-only compatibility, separate account/key recovery, anonymity
+  boundaries, and required acceptance evidence. Prioritize the complete browser
+  journey over optional CLI extensions. No account/vault API, new cryptographic
+  profile, or runtime behavior is implemented by this documentation change.
 - Breaking cryptographic-format addition: define member CSR profile 1 as fixed,
   canonical Ed25519 PKCS #10 DER. Existing backups and HTTP behavior are unchanged;
   independent review is required before real use.

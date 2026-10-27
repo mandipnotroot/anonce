@@ -13,6 +13,10 @@ Commands below are planned verification, not available evidence.
 - Confirm the exact source revision, human-reviewed history, and clean worktree.
 - Pass every required check, including full-history and artifact wording inspection.
 - Resolve compatibility impact under [versioning](versioning.md).
+- Before claiming a working browser product, supply the
+  [account/vault acceptance evidence](testing.md#browser-account-and-vault-acceptance),
+  supported browser/provider matrix, recovery limitations, and independent review.
+  Optional verification tools must not become required account onboarding.
 - Curate the dated changelog section, compare links, and release notes.
 - Validate the tag matches both the changelog and built version.
 - Build Linux/macOS/Windows binaries for supported architectures and browser WASM
@@ -31,6 +35,11 @@ schema version is selected yet; record both from official sources before
 implementing release publication.
 
 ## User verification
+
+This section covers operators and people independently checking release artifacts,
+not ordinary member sign-in. The planned product requires no installed verification
+CLI for members, reviewers, or administrators to use its web workflows. Browser
+delivery retains the [distributor trust limit](threat-model.md#browser-delivery-trust).
 
 1. Obtain repository, tag, signing workflow identity, and trust roots through a trusted channel.
 2. Download checksums, artifacts, signature bundle, provenance, and SBOM from one reviewed release.

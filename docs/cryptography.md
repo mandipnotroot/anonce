@@ -271,6 +271,26 @@ Native benchmarks are available, but browser performance and native/WASM
 interoperability remain untested. Do not weaken this profile to make an interface
 responsive; introduce a separately reviewed profile and compatibility plan if needed.
 
+### Browser vault profile boundary
+
+The [browser account vault](key-management.md#browser-account-vault) is planned.
+WebAuthn Level 3 is the selected authentication design reference; its PRF extension
+is a candidate local unlock source, not a member signing key or a complete vault
+encryption protocol. WebAuthn authentication keys, member Ed25519 keys, and
+round-scoped reviewer X25519 keys retain separate purposes.
+
+Device-backup profile 1 remains the only implemented password-backup profile.
+Do not feed a passkey signature/public credential ID into it as an unlock secret,
+reinterpret PRF bytes as a password profile without review, or change its format
+or Argon2id costs for browser convenience.
+
+Before a PRF/recovery implementation, select reviewed library composition and fix
+versioned envelope/wrapping formats, context binding, KDF/AEAD parameters, fresh
+nonce rules, multi-credential access, recovery-secret encoding, and substitution/
+rollback behavior. Add cross-client vectors and downgrade rejection. A wrapping
+change requires [compatibility review](versioning.md#cryptographic-file-compatibility);
+this design adds no new profile, primitive, wire schema, or implementation.
+
 ## Post-quantum scope
 
 The baseline is classical. ML-KEM, ML-DSA, and SLH-DSA have final NIST standards;

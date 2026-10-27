@@ -15,6 +15,7 @@ Domain policy, browser key custody, storage, and the submission protocol are uni
 | Component | Holds | Must not receive |
 | --- | --- | --- |
 | Membership CA and enrollment | Cohorts, enrollment-code digests, CSRs, certificates, revocation state | Member private keys |
+| Identity account and vault service | Account credentials/sessions, eligibility dashboard, encrypted member-key backups | Plaintext device keys, vault unlock secrets, PRF outputs, submission history or reply capabilities |
 | Token issuer | Certificate authentication, cohort eligibility, per-member/round quota ledger and private reservation slots | Unblinded tokens or submission content |
 | Submission service | Round bulletins, anonymous tokens during validation, spent-token digests, ciphertext | Member identity, issuer sessions, private keys, plaintext answers |
 | Reviewer client | Round private keys, locally decrypted answers, reply content | Enrollment identities |
@@ -45,8 +46,11 @@ for network, credential, backup, and metadata separation.
 
 ## Client and server contract
 
+- The product is browser-only for every role. Accounts, shared review links, and
+  automatic key setup follow [the user workflow](ui-design.md#account-and-review-workflow).
+  Installation and manual key/file management are not prerequisites.
 - Go serves embedded HTML templates, CSS, ES modules, fonts, and the compiled browser client.
-- CLI and WASM share device-side Go cryptographic composition.
+- Browser WASM and optional CLI tools share device-side Go cryptographic composition.
 - Submission and reply handlers receive ciphertext only.
 - Result pages render decrypted data locally, never on the server.
 
@@ -54,6 +58,39 @@ Signed bulletins bind the form, schedule, per-member response limit, round encry
 key, token-verifier key, and profile. Clients must validate the bulletin and compare
 a trusted checkpoint or independent copy. Signatures alone cannot detect different
 validly signed forms served to different members.
+
+## Account and anonymous flow
+
+The identity origin owns sign-in, enrollment, the eligible-round dashboard, and
+the [encrypted member-key vault](key-management.md#browser-account-vault).
+Authentication, local unlocking, and membership proof for issuance are separate
+checks. An account or passkey is not a replacement for the membership certificate
+or blind authorization token.
+
+The member opens a common round link or dashboard entry. The browser obtains
+authorization on the identity side, then submits token and ciphertext through
+the separate anonymous origin. Only the minimal anonymous round-scoped material
+may cross that boundary. Member keys, certificates, accounts, credential IDs,
+vault IDs, quota slots, and login sessions must not cross it.
+
+Anonymous pages must not call the account/vault service or load identity-personalized
+assets. Receipt and reply state stays in the anonymous context, not an account
+history. A dashboard lists eligible rounds, not server-confirmed per-account
+submissions. Neither browser vault restoration nor login restores anonymous
+receipt/reply state by implication.
+
+Before browser integration, specify and test the cross-origin handoff, key ownership
+per context, cancellation/replay behavior, navigation return targets, and requests
+without identity credentials. Do not put tokens or secrets in URL paths, queries,
+or fragments.
+If messaging is used, require exact sender/receiver origin and window validation
+with bounded typed messages. This is an open design, not permission to bridge
+origins using wildcard CORS or membership cookies.
+
+Reviewers use a distinct authorized browser context for ciphertext retrieval and
+local decryption. Their keys remain round-scoped; account sign-in does not grant
+universal decrypt access. Reviewer authorization and backup retention still need
+the [protocol design](protocol.md#review-and-replies).
 
 ## Package boundaries
 
@@ -63,7 +100,7 @@ validly signed forms served to different members.
 | `internal/app`, `internal/service` | Implemented command configuration, bounded local HTTP, and unavailable-operation responses |
 | `cmd/client`, `internal/clientcli` | Implemented offline key CLI and file custody |
 | `cmd/wasm`, `internal/clientwasm` | Implemented public-only member-request verifier; no page integration or device-key access |
-| `cmd/cli` | Planned protocol CLI |
+| `cmd/cli` | Optional future protocol CLI, not required for product use |
 | `internal/client` | Shared composition, validation, and local state |
 | `internal/client/keystore` | Implemented in-memory device-backup encryption; no transport or persistence |
 | `internal/client/memberkey` | Implemented local Ed25519 member-key generation and typed encrypted backups; no transport or persistence |

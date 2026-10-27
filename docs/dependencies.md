@@ -100,6 +100,13 @@ bundled fonts; no font binaries are published. Docs assets are separate from pro
 
 ## Proposed product dependencies
 
+Browser accounts target [WebAuthn Level 3](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/)
+as the authentication design reference (consulted 2026-10-27). PRF unlocking needs
+actual browser/provider evidence and a separately reviewed wrapping profile; the
+presence of a passkey library is not proof of encrypted-key recovery support.
+See [the decision and research](key-management.md#browser-account-vault).
+No new library or browser asset is admitted by this design update.
+
 | Dependency | Observed version | License | Purpose |
 | --- | --- | --- | --- |
 | [PostgreSQL](https://www.postgresql.org/support/versioning/) | 18.6 | PostgreSQL | Independent service databases |
