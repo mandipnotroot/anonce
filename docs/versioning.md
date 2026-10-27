@@ -93,6 +93,12 @@ namespace, methods, bounded hex input, public-key output, rejection, and shutdow
 behavior are new contracts. Existing CLI commands, HTTP behavior, and cryptographic
 profiles are unchanged. No browser delivery or private-key compatibility is claimed.
 
+`verifyCSRForKey(hex, expectedHex)` is an additive opt-in method requiring
+`semver:minor` review. It requires an independently trusted expected key, validates
+the unchanged request profile/signature, and rejects mismatches without public
+output. Existing `verifyCSR` arity, output, and rejection behavior, shutdown, CLI,
+HTTP, and cryptographic profiles are unchanged.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

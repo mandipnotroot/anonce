@@ -85,6 +85,10 @@ properties described below.
 - Requests remain linkable and replayable; signature validation establishes no
   identity, certificate trust, freshness, or enrollment authority. Do not load
   membership requests on the anonymous submission origin.
+- `verifyCSRForKey` rejects valid requests for another key without public output.
+  Substitution protection requires an independently trusted expected key and a
+  trusted host. Copying the expected key from the request provides no protection;
+  neither key matching nor WASM protects against a compromised loading realm.
 - Build hashes detect changed local artifacts, not a hostile distributor. The
   host realm and built-ins are trusted. Repeated calls, host allocations, and Go
   runtime memory are not bounded by the per-request size limit.

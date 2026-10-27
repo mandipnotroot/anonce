@@ -289,14 +289,23 @@ After a trusted host loads the matching Go runtime and starts the module with
 | Method | Contract |
 | --- | --- |
 | `verifyCSR(hex)` | Exactly one primitive string containing 258 ASCII hexadecimal characters, either case, encoding the unchanged 129-byte DER profile; returns exactly `member:<lowercase hex>\n` on success, JavaScript `null` on invalid input |
+| `verifyCSRForKey(hex, expectedHex)` | Exactly two primitive strings: the same request hex and exactly 64 ASCII hexadecimal characters encoding an independently trusted 32-byte member public key, either case; returns the same public-key line only after profile/signature validation and an exact key match, otherwise `null` |
 | `close()` | No arguments; removes the namespace, releases callbacks, and lets `Go.run` finish. Extra arguments return `null` without shutting down |
 
-The bridge checks the JavaScript string length before copying into Go, then
-bounds hex decoding and calls the shared profile/signature validator. It rejects
+The bridge checks JavaScript string lengths before copying into Go, bounding both
+inputs to `verifyCSRForKey` before copying either. It bounds hex decoding and calls
+the shared profile/signature validator. It rejects
 objects without inspecting or coercing them. PEM, trailing bytes, extra claims,
 and invalid signatures fail without public output. Calls are synchronous; hosts
 must bound repeated calls and must not reuse saved callbacks after shutdown.
 An existing `anonce` namespace is never overwritten; the new instance exits instead.
+
+Use `verifyCSRForKey` when request substitution must be rejected. Obtain the expected
+key through an independently trusted channel, not from the request being checked.
+Empty or malformed expected keys, missing/extra arguments, and mismatches return
+`null` without falling back to ordinary verification. Key matching establishes no
+freshness, identity, eligibility, revocation, or enrollment authority. The existing
+one-argument `verifyCSR` contract remains unchanged and still rejects extra arguments.
 
 There is no file, password, private-key, network, storage, or enrollment interface.
 Public requests and keys remain linkable and must not reach the anonymous submission

@@ -11,8 +11,9 @@ and separates implemented endpoints from proposed discovery APIs. Cryptographic
 schemas await encoding and profile review.
 
 The separate [local WASM verifier](key-management.md#local-wasm-request-verification)
-has an in-process JavaScript interface, not an HTTP route. Its artifacts are not
-served by these commands; the HTTP contract and OpenAPI definition are unchanged.
+provides request validation and opt-in expected-key matching through an in-process
+JavaScript interface, not an HTTP route. These commands serve no verifier artifacts;
+HTTP routes and OpenAPI schemas are unchanged.
 
 ## Implemented infrastructure
 

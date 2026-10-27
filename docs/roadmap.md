@@ -42,7 +42,9 @@ Available foundations:
   and certificate issuance remain unavailable.
 - **Public-only WASM verifier:** [member-request validation](key-management.md#local-wasm-request-verification)
   reuses the shared parser, with matching loader/notices, hashes, a size gate, and
-  native/Node compatibility tests. No page integration or private-key access exists.
+  native/Node compatibility tests. An opt-in expected-key method rejects request
+  substitution when the expected key is independently trusted. No page integration
+  or private-key access exists.
 
 These foundations do not establish protocol or storage security. Browser custody,
 enrollment, signing-service integration, reviewer round binding, expiry, submission

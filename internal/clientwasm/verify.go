@@ -6,6 +6,8 @@
 package clientwasm
 
 import (
+	"bytes"
+	"crypto/ed25519"
 	"encoding/hex"
 
 	"github.com/mandipnotroot/anonce/internal/client/membercsr"
@@ -14,16 +16,39 @@ import (
 const encodedRequestSize = 2 * membercsr.DERSize
 
 func verifyHex(encoded string) (string, error) {
-	if len(encoded) != encodedRequestSize {
-		return "", membercsr.ErrInvalidRequest
-	}
-	der, err := hex.DecodeString(encoded)
-	if err != nil {
-		return "", membercsr.ErrInvalidRequest
-	}
-	public, err := membercsr.Parse(der)
+	public, err := parseRequestHex(encoded)
 	if err != nil {
 		return "", err
 	}
 	return "member:" + hex.EncodeToString(public) + "\n", nil
+}
+
+func verifyHexForKey(encoded, expectedHex string) (string, error) {
+	if len(expectedHex) != 2*ed25519.PublicKeySize {
+		return "", membercsr.ErrInvalidRequest
+	}
+	expected, err := hex.DecodeString(expectedHex)
+	if err != nil {
+		return "", membercsr.ErrInvalidRequest
+	}
+	public, err := parseRequestHex(encoded)
+	if err != nil {
+		return "", err
+	}
+	// Both keys are public. Matching never bypasses profile/signature validation.
+	if !bytes.Equal(public, expected) {
+		return "", membercsr.ErrInvalidRequest
+	}
+	return "member:" + hex.EncodeToString(public) + "\n", nil
+}
+
+func parseRequestHex(encoded string) (ed25519.PublicKey, error) {
+	if len(encoded) != encodedRequestSize {
+		return nil, membercsr.ErrInvalidRequest
+	}
+	der, err := hex.DecodeString(encoded)
+	if err != nil {
+		return nil, membercsr.ErrInvalidRequest
+	}
+	return membercsr.Parse(der)
 }

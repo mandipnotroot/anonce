@@ -34,8 +34,8 @@ Distinguish implemented from planned behavior.
 - `internal/client/membercsr`: local Ed25519 certificate requests and bounded
   profile validation; no identity claims, certificate issuance, or transport.
 - `cmd/wasm`, `internal/clientwasm`: public-only member request verification using
-  the shared parser; local WASM artifacts and Node compatibility checks, no page
-  integration, device-key access, or enrollment.
+  the shared parser, with opt-in expected-public-key matching; local WASM artifacts
+  and Node compatibility checks, no page integration, device-key access, or enrollment.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
 

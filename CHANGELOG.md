@@ -10,6 +10,11 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Public-only WASM `verifyCSRForKey(hex, expectedHex)` for bounded request and
+  signature validation followed by exact expected-key matching. Invalid input or
+  mismatches return `null` without public output or fallback. Existing `verifyCSR`,
+  CLI, HTTP, and cryptographic profiles are unchanged; the expected key must be
+  independently trusted. No page integration or enrollment is added.
 - Optional `client verify-csr -expect-public-key HEX` to reject requests for a
   different member key before public output. Malformed or repeated expected-key
   flags fail before file access. Existing verification, cryptographic profiles,
