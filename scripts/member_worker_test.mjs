@@ -161,6 +161,124 @@ test("member worker owner admission, snapshots, public results, and terminal loc
   assert.equal(await replacement.ready, true);
 });
 
+test("member worker closed Promise observes every terminal path after local cleanup", { timeout: 5000 }, async (t) => {
+  const h = harness(t);
+  const actions = {
+    close: (session) => session.close(),
+    lock: (session) => session.lock(),
+    "global lock": () => lockMemberWorkers(),
+    "peer lock": (_session, _worker, channel) => channel.onmessage({ data: "lock" }),
+    "channel decode failure": (_session, _worker, channel) => channel.onmessageerror(),
+    "notification failure": (session, _worker, channel) => { channel.throwing = true; session.lock(); },
+    pagehide: () => h.pagehide(false),
+    "cached pagehide": () => h.pagehide(true),
+    visibility: () => h.visibility("hidden"),
+    error: (_session, worker) => worker.onerror({ preventDefault() {} }),
+    "message decode failure": (_session, worker) => worker.onmessageerror(),
+    "invalid reply": (_session, worker) => worker.send({ version: 2 }),
+    "startup timeout": () => h.fire(30_000),
+    "operation timeout": () => h.fire(120_000),
+    "lifetime timeout": () => h.fire(300_000),
+    "clock failure": () => { h.time.wall = NaN; h.visibility("visible"); },
+    "delayed deadline": () => { h.time.wall += 300_000; h.visibility("visible"); },
+  };
+  for (const state of ["startup", "idle", "pending"]) {
+    for (const [name, act] of Object.entries(actions)) {
+      if (name === "startup timeout" && state !== "startup") continue;
+      if (name === "operation timeout" && state !== "pending") continue;
+      const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+      const closure = session.closed;
+      assert.ok(closure instanceof Promise);
+      assert.equal(session.closed, closure, "getter replaced the Promise");
+      if (state !== "startup") { worker.ready(); assert.equal(await session.ready, true); }
+      const pending = state === "pending" ? session.create(Uint8Array.of(7)) : null;
+      const late = worker.onmessage;
+      let observed = 0;
+      const observation = closure.then((value) => {
+        observed++;
+        assert.equal(value, undefined, "closure exposed data or a reason");
+        assert.equal(worker.terminated, true, "notified before requesting termination");
+        assert.equal(worker.onmessage, null);
+        assert.equal(worker.onerror, null);
+        assert.equal(worker.onmessageerror, null);
+        assert.equal(channel.closed, true);
+        assert.equal(channel.onmessage, null);
+        assert.equal(channel.onmessageerror, null);
+        assert.equal(h.visibilityListeners.size, 0);
+      });
+      await Promise.resolve();
+      assert.equal(observed, 0, `${state}/${name}: live owner reported closed`);
+      act(session, worker, channel);
+      assert.equal(observed, 0, "observer ran synchronously inside termination");
+      await observation;
+      assert.equal(await session.ready, state !== "startup", "closure changed readiness history");
+      if (pending) assert.equal(await pending, null);
+      session.close(); session.lock();
+      late({ data: { version: 1, type: "ready" } });
+      assert.equal(await session.request(), null);
+      assert.equal(await session.closed, undefined, "late subscriber missed closure");
+      assert.equal(observed, 1, "closure notified repeatedly");
+      h.document.visibilityState = "visible";
+      h.time.wall = 1_700_000_000_000;
+      const replacement = h.open();
+      h.workers.at(-1).ready();
+      assert.equal(await replacement.ready, true, "closure retained singleton admission");
+      replacement.close();
+    }
+  }
+});
+
+test("member worker closed Promise settles for failed construction and denied owners", { timeout: 5000 }, async (t) => {
+  const h = harness(t);
+  const owner = h.open();
+  const denied = h.open();
+  assert.equal(await denied.closed, undefined);
+  assert.equal(await denied.ready, false);
+  let ownerClosed = false;
+  void owner.closed.then(() => { ownerClosed = true; });
+  await Promise.resolve();
+  assert.equal(ownerClosed, false, "denied construction closed the active owner");
+  owner.close();
+  assert.equal(await owner.closed, undefined);
+  const Worker = globalThis.Worker, Channel = globalThis.BroadcastChannel;
+  for (const failure of ["hidden", "clock", "channel", "worker"]) {
+    h.document.visibilityState = failure === "hidden" ? "hidden" : "visible";
+    h.time.wall = failure === "clock" ? NaN : 1_700_000_000_000;
+    globalThis.BroadcastChannel = failure === "channel" ? class { constructor() { throw new Error("synthetic channel failure"); } } : Channel;
+    globalThis.Worker = failure === "worker" ? class { constructor() { throw new Error("synthetic startup failure"); } } : Worker;
+    const session = h.open();
+    assert.equal(await session.closed, undefined, failure);
+    assert.equal(await session.ready, false);
+  }
+});
+
+test("member worker closed Promise stays pending across rejected calls and successful work", async (t) => {
+  const h = harness(t);
+  const session = h.open(), worker = h.workers.at(-1);
+  let closed = false;
+  void session.closed.then(() => { closed = true; });
+  assert.equal(await session.request(), null);
+  worker.ready();
+  assert.equal(await session.ready, true);
+  assert.equal(await session.create(new Uint8Array()), null);
+  const failed = session.unlock(Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32));
+  worker.answer(null); // Invalid backup/password, not terminal transport failure.
+  assert.equal(await failed, null);
+  const created = session.create(Uint8Array.of(7));
+  assert.equal(await session.request(), null); // Busy admission is not terminal.
+  worker.answer(setup());
+  assert.deepEqual(await created, setup());
+  const requested = session.request();
+  worker.answer(enrollment());
+  assert.deepEqual(await requested, enrollment());
+  session.lock("extra"); session.close("extra");
+  await Promise.resolve();
+  assert.equal(closed, false, "nonterminal action reported closure");
+  session.close();
+  assert.equal(await session.closed, undefined);
+  assert.equal(closed, true);
+});
+
 test("member worker rejects input types, arity, bounds, and hostile properties before posting", async (t) => {
   const h = harness(t);
   const session = h.open();

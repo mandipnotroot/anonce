@@ -694,6 +694,7 @@ The runtime is never loaded into the owner realm.
 | Interface | Behavior |
 | --- | --- |
 | `ready` | Promise of `true` after runtime startup, otherwise `false`; data calls before readiness return `null`, never queue |
+| `closed` | Stable Promise resolving once to `undefined` after terminal local cleanup, including failed construction; never rejects or exposes a reason |
 | `create(password)`, `unlock(password, backup, expected)`, `request()` | Same byte sizes, arity, public/encrypted results, and Promise/null failures as the direct bridge; one operation admitted before copying/posting |
 | `lock()` | No arguments; notify participating peers, then synchronously terminate locally and resolve pending work to `null`, even if posting fails; repeated calls are safe; extra arguments do nothing |
 | `close()` | No arguments; synchronously detach listeners, terminate locally, and resolve pending work to `null`, without notifying peers; repeated calls are safe; extra arguments do nothing |
@@ -706,6 +707,21 @@ before posting results on normal completion. Lock/disposal terminates from the o
 instead of waiting for a lock queued behind CPU-bound derivation. It permanently
 closes that instance; a caller must explicitly construct a new locked instance.
 There is no automatic restart, fallback, or replacement key on failed restoration.
+
+Hosts can subscribe to `closed` immediately after construction, without polling or
+opening another notification channel. It settles after listener/channel/timer cleanup,
+worker termination has been requested, pending work has been resolved to `null`, and
+local owner admission has been released. Already-settled `ready` and operation results
+are unchanged. Invalid inputs, busy calls, and ordinary `null` operation results do
+not close a live owner. Late subscribers observe the same settled Promise.
+
+Use this local notification to clear a future UI's unlocked state. Promise handlers
+run asynchronously on the owner event loop; they cannot run while it is suspended
+or after its realm is destroyed. Settlement is not proof of worker exit, memory
+erasure, peer termination, account logout, or revocation. It carries no secrets,
+identifiers, error details, or timestamps and adds no persistence or new messages.
+Handlers follow [ECMAScript 2025 Promise semantics](https://262.ecma-international.org/16.0/#sec-promise.prototype.then)
+(consulted 2026-10-28).
 
 The local version-1 transport uses `{version, id, method, inputs}` commands and
 `{version, id, result}` replies, with strictly increasing positive safe-integer IDs.

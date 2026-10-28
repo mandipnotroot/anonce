@@ -10,6 +10,11 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Development member-worker `closed` Promise for secret-free observation of terminal
+  local cleanup, including idle peer lock and failed startup, without polling.
+  Node lifecycle and actual-worker checks plus synthetic browser checks cover the
+  observer. Existing methods, transport, HTTP, and cryptographic profiles are unchanged;
+  settlement does not establish worker exit, erasure, account logout, or revocation.
 - Opt-in `make member-browser-test` for synthetic member workers in sandboxed
   headless Chromium: native/worker backup compatibility, restoration failures,
   page CSP probes, UI event-loop progress, same-origin peer lock, and worker

@@ -195,6 +195,12 @@ unchanged, but delayed callbacks no longer permit overdue readiness/results or
 new operations. No hard suspension-expiry guarantee is added. Direct bridge,
 worker transport, HTTP, CLI, and cryptographic formats remain unchanged.
 
+The worker owner's `closed` Promise is an additive development interface requiring
+`semver:minor` review. Hosts may observe terminal local cleanup without polling;
+settlement supplies no reason or worker-exit guarantee. Existing readiness, method
+results, termination rules, transport, direct bridge, HTTP, CLI, and cryptographic
+formats are unchanged. See the [owner contract](key-management.md#local-member-worker-host).
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

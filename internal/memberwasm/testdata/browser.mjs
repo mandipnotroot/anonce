@@ -28,6 +28,7 @@ export async function run(native) {
     check(await session.request() === null);
     const denied = new MemberWorkerSession();
     check(await denied.ready === false);
+    check(await denied.closed === undefined);
     const snapshot = password.slice();
     const restoring = session.unlock(snapshot, backup, key);
     snapshot.fill(0);
@@ -37,6 +38,7 @@ export async function run(native) {
     restored.csr.fill(0);
     check(encode((await session.request()).csr) === native.csr);
     session.close();
+    check(await session.closed === undefined);
     check(await session.request() === null);
 
     const fresh = await open();
@@ -55,6 +57,7 @@ export async function run(native) {
     check(heartbeat > before); // UI event loop progressed during full-cost WASM work.
     const exported = { backup: encode(setup.backup), publicKey: encode(setup.publicKey), csr: encode(setup.csr) };
     fresh.lock();
+    check(await fresh.closed === undefined);
     check(await fresh.request() === null);
     const again = await open();
     check(encode((await again.unlock(password, setup.backup, setup.publicKey)).csr) === exported.csr);
@@ -63,6 +66,7 @@ export async function run(native) {
     const cancelled = await open();
     const pending = cancelled.create(password);
     cancelled.close();
+    check(await cancelled.closed === undefined);
     check(await pending === null && await cancelled.request() === null);
     check(encode(backup) === native.backup && encode(key) === native.publicKey);
     check(globalThis.Go === undefined && globalThis.anonceMember === undefined);
@@ -75,32 +79,29 @@ export async function run(native) {
   }
 }
 
-let peerChannel = null, peerResult = null;
+let peerResult = null;
 export async function openPeer() {
   const session = await open();
   const password = Uint8Array.of(7); // Synthetic only, never user-supplied.
   try { check(await session.create(password) !== null); } finally { password.fill(0); }
-  peerChannel = new BroadcastChannel("anonce.member-lock.v1");
-  peerResult = new Promise((resolve) => {
-    peerChannel.onmessage = () => {
-      // Allow the owner's independently registered notification handler to run.
-      setTimeout(async () => resolve(await session.request() === null), 0);
-    };
-  });
+  // Observe idle owner closure without polling or a second notification channel.
+  peerResult = session.closed.then(async (value) => value === undefined && await session.request() === null);
   return true;
 }
 export async function peerLocked() {
-  try { return await peerResult; } finally { peerChannel?.close(); peerChannel = null; closeAll(); }
+  try { return await peerResult; } finally { peerResult = null; closeAll(); }
 }
 export function notify() { return lockMemberWorkers(); }
 
-let visibilitySession = null, hiddenObserved = false;
+let visibilitySession = null, hiddenObserved = false, closureObserved = false;
 document.addEventListener("visibilitychange", (event) => {
   if (event.isTrusted && document.visibilityState === "hidden") hiddenObserved = true;
 });
 export async function startVisibility(native) {
   hiddenObserved = false;
+  closureObserved = false;
   visibilitySession = await open();
+  void visibilitySession.closed.then((value) => { check(value === undefined); closureObserved = true; });
   const password = decode(native.password);
   try {
     const restored = await visibilitySession.unlock(password, decode(native.backup), decode(native.publicKey));
@@ -109,7 +110,7 @@ export async function startVisibility(native) {
   } finally { password.fill(0); }
 }
 export async function visibilityLocked() {
-  return hiddenObserved && await visibilitySession.request() === null;
+  return hiddenObserved && closureObserved && await visibilitySession.request() === null;
 }
 export async function hiddenStartup() {
   const session = new MemberWorkerSession();
@@ -127,6 +128,7 @@ export async function deadlines(native) {
     sessions.add(startup);
     offset = 30_000;
     check(await startup.ready === false);
+    check(await startup.closed === undefined);
     check(await startup.request() === null);
     for (const boundary of ["operation", "lifetime", "rollback"]) {
       offset = 0;
@@ -140,6 +142,7 @@ export async function deadlines(native) {
         offset = boundary === "lifetime" ? 300_000 : -30_000;
         check(await session.request() === null);
       }
+      check(await session.closed === undefined);
       offset = 0;
       check(await session.request() === null); // Clock recovery never revives an owner.
     }

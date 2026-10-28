@@ -177,6 +177,10 @@ properties described below.
   The worker's fixed local imports and bounded credential-free WASM fetch still
   require trusted delivery. One active owner per module realm does not constrain
   other realms/tabs or authenticate an account.
+  Its public `closed` Promise lets hosts observe terminal local cleanup without
+  polling, including idle peer locking. It exposes no reason or identifiers and
+  does not acknowledge worker exit or remote locking. Handlers require a running
+  owner event loop; they add no suspension, erasure, logout, or revocation guarantee.
 - The worker owner's [lock notifications](key-management.md#lock-notifications-and-page-disposal)
   contain no secrets or account/key identifiers. Explicit lock can notify eligible
   same-origin, same-partition peers; all incoming traffic terminates locally without

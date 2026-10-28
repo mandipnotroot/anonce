@@ -72,6 +72,7 @@ try {
   restored.csr.fill(0); restored.publicKey.fill(0);
   assert.equal(encode((await session.request()).csr), native.csr);
   session.lock();
+  assert.equal(await session.closed, undefined);
   assert.equal(workers.at(-1).terminated, true);
   assert.equal(await session.request(), null);
 
@@ -89,6 +90,7 @@ try {
   assert.notEqual(encode(setup.publicKey), native.publicKey);
   exported = { backup: encode(setup.backup), csr: encode(setup.csr), publicKey: encode(setup.publicKey) };
   fresh.close();
+  assert.equal(await fresh.closed, undefined);
   const again = open();
   assert.equal(await again.ready, true);
   assert.equal(encode((await again.unlock(password, setup.backup, setup.publicKey)).csr), exported.csr);
@@ -107,15 +109,16 @@ try {
   // the controlled channel harness. Node does not model browser partitioning.
   const notifier = new BroadcastChannel("anonce.member-lock.v1");
   try {
-    for (const state of ["startup", "pending"]) {
+    for (const state of ["startup", "idle", "pending"]) {
       const remote = open(), worker = workers.at(-1);
       let pending;
-      if (state === "pending") {
+      if (state !== "startup") {
         assert.equal(await remote.ready, true);
-        pending = remote.create(password);
+        if (state === "pending") pending = remote.create(password);
       }
       const exited = new Promise((resolve) => worker.thread.once("exit", resolve));
       notifier.postMessage("lock");
+      assert.equal(await remote.closed, undefined); // Observe even an idle owner without polling.
       if (pending) assert.equal(await pending, null);
       else await remote.ready; // Startup may win the race with notification delivery.
       await exited;
@@ -129,6 +132,7 @@ try {
   assert.equal(await hidden.ready, true);
   const hiding = hidden.create(password);
   lifecycle.dispatchEvent(new Event("pagehide"));
+  assert.equal(await hidden.closed, undefined);
   assert.equal(await hiding, null);
   assert.equal(workers.at(-1).terminated, true);
 
@@ -139,6 +143,7 @@ try {
   const backgroundPending = background.request();
   globalThis.document.visibilityState = "hidden";
   globalThis.document.dispatchEvent(new Event("visibilitychange"));
+  assert.equal(await background.closed, undefined);
   assert.equal(await backgroundPending, null);
   assert.equal(backgroundWorker.terminated, true);
   assert.equal(await open().ready, false, "hidden page started a worker");
@@ -175,6 +180,7 @@ try {
           assert.equal(await pending, null, "overdue worker result published");
         }
       }
+      assert.equal(await expired.closed, undefined);
       assert.equal(worker.terminated, true);
       assert.equal(await expired.request(), null, "expired worker restarted");
     }
@@ -187,6 +193,7 @@ try {
     mode = failure;
     const failed = open();
     assert.equal(await failed.ready, false);
+    assert.equal(await failed.closed, undefined);
     assert.equal(await failed.create(password), null);
     assert.equal(workers.at(-1).terminated, true);
   }
@@ -208,6 +215,7 @@ try {
     });
     worker.thread.postMessage(malformed);
     await failed;
+    assert.equal(await victim.closed, undefined);
     assert.equal(worker.terminated, true);
     assert.equal(await victim.request(), null);
   }

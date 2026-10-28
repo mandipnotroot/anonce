@@ -34,6 +34,8 @@ export class MemberWorkerSession {
   #closed = false;
   #ready;
   #resolveReady;
+  #closure;
+  #resolveClosed;
   #startup;
   #operation;
   #lifetime;
@@ -49,6 +51,7 @@ export class MemberWorkerSession {
 
   constructor() {
     this.#ready = new Promise((resolve) => { this.#resolveReady = resolve; });
+    this.#closure = new Promise((resolve) => { this.#resolveClosed = resolve; });
     if (active !== null) {
       this.#stop();
       return;
@@ -92,6 +95,8 @@ export class MemberWorkerSession {
   }
 
   get ready() { return this.#ready; }
+  // Local terminal cleanup only, not worker exit, peer acknowledgement, or erasure.
+  get closed() { return this.#closure; }
 
   create(...inputs) { return this.#call("create", inputs); }
   unlock(...inputs) { return this.#call("unlock", inputs); }
@@ -214,5 +219,6 @@ export class MemberWorkerSession {
     this.#pending?.resolve(null);
     this.#pending = null;
     if (active === this) active = null;
+    this.#resolveClosed();
   }
 }

@@ -22,6 +22,10 @@ Its [worker lock notifications](key-management.md#lock-notifications-and-page-di
 are local browser messages, not a logout endpoint or server revocation API. HTTP
 behavior and OpenAPI schemas remain unchanged.
 
+The worker owner's local [`closed` Promise](key-management.md#local-member-worker-host)
+observes terminal cleanup without a server request or new worker message. It is not
+a logout acknowledgement; HTTP and OpenAPI contracts are unchanged.
+
 ## Implemented infrastructure
 
 All three commands expose:
