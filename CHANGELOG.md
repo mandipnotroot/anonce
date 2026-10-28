@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Identity version-3 encrypted member-backup slots and an internal runtime-role
+  store with account scoping, fixed public-key binding, bounded profile-2 envelopes,
+  revision-checked replacement/deletion, retained deletion tombstones, and account
+  disable serialization. Opt-in `make db-member-backup-test` exercises real
+  PostgreSQL persistence, races, cancellation, and grants. No HTTP/browser vault,
+  authentication, enrollment binding, PRF, recovery, or submission storage is added.
 - Identity version-2 account/session migration and an internal pgx runtime-role
   store with random digest-only session secrets, bounded absolute expiry,
   revocation, transactional account disabling, and bounded expired-reference

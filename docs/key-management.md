@@ -26,7 +26,9 @@ Generate reviewer keys automatically per round, separately from account credenti
 Plan identity-side storage of encrypted member-key backups so another browser can
 restore the same key after authentication and local unlocking. A public key is
 linkable even though it is not secret; keep it off anonymous submission requests.
-Backup storage and automatic restoration are requirements, not available features.
+An [internal development store](database.md#local-member-backup-storage-contract)
+now persists bounded encrypted copies with a fixed public binding and revision
+checks. Browser backup storage and automatic restoration remain unavailable.
 
 ### Authentication and unlocking
 
@@ -66,6 +68,13 @@ does not automatically grant access to an existing encrypted backup. Synced-logi
 availability must not be presented as proof that vault restoration works.
 
 ### Storage and lifecycle
+
+The internal member-backup store is not a vault endpoint. It trusts an authenticated
+owner selected by its caller, does not enforce recent authentication or rate limits,
+and has no account UI or browser integration. Its envelope checks cannot authenticate
+ciphertext or prove its declared public binding. Its local tombstone/retention
+contract does not settle product recovery, enrollment binding, or malicious-server
+rollback detection. Do not admit real keys through the local stack.
 
 - Upload only encrypted member-key backups, public key/certificate material, and
   the reviewed version/binding metadata needed to restore them. Unlock material,

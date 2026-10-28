@@ -357,6 +357,14 @@ compatibility plan if needed.
 
 ### Browser vault profile boundary
 
+The [internal member-backup store](database.md#local-member-backup-storage-contract)
+admits only the existing 108-byte member-purpose envelope. Shared
+`keystore.ValidateEnvelope` checks public syntax without a password, derivation,
+decryption, or authentication. A correctly shaped arbitrary ciphertext can pass;
+device-side typed import and independently trusted expected-key matching remain
+required. Stored public bindings and revision counters are not cryptographic
+enrollment or anti-rollback evidence. No cryptographic profile changes.
+
 The separate [local WASM member bridge](key-management.md#local-wasm-member-sessions)
 reuses profile 2, member-key payload profile 1, and CSR profile 1 without parameter
 or encoding changes. Passwords are opaque bytes, never PRF outputs or server login

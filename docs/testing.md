@@ -29,6 +29,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make container-test` | Opt-in fresh Compose project with actual app containers and PostgreSQL: liveness/unavailable readiness, live isolation/hardening, authenticated runtime access, denied escalation/DDL/default function access, explicit table grants, and cross-instance TCP rejection; disposable synthetic volumes only |
 | `make db-migration-test` | Container checks plus separate embedded Goose histories on real PostgreSQL: failed and repeated/concurrent application, owner/runtime grants, wrong-target rejection, invalid/future histories, and missing boundary marker; disposable synthetic volumes only |
 | `make db-account-test` | Migration/container checks plus race-enabled runtime-role account/session persistence, digest-only storage, expiry/cleanup, cross-account revocation isolation, concurrent disable, cancellation, SQL constraints/grants, and submission-store rejection |
+| `make db-member-backup-test` | Account/migration/container checks plus race-enabled runtime-role member-backup persistence, owner scoping, revision/binding conflicts, tombstones, concurrent writes/disable, cancellation/rollback, constraints/grants, and submission-store rejection |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -45,6 +46,7 @@ regressions belong in `internal/identity/accounts/testdata/fuzz/FuzzAccountToken
 | --- | --- |
 | Configuration | 8192 bytes before parsing; separate listen/source-URL limits |
 | Migration admission | `FuzzMigrationAdmission`: 1025-byte target and 65-byte credential caps; fixed service/hex admission only, no database or network work |
+| Member-backup storage admission | `FuzzMemberBackupAdmission`: 33-byte public key, 109-byte envelope, and fixed-width revision; independent exact envelope/revision oracle, no KDF, database, or network work |
 | Container bind opt-in | `FuzzContainerListen`: 129-byte listen input cap and one Boolean; only native loopback or explicitly opted-in IPv4 unspecified binding |
 | Backup structure | Maximum backup size plus one byte; allocation-free parser, no Argon2id |
 | Member/reviewer payload | 49-byte input cap, 48-byte ASN.1 profile; no KDF work |
@@ -64,6 +66,8 @@ in the relevant package's `testdata/fuzz/<target>` directory:
 
 - `internal/service`: `FuzzConfig` and `FuzzContainerListen`.
 - `internal/dbmigrate`: `FuzzMigrationAdmission`, synthetic nonsecret admission only.
+- `internal/identity/memberbackup`: `FuzzMemberBackupAdmission`, public envelope
+  structure and synthetic nonsecret bytes only.
 - `internal/web`: `FuzzLookup`.
 - `internal/client/keystore`: `FuzzBackup`.
 - `internal/client/memberkey`: `FuzzMemberKeyPayload`.
@@ -105,6 +109,7 @@ profile-2 nonce prefix and library composition.
 | Configuration | `TestConfig`, `TestConfigSourceURL`, `TestRunFailures`, `TestContainerNetwork`, `TestContainerNetworkFlag`, `FuzzContainerListen` |
 | Migration service/credential/command bounds, cancelled/concurrent calls, regular-file/symlink/FIFO rejection, separate embedded files, and bounded admission fuzzing | `TestMigrationAdmission`, `TestMigrationCancellation`, `TestMigrationCredentialFiles`, `TestMigrationFiles`, `FuzzMigrationAdmission` |
 | Account lifetime/token/cleanup admission, zero-value failure, concurrent cancelled calls, digest composition and unchanged inputs | `TestAccountAdmission`, `TestAccountUnavailableAndCancellation`, `TestAccountTokenDigest`, `FuzzAccountToken` |
+| Member-backup envelope bounds/profile/purpose, revision/key admission, zero-value failure, concurrent cancelled calls, and unchanged inputs | `TestMemberBackupEnvelope`, `TestMemberBackupAdmission`, `TestMemberBackupUnavailableAndCancellation`, `FuzzMemberBackupAdmission` |
 | Fixed-target local liveness probe, exact bounded body/status, no redirect/credentials, response-header limit, cancellation, and unavailable targets | `TestProbe`, `TestProbeCancellationAndFailures` |
 | No-replace/distinct secret generation, existing-file preservation, directory/file permissions, malformed/missing/duplicate files, symlinks/FIFOs, engine version boundary, and unsafe normalized Compose model rejection | `scripts/test_containers.py`, included in `make policy-test` |
 | Routing and input isolation | `TestInfrastructureRoutes`, `TestInfrastructureMethods`, `TestUnavailableRoutesRespectServiceBoundary`, `TestInfrastructureDoesNotReadOrReflectRequestData`, `TestServeRejectsBodyBeforeContinue` |
@@ -221,8 +226,9 @@ both PostgreSQL instances with only their respective migration credentials.
 advancement, simultaneous/repeated application, separate version tables, owner-created
 objects, runtime marker reads, denied runtime DML/DDL and ledger access, wrong-target
 rejection, future/duplicate/negative/unapplied/out-of-order histories, and a missing
-marker. Identity checks also force a version-2 failure after version 1, verify
-transactional object rollback and unchanged history, then apply the additive upgrade.
+marker. Identity checks force version-2 and version-3 failures after their preceding
+versions, verify transactional object rollback and unchanged history, then apply
+the additive upgrades.
 No SQL privilege result is inferred from unit tests. `TestMigrationAdmission`,
 `TestMigrationCancellation`, `TestMigrationCredentialFiles`, and `TestMigrationFiles`
 run under native race coverage; bounded admission fuzzing is included in `make fuzz`.
@@ -276,6 +282,45 @@ binding, production retention, or the complete browser acceptance journey.
 On 2026-10-28, `make db-account-test` passed on Linux x86_64 with PostgreSQL 18.6,
 Engine 29.9.2, and Compose 5.6.1, including version-2 upgrade/failure checks and
 the runtime-role race-enabled subtests above.
+
+### Member-backup storage checks
+
+`make db-member-backup-test` includes the disposable account/migration/container
+checks above, then runs `TestPostgresMemberBackups` as the actual runtime role on
+identity and separately on submission. The `member-backup-test` image compiles a
+race-enabled executable from only the two additionally admitted member-backup
+test files, without fixtures. It receives only its selected runtime credential and
+network. Missing configuration fails, and diagnostics contain no row contents.
+
+Named subtests cover:
+
+- `lifecycle-and-owner-scope`: persist and natively restore a runtime-generated
+  encrypted key, unchanged inputs/owned outputs, cross-account read/write/delete
+  isolation, fixed public binding, stale revisions, opaque ciphertext admission,
+  deletion tombstones, explicit same-key recreation, and disabled/missing owners.
+- `constraints-and-grants`: envelope/profile/purpose/size and revision bounds,
+  foreign keys, fixed schema fields, and denied owner/public-key changes, row
+  deletion, truncation, DDL, ledger reads, and ownership escalation.
+- `concurrent-writes`: exactly one winner among competing creates and among mixed
+  replacement/deletion attempts with the same expected revision.
+- `concurrent-disable`: writes racing account disable cannot leave an accessible
+  or writable backup after disable commits.
+- `cancellation-and-rollback`: held account/backup locks cancel writes without
+  revision changes; subsequent writes acquire the released locks. Constructor
+  cancellation and closed-pool errors fail without driver diagnostics.
+- `revision-exhaustion`: the final positive revision remains readable and cannot wrap.
+
+The submission run rejects construction; separate SQL checks require all identity
+account/session/member-backup tables to be absent there. These are internal storage
+checks, not HTTP owner authorization, recent authentication, rate limits, trusted
+enrollment binding, ciphertext authentication, malicious-server rollback defense,
+production retention, encrypted database restoration, or the browser vault journey.
+Bounded native admission tests/fuzzing run in `make check`; real PostgreSQL remains
+an explicit opt-in target.
+
+On 2026-10-28, `make db-member-backup-test` passed on Linux x86_64 with PostgreSQL
+18.6, Engine 29.9.2, and Compose 5.6.1, including version-3 upgrade/failure checks,
+the account tests, and all member-backup subtests above.
 
 ### WASM verifier checks
 

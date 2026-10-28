@@ -51,7 +51,7 @@ properties described below.
   operator image with only one database network and migration credential. It
   explicitly assumes ownership, serializes application with a bounded session lock,
   and rejects unsupported histories. Runtime can read the boundary marker and has
-  explicit identity account/session grants, never migration-state access. The runner
+  explicit identity account/session/member-backup grants, never migration-state access. The runner
   has schema-owner authority; its SQL and image are
   trusted operator inputs. Version records are not tamper evidence or checksums.
   Password buffers are cleared where owned, but driver/runtime copies remain.
@@ -75,6 +75,26 @@ properties described below.
   supplied. It must not be exposed directly to requests. Its pool must remain on
   the checked runtime role/database, without parameter tracing. Storage tests do
   not establish a secure account workflow or authorize anonymous submissions.
+
+### Internal member-backup storage
+
+- The [development store](database.md#local-member-backup-storage-contract) scopes
+  every operation to a trusted caller-supplied owner and checks account status.
+  Account locks serialize writes with disable; revisions reject stale concurrent
+  writes, and tombstones prevent stale creation after deletion. Reads already in
+  flight or returned before disable are not recalled. No HTTP owner authorization,
+  recent-authentication enforcement, write rate limit, or browser integration exists.
+- The runtime role can access all identity slots. Package scoping is not RLS and
+  cannot contain a compromised identity application. Public bindings are linkable
+  metadata, never anonymous-request fields. Stored ciphertext can be guessed
+  offline; storage admission verifies only public envelope structure, not encrypted
+  payload validity or key binding.
+- Fixed public bindings prevent accidental rebinding through the API, not malicious
+  server substitution. Revisions are concurrency controls, not rollback proofs.
+  Deletion clears the live ciphertext but retains public binding/revision metadata;
+  WAL, dead tuples, snapshots, and backups can retain old ciphertext. Disable does
+  not erase backups. Production retention, account deletion, recovery, trusted
+  enrollment binding, and encrypted database restoration remain unimplemented.
 
 ### Device keys and backups
 

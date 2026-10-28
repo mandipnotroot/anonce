@@ -69,12 +69,16 @@ Distinguish implemented from planned behavior.
 - `migrations/`, `internal/dbmigrate`, `cmd/migrate`: separate embedded Goose SQL
   histories and an operator-only pgx runner for local databases, with owner-created
   boundary markers, explicit migration targets, and opt-in real-PostgreSQL checks;
-  identity version 2 adds internal account/session persistence; no credentials,
-  vault/protocol tables or HTTP persistence.
+  identity version 2 adds internal account/session persistence and version 3 adds
+  an encrypted member-backup slot; no credentials, protocol tables or HTTP persistence.
 - `internal/identity/accounts`: identity runtime-role account/session store, digest-only
   random tokens, absolute expiry, individual/all-session revocation, transactional
   disable, and bounded expired cleanup; no authentication ceremony, membership,
   vault, or HTTP integration.
+- `internal/identity/memberbackup`: development-only account-scoped encrypted
+  member-backup slots with fixed public binding, compare-and-swap revisions,
+  deletion tombstones, and disable serialization; no authentication, recent-auth
+  enforcement, enrollment, browser/API integration, PRF, or recovery.
 
 ## Product direction
 
@@ -161,6 +165,7 @@ make migrate-identity # explicitly apply local identity database migrations
 make migrate-submission # explicitly apply local submission database migrations
 make db-migration-test # isolated real-PostgreSQL migration/version/grant checks
 make db-account-test   # real runtime-role account/session race, expiry, grant checks
+make db-member-backup-test # real runtime-role member-backup scope, revision, grant checks
 ```
 
 See [testing](docs/testing.md) for required full database, browser, container-scan,

@@ -6,7 +6,7 @@ GO ?= go
 export GOTOOLCHAIN := go1.27.3
 FUZZTIME ?= 15s
 
-.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test member-browser-test container-secrets container-config up down smoke container-test migrate-identity migrate-submission db-migration-test db-account-test
+.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test member-browser-test container-secrets container-config up down smoke container-test migrate-identity migrate-submission db-migration-test db-account-test db-member-backup-test
 help:
 	@echo 'setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check'
 	@echo 'build test lint fuzz vuln web-lint'
@@ -14,7 +14,7 @@ help:
 	@echo 'member-wasm member-wasm-test'
 	@echo 'member-browser-test (requires MEMBER_BROWSER; see docs/testing.md)'
 	@echo 'container-secrets container-config up down smoke container-test (see docs/deployment.md)'
-	@echo 'migrate-identity migrate-submission db-migration-test db-account-test (local PostgreSQL only)'
+	@echo 'migrate-identity migrate-submission db-migration-test db-account-test db-member-backup-test (local PostgreSQL only)'
 
 setup:
 	git config --local core.hooksPath .githooks
@@ -103,6 +103,9 @@ db-migration-test:
 db-account-test:
 	python3 scripts/containers.py account-test
 
+db-member-backup-test:
+	python3 scripts/containers.py member-backup-test
+
 test:
 	mkdir -p coverage
 	$(GO) test -race -coverprofile=coverage/out ./...
@@ -118,6 +121,7 @@ lint:
 	$(GO) mod verify
 
 fuzz:
+	$(GO) test ./internal/identity/memberbackup -run='^$$' -fuzz='^FuzzMemberBackupAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/identity/accounts -run='^$$' -fuzz='^FuzzAccountToken$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/dbmigrate -run='^$$' -fuzz='^FuzzMigrationAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/service -run='^$$' -fuzz='^FuzzConfig$$' -fuzztime=$(FUZZTIME) -parallel=2

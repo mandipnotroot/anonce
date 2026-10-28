@@ -46,7 +46,11 @@ Available foundations:
   real-PostgreSQL version/grant checks. Identity version 2 also adds a local
   [account/session store](database.md#implemented-account-storage), digest-only
   sessions, expiry, revocation, and transactional disabling with real runtime-role
-  race tests. Credentials, vault/protocol tables, and HTTP persistence remain unavailable.
+  race tests. Identity version 3 adds an internal
+  [member-backup slot](database.md#local-member-backup-storage-contract) with bounded
+  encrypted envelopes, fixed public binding, revision-checked updates/deletion,
+  retained tombstones, and disable serialization. Credentials, product vault access,
+  protocol tables, and HTTP persistence remain unavailable.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).
@@ -144,8 +148,9 @@ is required before real use, with or without extensions.
 - Specify the cross-origin anonymous handoff and navigation return flow, including
   message origins, replay/cancellation, secret-free URLs, and no identity fetches.
   Decide anonymous receipt/reply persistence separately from member-key backup.
-- Define vault ownership/concurrent updates, deletion/snapshot retention, multi-tab
-  lock/logout, and reviewer-key backup policy before enabling any such backup.
+- Integrate the internal owner/revision contract with authenticated vault access;
+  review product deletion/snapshot retention, multi-tab lock/logout, and reviewer-key
+  backup policy before enabling browser backup storage.
 - Review interrupted-issuance recovery without storing token transcripts, re-signing
   a reserved slot, or exceeding the published allowance. Failed delivery consumes
   the reservation unless a stronger reviewed recovery mechanism is introduced.

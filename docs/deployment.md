@@ -153,7 +153,7 @@ docker compose down --volumes
 ```
 
 This does not delete `.secrets`. Never use volume deletion as recovery for real data.
-Credential/vault/protocol tables, encrypted backup/restore exercises, container scanning,
+Credential/protocol tables, product vault integration, encrypted backup/restore exercises, container scanning,
 SBOMs, and production deployment remain Next work. Kubernetes/Helm stays optional.
 
 ### Local database migrations
@@ -193,6 +193,15 @@ No HTTP service receives runtime credentials or exposes login as a result. Use
 its development-only `account-test` image runs a race-enabled compiled test binary,
 with only one network and runtime secret at a time. Do not deploy this test image
 as an application or admit real account data into the local stack.
+
+Identity version 3 adds the internal
+[encrypted member-backup slot](database.md#local-member-backup-storage-contract).
+It upgrades existing version-2 databases without rewriting earlier migrations.
+`make db-member-backup-test` adds a separate race-enabled `member-backup-test`
+image to the disposable account/migration checks, with the same single-network,
+single-runtime-secret restrictions. No HTTP service gets vault access or new
+credentials. Deletion affects only live ciphertext; do not treat it as erasure
+from WAL, snapshots, or backups. Real member keys remain prohibited in this stack.
 
 ## Production separation
 

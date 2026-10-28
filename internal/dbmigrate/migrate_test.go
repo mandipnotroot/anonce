@@ -146,6 +146,14 @@ func TestMigrationFiles(t *testing.T) {
 		} else if err != nil || !bytes.Contains(accounts, []byte("CREATE TABLE anonce.accounts")) || !bytes.Contains(accounts, []byte("CREATE TABLE anonce.account_sessions")) {
 			t.Fatal("identity account migration missing")
 		}
+		backups, err := fs.ReadFile(files, "00003_member_key_backups.sql")
+		if side == "submission" {
+			if !errors.Is(err, fs.ErrNotExist) {
+				t.Fatal("submission history contains member backup migration")
+			}
+		} else if err != nil || !bytes.Contains(backups, []byte("CREATE TABLE anonce.member_key_backups")) {
+			t.Fatal("identity member backup migration missing")
+		}
 	}
 }
 

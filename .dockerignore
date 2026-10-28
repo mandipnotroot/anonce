@@ -16,6 +16,8 @@
 **/*_test.go
 !internal/identity/accounts/store_test.go
 !internal/identity/accounts/postgres_test.go
+!internal/identity/memberbackup/store_test.go
+!internal/identity/memberbackup/postgres_test.go
 **/testdata/
 **/.env
 **/.env.*

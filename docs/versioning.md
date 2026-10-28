@@ -30,11 +30,14 @@ explicit breaking review.
 
 The opt-in [local migration commands](deployment.md#local-database-migrations) are
 additive development interfaces requiring `semver:minor` review. The independent
-histories support contiguous versions 0 through identity 2 or submission 1 and reject
+histories support contiguous versions 0 through identity 3 or submission 1 and reject
 unsupported state; published SQL is immutable. Identity version 2 is an additive
 account/session migration over version 1, with no automatic downgrade. The internal
 account store and its session storage profile add no browser wire format, credentials,
-vault storage, or membership authority. Existing HTTP, CLI key tooling, WASM, and
+or membership authority. Identity version 3 additively creates a development-only
+member-backup slot over version 2, requiring `semver:minor` review. Its internal
+owner/revision API and public envelope validation add no vault HTTP format or
+cryptographic profile; published SQL remains immutable. Existing HTTP, CLI key tooling, WASM, and
 device cryptographic profiles are unchanged.
 
 The [browser account/vault direction](key-management.md#browser-account-vault)

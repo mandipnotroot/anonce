@@ -6,9 +6,10 @@
 Audience: storage implementers, database reviewers, and operators.
 
 Status: local PostgreSQL 18.6 bootstrap plus separate Goose migration histories and
-an operator-only pgx runner. Identity version 2 adds account/session persistence;
-submission version 1 contains only its storage-boundary marker. Vault, credentials,
-membership, and protocol schemas remain proposed; HTTP persistence is not implemented.
+an operator-only pgx runner. Identity version 2 adds account/session persistence
+and version 3 adds an internal encrypted member-backup slot;
+submission version 1 contains only its storage-boundary marker. Product vault,
+credential, membership, and protocol integration remain proposed; HTTP persistence is not implemented.
 
 ## Storage boundary
 
@@ -65,8 +66,8 @@ Identity migration `00002_accounts.sql` adds two owner-created tables:
 | `accounts` | Random 16-byte primary key, active/disabled state, creation time, optional disable time; runtime can select/insert and update state/disable time only |
 | `account_sessions` | 32-byte SHA-256 token digest primary key, account foreign key, creation/absolute-expiry timestamps; runtime can select/insert/delete, never update or extend expiry |
 
-No identifiers, sessions, or account tables enter submission storage. There are no
-credential, vault, member, role, answer, receipt, IP, or user-agent columns. Account
+No identifiers, sessions, or account tables enter submission storage. These two
+tables have no credential, vault, member, role, answer, receipt, IP, or user-agent columns. Account
 creation grants no eligibility, and disabling changes no membership quota. The
 [session storage profile](cryptography.md#account-session-storage-profile) fixes
 secret sizes and development lifetime limits without selecting a browser transport.
@@ -99,7 +100,8 @@ retention and recovery must be reviewed before real data is admitted. See the
 ### Proposed identity relations
 
 The following table describes the intended complete service, not implemented
-credentials, enrollment, vault, or protocol tables.
+credentials, enrollment, or protocol tables. The member-backup slot is the limited
+internal implementation described below, not a complete vault service.
 
 | Relation | Intended fields and invariants |
 | --- | --- |
@@ -124,9 +126,62 @@ read/write/delete authorization and tested concurrent-update behavior. Do not st
 answers, tokens, receipts, mailbox identifiers, reply capabilities, or an account's
 submission history in these relations. Available-round dashboard data comes from
 eligibility and public schedules, not a join against anonymous records.
-Final vault fields, replacement/recovery transactions, rollback handling, and
-retention remain unresolved; this table is not a migration or fixed wire format.
+Product vault fields, recovery transactions, rollback handling, and production
+retention remain unresolved; this table is not a fixed wire format.
 Reviewer-key backup is excluded until a separate retention policy is reviewed.
+
+### Local member-backup storage contract
+
+`internal/identity/memberbackup` uses identity migration
+`00003_member_key_backups.sql` and one slot per account in `member_key_backups`.
+Each slot holds an owner account reference, a 32-byte public-key binding, an
+encrypted 108-byte [member backup](cryptography.md#member-key-payload-profile-1), and a positive
+revision. Access requires an active account. Runtime gets select/insert and update
+of ciphertext/revision only, never row deletion, ownership changes, or public-key
+updates. Only the existing password profile is admitted. Envelope checks cannot
+authenticate ciphertext or prove that it contains the declared key; device-side
+decryption, typed validation, and independently trusted expected-key matching
+remain mandatory. No unlock secret is accepted by the storage API.
+
+The trusted caller supplies the authenticated owner account, never a request's
+unchecked account identifier. This internal contract does not select an HTTP
+authorization or recent-authentication mechanism. It must not be exposed directly.
+Runtime credentials have access to all identity rows; account scoping is enforced
+by the package, not by per-account database roles or RLS.
+
+Creation requires expected revision zero. Replacement requires the current
+revision and the unchanged public key. Deletion clears the live ciphertext and
+increments the revision, retaining a tombstone with the public binding. Recreating
+the slot requires that tombstone's revision and the same key, preventing stale
+create/update/delete operations from succeeding after deletion. Key rotation and
+rebinding are excluded. Revisions never wrap and are not cryptographic rollback
+protection against a malicious server or restored database.
+
+Writes lock the account row before touching its slot, serializing with account
+disable and other slot writes. Reads join the current active account; an already
+returned result is not recalled by disable. No automatic retry follows an uncertain
+commit. Hosts must reread state before deciding whether to try again.
+
+This is a development retention policy: one live ciphertext, no application
+history, and a retained tombstone until a future reviewed account-deletion policy.
+Disable denies access but does not erase the slot. PostgreSQL WAL, dead tuples,
+snapshots, and operator backups may retain earlier ciphertext. Production retention,
+write admission/rate limits, recent authentication, enrollment binding, recovery,
+and encrypted database restoration remain prerequisites for product integration.
+Reviewer backups and all per-submission state remain excluded.
+
+The store borrows a pool under the same checked boundary, five-second operation
+deadline, and secret-free error rules as the account store. `Get` returns current
+public/encrypted material or a tombstone. `Put` returns the committed new revision;
+`Delete` returns the committed tombstone revision. Invalid inputs fail before SQL;
+stale revisions or changed bindings return `ErrConflict`, without current data.
+Missing/disabled owners return `ErrUnavailable`. See the separate
+[real PostgreSQL checks](testing.md#member-backup-storage-checks).
+
+The concurrency contract follows PostgreSQL 18
+[row locks](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS)
+and [transaction isolation](https://www.postgresql.org/docs/18/transaction-iso.html)
+(consulted 2026-10-28).
 
 ## Submission database
 
@@ -185,7 +240,8 @@ retention to scheduling/abuse needs. Never publish precise per-record times.
 with exactly one service-specific row. Runtime gets `SELECT` only. The separate
 `anonce.identity_schema_version` and `anonce.submission_schema_version` Goose tables
 and their sequences remain owner-only. Identity version 2 adds the account/session
-tables described above, initially empty. No membership or anonymous records are added.
+tables described above, initially empty. Identity version 3 adds the member-backup
+slot with narrow runtime update grants. No membership or anonymous records are added.
 
 The runner accepts exactly `identity` or `submission`, connects to that fixed
 Compose hostname/database as `anonce_migrator`, checks the database name and
@@ -196,8 +252,8 @@ must reacquire the lock and repeat preflight. Each SQL migration and its version
 entry use Goose's transaction. No down/reset or out-of-order option is exposed.
 
 Supported histories are an absent ledger or a contiguous, ordered applied version
-0 baseline through at most identity version 2 or submission version 1. Existing
-version-1 identity databases upgrade additively without editing published SQL.
+0 baseline through at most identity version 3 or submission version 1. Existing
+version-1/version-2 identity databases upgrade additively without editing published SQL.
 Future, negative, duplicate, out-of-order, gapped, unapplied, or missing-baseline
 records fail before migration. Already-current runs also require the correct
 single marker row. When adding a migration, extend this explicit supported-history

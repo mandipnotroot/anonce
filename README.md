@@ -69,7 +69,9 @@ are opt-in through `make migrate-identity` and `make migrate-submission`.
 `make db-migration-test` checks their histories and grants on disposable PostgreSQL;
 identity version 2 adds internal account/session tables. `make db-account-test`
 checks persistence, expiry, revocation, concurrency, and grants as the runtime role.
-Account authentication, vault tables, and HTTP persistence remain unavailable.
+Identity version 3 adds internal encrypted member-backup slots, checked by
+`make db-member-backup-test`. Account authentication, product vault access, and
+HTTP persistence remain unavailable.
 
 To run the HTTP demonstration natively instead:
 
