@@ -184,6 +184,8 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Pages CI now installs the pinned development Node.js runtime before running
+  WASM checks instead of relying on the runner's preinstalled version.
 - Backup inspection now reports short public-key writes as failures, rather than
   treating a partial stdout line as successful inspection.
 
