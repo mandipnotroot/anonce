@@ -146,6 +146,43 @@ try {
   globalThis.document.dispatchEvent(new Event("visibilitychange"));
   assert.equal(await background.request(), null, "visible page revived its old session");
 
+  // Synthetic clock jumps exercise actual worker replies without a long sleep or
+  // firing owner timers. They are not real browser/OS suspension measurements.
+  const performance = globalThis.performance, wall = Date.now;
+  try {
+    for (const boundary of ["startup", "operation", "lifetime-reply", "lifetime-call"]) {
+      let monotonic = performance.now(), now = wall();
+      globalThis.performance = { now: () => monotonic };
+      Date.now = () => now;
+      const expired = open(), worker = workers.at(-1);
+      if (boundary === "startup") {
+        now += 30_000;
+        assert.equal(await expired.ready, false, "late worker startup accepted");
+      } else {
+        assert.equal(await expired.ready, true);
+        if (boundary === "lifetime-reply") monotonic += 299_999;
+        const response = new Promise((resolve) => worker.thread.once("message", resolve));
+        const pending = expired.unlock(password, backup, key);
+        if (boundary === "operation") now += 120_000;
+        if (boundary === "lifetime-reply") monotonic++;
+        const message = await response;
+        assert.equal(encode(message.result.csr), native.csr, "worker did not produce a valid restoration reply");
+        if (boundary === "lifetime-call") {
+          assert.ok(await pending);
+          now += 300_000;
+          assert.equal(await expired.request(), null, "expired worker admitted more work");
+        } else {
+          assert.equal(await pending, null, "overdue worker result published");
+        }
+      }
+      assert.equal(worker.terminated, true);
+      assert.equal(await expired.request(), null, "expired worker restarted");
+    }
+  } finally {
+    globalThis.performance = performance;
+    Date.now = wall;
+  }
+
   for (const failure of ["fetch-error", "http-error", "bad-wasm", "oversized"]) {
     mode = failure;
     const failed = open();

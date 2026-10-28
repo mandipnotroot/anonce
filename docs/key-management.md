@@ -717,10 +717,26 @@ directly or attach other message listeners to a session's worker.
 
 Startup is limited to 30 seconds, an operation to 120 seconds, and the instance's
 total lifetime to five minutes from construction. These are fixed development
-limits, not measured browser support budgets. Owner timers can be delayed by a
-blocked/suspended owner event loop, so they do not establish hard wall-clock expiry.
-Timeouts, load errors, and message decoding errors close the instance without
-output. WASM fetches use a fixed relative URL, omitted credentials, no referrer,
+limits, not measured browser support budgets. In addition to timeout callbacks,
+the owner checks elapsed monotonic and wall time before data admission, readiness,
+reply publication, and on visibility events. Reaching either clock's deadline
+terminates locally, even if the timeout callback has not run. An overdue busy call
+also cancels pending work instead of leaving it available for later publication.
+
+Both `performance.now()` and `Date.now()` are required and captured per owner.
+Missing, throwing, invalid, or backward clock readings fail closed. A wall-clock
+correction can therefore require explicit restoration; it never extends a session.
+Clock readings remain local and are not included in messages or persisted. The
+clock reference is [High Resolution Time Level 3, Working Draft 2026-09-01](https://www.w3.org/TR/2026/WD-hr-time-3-20260901/),
+not a final Recommendation, and [ECMAScript 2025 `Date.now`](https://262.ecma-international.org/16.0/#sec-date.now)
+(consulted 2026-10-28).
+
+A blocked/suspended owner cannot run these checks or terminate a worker until it
+resumes. These guards reject observed overdue work; they do not establish hard
+wall-clock expiry, reliable suspension handling, or a defense against a hostile
+host/clock.
+Timeouts, load errors, and message decoding errors close the instance without output.
+WASM fetches use a fixed relative URL, omitted credentials, no referrer,
 no redirects/cache, and a bounded 8 MiB stream. Imports still need a trusted host
 and reviewed browser delivery policy; local manifest hashes do not authenticate a
 malicious distributor.

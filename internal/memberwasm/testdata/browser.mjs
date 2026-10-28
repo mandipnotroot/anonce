@@ -116,6 +116,44 @@ export async function hiddenStartup() {
   try { return await session.ready === false; } finally { session.close(); }
 }
 
+export async function deadlines(native) {
+  // Advance only the owner clock, without waiting for or firing timeout callbacks.
+  // This models delayed tasks, not actual browser/OS suspension or clock changes.
+  const wall = Date.now, password = decode(native.password);
+  let offset = 0;
+  Date.now = () => wall() + offset;
+  try {
+    const startup = new MemberWorkerSession();
+    sessions.add(startup);
+    offset = 30_000;
+    check(await startup.ready === false);
+    check(await startup.request() === null);
+    for (const boundary of ["operation", "lifetime", "rollback"]) {
+      offset = 0;
+      const session = await open();
+      if (boundary === "operation") {
+        const pending = session.unlock(password, decode(native.backup), decode(native.publicKey));
+        offset = 120_000;
+        check(await pending === null);
+      } else {
+        check(await session.unlock(password, decode(native.backup), decode(native.publicKey)) !== null);
+        offset = boundary === "lifetime" ? 300_000 : -30_000;
+        check(await session.request() === null);
+      }
+      offset = 0;
+      check(await session.request() === null); // Clock recovery never revives an owner.
+    }
+    // Restoring still requires a new explicit owner with the same trusted key.
+    const restored = await open();
+    check(encode((await restored.unlock(password, decode(native.backup), decode(native.publicKey))).csr) === native.csr);
+    return true;
+  } finally {
+    Date.now = wall;
+    password.fill(0);
+    closeAll();
+  }
+}
+
 export async function pendingNavigation() {
   const session = await open();
   const password = Uint8Array.of(7);

@@ -187,6 +187,14 @@ restart, silent unlock, or replacement key. See the
 Direct bridge methods, worker transport, cryptographic profiles, CLI, HTTP, and
 the inert shell remain unchanged.
 
+Requiring valid monotonic/wall clocks and rejecting overdue work or backward
+readings is a breaking development lifecycle change requiring `semver:major`
+review. Hosts must provide `performance.now()` and `Date.now()` and handle terminal
+expiry or clock corrections with explicit new-owner restoration. Budgets are
+unchanged, but delayed callbacks no longer permit overdue readiness/results or
+new operations. No hard suspension-expiry guarantee is added. Direct bridge,
+worker transport, HTTP, CLI, and cryptographic formats remain unchanged.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

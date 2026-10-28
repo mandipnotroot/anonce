@@ -135,6 +135,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking development member-worker lifecycle change: require valid monotonic and
+  wall clocks and enforce existing startup, operation, and lifetime deadlines before
+  admission or publishing readiness/results, even when timeout callbacks are delayed.
+  Failed, invalid, or backward readings terminate locally without notifying peers;
+  restoration needs an explicit new owner. Node boundary/failure tests and actual
+  Node/Chromium worker checks use synthetic clock advances, not real suspension.
+  No account/vault integration, hard expiry, format, or product HTTP change is added.
 - Breaking development member-worker lifecycle change: require a visible owner
   document, terminate locally on visibility loss, and reject hidden-page startup.
   Data admission and reply publication recheck visibility. Foregrounding requires

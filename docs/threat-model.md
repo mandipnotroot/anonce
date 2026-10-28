@@ -162,8 +162,15 @@ properties described below.
   [local worker owner](key-management.md#local-member-worker-host) bounds admission
   before posting, checks response correlation/shapes, and terminates from the owner
   on lock, disposal, load/protocol errors, or timeout. This discards pending output
-  without waiting for worker cleanup; it cannot guarantee erasure. Owner timers can
-  be delayed by suspension or a blocked event loop. No HTTP or page integration exists.
+  without waiting for worker cleanup; it cannot guarantee erasure. Elapsed monotonic
+  and wall time are checked before admission, readiness/reply publication, and on
+  visibility events. Either deadline, invalid/failed readings, or observed clock
+  rollback terminates locally without notifying peers or extending the lifetime.
+  This rejects overdue replies even before delayed timeout callbacks run. Clock
+  corrections may interrupt valid work; explicit restoration is required. A
+  suspended/blocked owner cannot enforce these checks until it resumes, and hostile
+  or simultaneously stalled clocks remain outside protection. No product HTTP or
+  page integration exists.
   Hostile code in the loading realm can steal unlock material or inspect WASM memory;
   owned-buffer clearing does not erase runtime/library copies. Native/Node checks
   establish limited format/lifecycle evidence, not browser custody or security review.

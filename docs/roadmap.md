@@ -62,7 +62,9 @@ Available foundations:
   adds bounded byte inputs, Promise-based setup/restoration, and lock/shutdown with
   native/Node backup compatibility checks. A separate
   [local worker owner](key-management.md#local-member-worker-host) keeps WASM off
-  its owner's thread, bounds transport/lifetime, and terminates on disposal.
+  its owner's thread, bounds transport/lifetime, rejects overdue work using local
+  monotonic/wall-clock checks even before delayed timeout callbacks, and terminates
+  on disposal.
   Secret-free same-partition lock notifications and local pagehide/hidden-page
   termination have Node checks. An opt-in
   [synthetic browser target](testing.md#member-worker-browser-checks) exercises

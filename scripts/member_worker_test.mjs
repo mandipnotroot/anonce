@@ -13,7 +13,9 @@ const setup = () => ({ ...enrollment(), backup: new Uint8Array(108) });
 function harness(t) {
   const original = { Worker: globalThis.Worker, BroadcastChannel: globalThis.BroadcastChannel,
     document: globalThis.document, addEventListener: globalThis.addEventListener,
-    removeEventListener: globalThis.removeEventListener, setTimeout, clearTimeout };
+    removeEventListener: globalThis.removeEventListener, performance: globalThis.performance, setTimeout, clearTimeout };
+  const dateNow = Date.now;
+  const time = { monotonic: 10_000, wall: 1_700_000_000_000 };
   const timers = new Map();
   const workers = [];
   const channels = [];
@@ -73,6 +75,8 @@ function harness(t) {
     answer(value) { this.send({ version: 1, id: this.posts.at(-1).id, result: value }); }
   }
   globalThis.Worker = Worker;
+  globalThis.performance = { now: () => time.monotonic };
+  Date.now = () => time.wall;
   globalThis.BroadcastChannel = BroadcastChannel;
   globalThis.document = document;
   globalThis.addEventListener = (type, listener) => {
@@ -93,6 +97,7 @@ function harness(t) {
   t.after(() => {
     for (const session of sessions) session.close();
     Object.assign(globalThis, original);
+    Date.now = dateNow;
     assert.equal(timers.size, 0, "timer leaked");
     assert.equal(listeners.size, 0, "page listener leaked");
     assert.equal(visibilityListeners.size, 0, "visibility listener leaked");
@@ -103,6 +108,7 @@ function harness(t) {
     channels,
     document,
     visibilityListeners,
+    time,
     open(Owner = MemberWorkerSession) { const session = new Owner(); sessions.push(session); return session; },
     deliver() { for (const notify of notifications.splice(0)) notify(); },
     pagehide(persisted) { for (const listener of [...listeners]) listener({ persisted }); },
@@ -210,6 +216,191 @@ test("member worker timeouts terminate startup, operations, and total lifetime",
     else assert.equal(await session.ready, false);
     assert.equal(await session.request(), null);
   }
+});
+
+test("member worker rejects delayed startup at either clock deadline without waiting for timers", async (t) => {
+  const h = harness(t);
+  for (const clock of ["monotonic", "wall"]) {
+    for (const elapsed of [29_999, 30_000, 30_001]) {
+      for (const boundary of ["ready", "call", "visibility"]) {
+        const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+        h.time[clock] += elapsed;
+        const late = worker.onmessage;
+        if (boundary === "call") assert.equal(await session.request(), null);
+        if (boundary === "visibility") h.visibility("visible");
+        worker.ready();
+        const expired = elapsed >= 30_000;
+        assert.equal(await session.ready, !expired, `${clock}/${elapsed}/${boundary}`);
+        assert.equal(worker.terminated, expired);
+        if (expired) {
+          late({ data: { version: 1, type: "ready" } });
+          assert.equal(await session.request(), null, "late startup reopened owner");
+          assert.deepEqual(channel.posts, [], "expiry notified peers");
+        }
+        session.close();
+      }
+    }
+  }
+});
+
+test("member worker enforces delayed operation deadlines before replies and busy calls", async (t) => {
+  const h = harness(t);
+  for (const clock of ["monotonic", "wall"]) {
+    for (const method of ["create", "unlock", "request"]) {
+      for (const elapsed of [119_999, 120_000, 120_001]) {
+        for (const boundary of ["reply", "busy", "visibility"]) {
+          const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+          worker.ready();
+          // Operation budgets start on admission, not at owner construction.
+          h.time[clock] += 15_000;
+          const inputs = { create: [Uint8Array.of(7)], unlock: [Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32)], request: [] };
+          const pending = session[method](...inputs[method]);
+          const late = worker.onmessage, id = worker.posts.at(-1).id;
+          h.time[clock] += elapsed;
+          if (boundary === "busy") assert.equal(await session.create(Uint8Array.of(7)), null);
+          if (boundary === "visibility") h.visibility("visible");
+          const value = method === "create" ? setup() : enrollment();
+          worker.answer(value);
+          const expired = elapsed >= 120_000;
+          assert.deepEqual(await pending, expired ? null : value, `${clock}/${method}/${elapsed}/${boundary}`);
+          assert.equal(worker.terminated, expired);
+          assert.equal(worker.posts.length, 1, "busy or expired call posted input");
+          if (expired) {
+            late({ data: { version: 1, id, result: value } });
+            assert.equal(await session.request(), null, "late reply reopened owner");
+            assert.deepEqual(channel.posts, [], "expiry notified peers");
+          }
+          session.close();
+        }
+      }
+    }
+  }
+});
+
+test("member worker lifetime is never renewed by successful work or delayed timers", async (t) => {
+  const h = harness(t);
+  for (const clock of ["monotonic", "wall"]) {
+    for (const boundary of ["create", "unlock", "request", "reply", "visibility"]) {
+      const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+      worker.ready();
+      h.time[clock] += 299_999;
+      const first = session.request();
+      worker.answer(enrollment());
+      assert.deepEqual(await first, enrollment(), "closed before lifetime deadline");
+      const pending = boundary === "reply" ? session.request() : null;
+      h.time[clock]++;
+      const hostile = new Proxy({}, { get() { assert.fail("expired input inspected"); } });
+      if (boundary === "create") assert.equal(await session.create(hostile), null);
+      if (boundary === "unlock") assert.equal(await session.unlock(hostile, hostile, hostile), null);
+      if (boundary === "request") assert.equal(await session.request(), null);
+      if (boundary === "reply") { worker.answer(enrollment()); assert.equal(await pending, null); }
+      if (boundary === "visibility") h.visibility("visible");
+      assert.equal(worker.terminated, true, `${clock}/${boundary}`);
+      assert.equal(worker.posts.length, boundary === "reply" ? 2 : 1);
+      assert.deepEqual(channel.posts, []);
+      const replacement = h.open();
+      h.workers.at(-1).ready();
+      assert.equal(await replacement.ready, true, "expiry retained owner admission");
+      replacement.close();
+    }
+  }
+});
+
+test("member worker fails closed on unavailable or invalid clocks before worker startup", async (t) => {
+  const h = harness(t);
+  const performance = globalThis.performance, wall = Date.now;
+  for (const clock of ["monotonic", "wall"]) {
+    const hostile = { valueOf() { assert.fail("clock value coerced"); } };
+    for (const value of [undefined, null, false, "10000", 1n, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, hostile,
+      ...(clock === "monotonic" ? [-1] : [1.5])]) {
+      const initial = h.time[clock];
+      h.time[clock] = value;
+      assert.equal(await h.open().ready, false, clock);
+      h.time[clock] = initial;
+    }
+  }
+  for (const value of [undefined, null, {}, { now: null }, { now() { throw new Error("synthetic clock failure"); } }]) {
+    globalThis.performance = value;
+    assert.equal(await h.open().ready, false);
+  }
+  globalThis.performance = performance;
+  for (const value of [undefined, null, () => { throw new Error("synthetic clock failure"); }]) {
+    Date.now = value;
+    assert.equal(await h.open().ready, false);
+  }
+  Date.now = wall;
+  assert.equal(h.workers.length, 0);
+  assert.equal(h.channels.length, 0);
+  const valid = h.open();
+  h.workers.at(-1).ready();
+  assert.equal(await valid.ready, true, "clock failure retained admission");
+});
+
+test("member worker clock failures and rollback terminate pending work locally", async (t) => {
+  const h = harness(t);
+  for (const clock of ["monotonic", "wall"]) {
+    for (const failure of ["rollback", "invalid", "throw"]) {
+      for (const boundary of ["ready", "call", "reply", "visibility"]) {
+        const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+        h.time[clock] += 100;
+        // Record a later reading, so rollback above construction time also fails.
+        assert.equal(await session.request(), null);
+        let pending;
+        if (boundary !== "ready") {
+          worker.ready();
+          pending = session.create(Uint8Array.of(7));
+        }
+        const initial = h.time[clock];
+        if (failure === "rollback") h.time[clock]--;
+        if (failure === "invalid") h.time[clock] = NaN;
+        if (failure === "throw") Object.defineProperty(h.time, clock, {
+          configurable: true, get() { throw new Error("synthetic clock failure"); },
+        });
+        if (boundary === "ready") worker.ready();
+        if (boundary === "call") assert.equal(await session.request(), null);
+        if (boundary === "reply") worker.answer(setup());
+        if (boundary === "visibility") h.visibility("visible");
+        assert.equal(worker.terminated, true, `${clock}/${failure}/${boundary}`);
+        assert.equal(await session.ready, boundary !== "ready");
+        if (pending) assert.equal(await pending, null);
+        assert.deepEqual(channel.posts, [], "clock failure notified peers");
+        Object.defineProperty(h.time, clock, { configurable: true, writable: true, value: initial });
+        assert.equal(await session.request(), null, "clock recovery reopened owner");
+      }
+    }
+  }
+});
+
+test("member worker rechecks clocks after lifecycle registration and cleans up failed startup", async (t) => {
+  const h = harness(t);
+  const add = h.document.addEventListener;
+  for (const clock of ["monotonic", "wall"]) {
+    for (const change of [30_000, -1, NaN]) {
+      const initial = h.time[clock];
+      h.document.addEventListener = (type, listener) => {
+        add(type, listener);
+        h.time[clock] += change;
+      };
+      assert.equal(await h.open().ready, false, `${clock}/${change}`);
+      assert.equal(h.workers.length, 0, "started after clock admission failed");
+      assert.equal(h.visibilityListeners.size, 0);
+      assert.ok(h.channels.every((channel) => channel.closed));
+      h.time[clock] = initial;
+    }
+  }
+});
+
+test("member worker captures owner clocks without resetting deadlines on global replacement", async (t) => {
+  const h = harness(t);
+  const session = h.open(), worker = h.workers.at(-1);
+  worker.ready();
+  const pending = session.request();
+  globalThis.performance = { now() { assert.fail("replacement monotonic clock used"); } };
+  Date.now = () => { assert.fail("replacement wall clock used"); };
+  h.time.wall += 120_000; // Monotonic time does not advance, as on some sleeping systems.
+  worker.answer(enrollment());
+  assert.equal(await pending, null);
+  assert.equal(worker.terminated, true);
 });
 
 test("member worker lock notifies other owners without secrets, echo, or replacement", async (t) => {
