@@ -10,6 +10,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Opt-in `make member-browser-test` for synthetic member workers in sandboxed
+  headless Chromium: native/worker backup compatibility, restoration failures,
+  page CSP probes, UI event-loop progress, same-origin peer lock, and worker
+  termination on navigation. A Go test-only loopback host verifies bounded assets
+  and rejects unexpected hosts, origins, paths, methods, and bodies. Product HTTP,
+  shell CSP, and cryptographic profiles are unchanged. No account/vault journey,
+  mobile/provider support, accessibility, or complete-erasure claim is added.
 - Development-only member-worker lock coordination using a fixed, secret-free
   BroadcastChannel notification and local pagehide termination. Explicit lock
   notifies peers; disposal remains local. A host helper can lock peers without a

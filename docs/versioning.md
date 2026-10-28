@@ -173,6 +173,11 @@ The [fixed notification contract and delivery limits](key-management.md#lock-not
 are separate from the unchanged version-1 worker command transport. Direct bridge
 methods, cryptographic profiles, CLI, and HTTP behavior are unchanged.
 
+The opt-in [browser check target](testing.md#member-worker-browser-checks) adds only
+test-binary delivery and external development-tool setup. It changes no product
+HTTP route, shell CSP, worker contract, or cryptographic format, and carries no
+automatic release bump under the test-change policy below.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

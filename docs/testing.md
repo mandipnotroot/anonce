@@ -15,13 +15,14 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make build` | All Go commands with Go 1.27.3 |
 | `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no native-package exclusions, including wrappers and signal handling. JS-only code is checked separately below |
 | `make lint` | Native and WASM entry-point vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzMemberWASMSizes`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzMemberWASMSizes`, `FuzzMemberBrowserManifest`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 | `make wasm` | Go `js/wasm` public-request verifier; matching reviewed loader/notices, SHA-256 manifest, 8 MiB uncompressed size gate |
 | `make wasm-test` | Rebuild artifacts, compare native and Node WASM public-request results, exercise the actual bridge, and run adapter unit tests under the Go JS/WASM runner |
 | `make member-wasm` | Separate local member-session module, dedicated-worker/client assets, matching reviewed loader/module notices, manifest, and 8 MiB gate |
 | `make member-wasm-test` | Native race/lifecycle tests, actual Node direct bridge and dedicated-worker setup/restoration, rejection, termination, bidirectional encrypted-backup compatibility, owner lifecycle unit tests, and bounded command fuzzing |
+| `make member-browser-test` | Opt-in pinned headless Chromium, isolated Go test host, native/worker backup compatibility, page CSP probes, event-loop progress, same-origin peer lock, and navigation termination; requires `MEMBER_BROWSER`, not included in `make check` or CI |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -38,6 +39,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Member CSR | 130-byte fuzz input cap, 129-byte DER profile; bounded ASN.1 and signature verification, no KDF work |
 | Member session unlock admission | 1025-byte password, 65597-byte backup, and 33-byte expected-key fuzz caps; exercise invalid password/key lengths only, no KDF work; backup/payload parsing reuse the shared fuzzed implementations |
 | Member WASM admission sizes | Fixed-width integer fuzz inputs for password/backup/key lengths and operation kind; exact member bounds, no allocations or KDF work; byte parsing reuses shared backup/payload validation |
+| Browser-test asset manifest | `FuzzMemberBrowserManifest`: 4097-byte cap, exact fixed filename set, bounded synthetic assets, no KDF or network work |
 | Member worker transport | `member_worker_test.mjs`: exhaustive byte-size boundary sweep and 2048 generated commands per run, each with at most four views of 1025 elements; independent metadata admission oracle, no KDF or I/O |
 | WASM request adapter | 259-byte request fuzz input cap, exact 258-byte ASCII hex representation before bounded shared CSR parsing; expected-key fuzzing also caps the key input at 65 bytes for an exact 64-byte ASCII hex representation; no KDF work |
 | CLI arguments | 8193-byte fuzz input cap; no file, network, or KDF work |
@@ -56,7 +58,8 @@ in the relevant package's `testdata/fuzz/<target>` directory:
   admission inputs only; no real passwords or private-key fixtures.
 - `internal/clientwasm`: `FuzzWASMRequest` and `FuzzWASMExpectedKey`, public hex
   requests/expected keys or malformed data only.
-- `internal/memberwasm`: `FuzzMemberWASMSizes`, integer admission bounds only.
+- `internal/memberwasm`: `FuzzMemberWASMSizes`, integer admission bounds only;
+  `FuzzMemberBrowserManifest`, synthetic manifests only.
 - `internal/client/reviewerkey`: `FuzzReviewerKeyPayload`.
 - `internal/clientcli`: `FuzzClientArguments`, `FuzzClientPublicKeyLine`,
   `FuzzClientPassword`, and `FuzzClientRewrapPasswords`.
@@ -126,6 +129,8 @@ profile-2 nonce prefix and library composition.
 | Secret-free peer/global lock, startup/pending cancellation, no echo/restart, required coordination APIs, notification failures, local disposal, and cached-pagehide cleanup | Named `node:test` lock, channel failure, global lock, and pagehide cases in `scripts/member_worker_test.mjs`; controlled channels and lifecycle events, not actual browser tabs |
 | Actual dedicated worker and owner, native restore, generated backup opened natively, wrong password/corruption/mismatch without replacement, public-output ownership, pending disposal, replay/malformed commands, failed/malformed/oversized runtime loads | `TestMemberNativeWorkerCompatibility` with `scripts/member_worker_integration.mjs` and test-only Node API adapter `scripts/member_worker_node.mjs` |
 | Reviewed loader/notice digest rejection, invalid artifact headers and size bounds | `scripts/test_build_wasm.py` |
+| Test-only browser asset bounds, complete manifest/digests, duplicate/traversal rejection, exact routes, hosts/origins, methods/HEAD, headers, and unread bodies | `TestMemberBrowserAssets`, `TestMemberBrowserDelivery`, `FuzzMemberBrowserManifest` |
+| Actual browser member worker, native backup restore and browser backup opened natively, failed restoration without replacement, snapshots, admission, public output, pending disposal, UI event-loop progress, page CSP probes, same-origin peer lock, and navigation termination | `TestMemberNativeBrowserCompatibility` with `scripts/member_browser_test.mjs`, through the opt-in `make member-browser-test` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
 Web checks validate allowlists/delivery, not full HTML/CSS grammar or browser execution.
@@ -197,10 +202,64 @@ storage partition rules, navigation caching, suspension, or real logout.
 Bounded transport fuzzing runs with `member-wasm-test`, not `make fuzz`; retain
 failures as synthetic cases in `scripts/member_worker_test.mjs`, never key fixtures.
 
-No page host, actual browser tests, mobile memory/latency measurements, CSP delivery,
-passkeys, account/vault authorization, recovery, browser multi-tab evidence, or
-independent cryptographic review is supplied. These checks do not satisfy the
+The separate opt-in browser target below adds isolated synthetic page delivery and
+browser checks. The Node target supplies no mobile measurements, product CSP,
+passkeys, account/vault authorization, recovery, or independent cryptographic review.
+Neither target satisfies the
 [browser acceptance cases](#browser-account-and-vault-acceptance).
+
+### Member-worker browser checks
+
+`make member-browser-test` requires Linux x86_64, the pinned Go/Node runtimes, and
+the external open-source Chromium snapshot in `scripts/browser.toml`. It is an
+opt-in development check, separate from `make check`, CI, and the unavailable
+product `make e2e`. Missing tools, wrong versions, blocked sandbox startup, failed
+assertions, and timeouts fail the target without skipping or disabling controls.
+
+Download the exact archive URL in that manifest using the
+[official Chromium snapshot instructions](https://www.chromium.org/getting-involved/download-chromium/#chromium).
+Verify its SHA-256 against the manifest **before extracting or executing it**.
+Keep the complete extraction and original notices in a trusted local directory.
+Install the browser's Linux shared-library dependencies through the operating
+system package manager, and run as an unprivileged user with a working sandbox.
+Do not add `--no-sandbox` or disable CSP to bypass an environment failure.
+
+```sh
+MEMBER_BROWSER=/trusted/path/chrome-linux/chrome make member-browser-test
+```
+
+The Go test host binds an ephemeral `127.0.0.1` port. It verifies the complete
+bounded WASM build manifest and serves only an exact in-memory asset allowlist,
+not a working directory or product route. Unknown paths, queries, encoded aliases,
+foreign hosts/origins, cross-site requests, and request bodies are rejected without
+reading bodies or reflecting inputs. Responses use `no-store`, no-referrer,
+nosniff, same-origin resource policy, and no cookies/CORS. The disposable page has
+no input controls, uploads, persistence, or key display.
+
+The page permits same-origin modules/workers but no fetches or WASM compilation.
+Only the worker response permits same-origin fetches and `wasm-unsafe-eval`, never
+JavaScript `unsafe-eval` or inline execution. Page probes check that inline script,
+fetch, and main-thread WASM compilation are blocked; successful worker operations
+exercise the worker policy. This uses
+[CSP Level 3, Working Draft 2026-10-27](https://www.w3.org/TR/2026/WD-CSP3-20261027/),
+not a final Recommendation, and the [HTML worker model](https://html.spec.whatwg.org/multipage/workers.html)
+(consulted 2026-10-28). No product service or shell CSP changes.
+
+The Node driver uses Chromium's private DevTools pipe, not an open debugging port
+or npm package. Synthetic unlock inputs enter through the pipe, never HTTP. It
+uses a fresh disposable profile, closes the browser/workers, and removes its owned
+scratch directory. It returns only encrypted backup and public enrollment material
+for native validation, with fixed failure diagnostics. Page network events are
+checked against a fixed allowlist; this is not a complete browser/worker network
+capture, proxy-log audit, or malicious-site isolation boundary.
+
+These checks cover one headless desktop build and same-origin/same-partition pages.
+Navigation checks observe worker disappearance, not memory erasure or reliable
+global revocation. Event-loop progress is not a mobile latency/memory budget.
+Other engines, storage partitions, background suspension, back/forward-cache
+restoration, real logout, provider/passkey compatibility, screenshots, keyboard and
+assistive technology, and the complete account/vault journey remain untested.
+No supported-browser matrix or readiness claim follows from this target.
 
 ## Required runtime command contract
 

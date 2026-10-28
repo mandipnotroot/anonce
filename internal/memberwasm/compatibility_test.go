@@ -1,4 +1,4 @@
-//go:build wasmintegration && !js
+//go:build (wasmintegration || browserintegration) && !js
 
 // SPDX-FileCopyrightText: 2026 Anonce Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
@@ -30,7 +30,7 @@ func TestMemberNativeWorkerCompatibility(t *testing.T) {
 	testMemberCompatibility(t, "member_worker_integration.mjs")
 }
 
-func testMemberCompatibility(t *testing.T, script string) {
+func testMemberCompatibility(t *testing.T, script string, args ...string) {
 	t.Helper()
 	password := bytes.Repeat([]byte{0, 0xff, 'x', '\n'}, 256) // Synthetic maximum-length input.
 	defer clear(password)
@@ -54,7 +54,8 @@ func testMemberCompatibility(t *testing.T, script string) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 180*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "node", filepath.Join(root, "scripts", script), filepath.Join(root, "bin/memberwasm"))
+	commandArgs := append([]string{filepath.Join(root, "scripts", script), filepath.Join(root, "bin/memberwasm")}, args...)
+	cmd := exec.CommandContext(ctx, "node", commandArgs...)
 	cmd.Stdin = bytes.NewReader(input)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

@@ -9,7 +9,8 @@ Status: shared in-memory device-backup encryption and local member/reviewer-key
 generation, encrypted export, validated import, and an offline backup CLI are
 implemented, along with local member certificate requests and in-memory member
 sessions, a separate development-only WASM member bridge, and a local dedicated-worker
-host. Browser page custody, round binding, recovery, enrollment, and signing
+host with a separate synthetic browser-test harness. Product browser custody,
+round binding, recovery, enrollment, and signing
 services are not implemented.
 
 ## Browser account vault
@@ -673,7 +674,9 @@ measurement, UI responsiveness, or browser custody evidence. See
 
 `make member-wasm` also packages `member-client.mjs`, `member-worker.mjs`, and
 `protocol.mjs` with the manifest and notices. These are development-only assets,
-not served by the HTTP shell. Use synthetic inputs only pending independent review.
+not served by the HTTP shell. A separate [browser-test host](testing.md#member-worker-browser-checks)
+serves them only while the opt-in synthetic checks run, not on a product origin.
+Use synthetic inputs only pending independent review.
 The dedicated module worker wraps the existing member bridge. Its contract uses the
 [WHATWG HTML worker and messaging model](https://html.spec.whatwg.org/multipage/workers.html)
 (Living Standard consulted 2026-10-27) and the ECMAScript 2025 byte-array semantics
@@ -756,7 +759,8 @@ Termination discards the worker without waiting for Go cleanup and cannot promis
 buffer clearing or complete erasure. The owner page sees unlock inputs and public
 results; a worker is not a boundary against hostile same-origin code. No UI, HTTP
 delivery/CSP changes, account binding, persistence, account logout integration, or
-supported-browser matrix is supplied. See [checks](testing.md#wasm-member-session-checks)
+supported-browser matrix is supplied. The isolated browser checks do not add these
+product capabilities. See [checks](testing.md#wasm-member-session-checks)
 and [compatibility](versioning.md#wasm-member-session-compatibility).
 
 ## Retention and destruction

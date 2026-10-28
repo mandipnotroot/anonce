@@ -22,6 +22,8 @@ Audience: contributors, repository administrators, and release maintainers.
 - Hardening sets restrictive defaults and validates checkout context, not hosted-runner
   network isolation. No proprietary monitoring service is required.
 - Runtime does not test protocols, databases, browsers, containers, or WASM private-key custody.
+- The opt-in [member-worker Chromium target](testing.md#member-worker-browser-checks)
+  is locally runnable but not installed or executed by hosted workflows.
 - Manually review Make-target pins and the mdBook manifest, including licenses/advisories;
   weekly updates do not cover them. See [dependency identity rules](../CONTRIBUTING.md#dependency-updates).
 - Never combine privileged write credentials with untrusted PR execution. Publish

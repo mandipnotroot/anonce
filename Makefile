@@ -6,12 +6,13 @@ GO ?= go
 export GOTOOLCHAIN := go1.27.3
 FUZZTIME ?= 15s
 
-.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test
+.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test member-browser-test
 help:
 	@echo 'setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check'
 	@echo 'build test lint fuzz vuln web-lint'
 	@echo 'wasm wasm-test'
 	@echo 'member-wasm member-wasm-test'
+	@echo 'member-browser-test (requires MEMBER_BROWSER; see docs/testing.md)'
 
 setup:
 	git config --local core.hooksPath .githooks
@@ -67,6 +68,9 @@ member-wasm-test: member-wasm
 	node --test scripts/member_worker_test.mjs
 	$(GO) test -race -count=1 -tags=wasmintegration ./internal/memberwasm
 
+member-browser-test: member-wasm
+	$(GO) test -race -count=1 -tags=browserintegration -run='^TestMemberNativeBrowserCompatibility$$' ./internal/memberwasm
+
 test:
 	mkdir -p coverage
 	$(GO) test -race -coverprofile=coverage/out ./...
@@ -89,6 +93,7 @@ fuzz:
 	$(GO) test ./internal/client/membercsr -run='^$$' -fuzz='^FuzzMemberCSR$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/membersession -run='^$$' -fuzz='^FuzzMemberSessionUnlockInputs$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/memberwasm -run='^$$' -fuzz='^FuzzMemberWASMSizes$$' -fuzztime=$(FUZZTIME) -parallel=2
+	$(GO) test ./internal/memberwasm -run='^$$' -fuzz='^FuzzMemberBrowserManifest$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/clientwasm -run='^$$' -fuzz='^FuzzWASMRequest$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/clientwasm -run='^$$' -fuzz='^FuzzWASMExpectedKey$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/reviewerkey -run='^$$' -fuzz='^FuzzReviewerKeyPayload$$' -fuzztime=$(FUZZTIME) -parallel=2

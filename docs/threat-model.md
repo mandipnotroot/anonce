@@ -23,6 +23,11 @@ properties described below.
   remain outstanding.
 - These controls do not isolate local users, browser-initiated requests, host
   compromise, or externally configured proxies.
+- The separate [synthetic browser-test host](testing.md#member-worker-browser-checks)
+  exists only in test binaries on an ephemeral loopback origin. It rejects foreign
+  hosts/origins and unread bodies, verifies bounded assets, and separates page and
+  worker CSP. Product services remain inert. This is neither product custody nor
+  a boundary against hostile local code or a malicious browser distributor.
 
 ### Device keys and backups
 

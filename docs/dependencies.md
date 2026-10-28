@@ -25,6 +25,7 @@ advisories before further imports.
 | pip-tools 7.6.2 | BSD-3-Clause | External documentation lock compiler |
 | [Go 1.27.3](https://go.dev/dl/?mode=json) | BSD-3-Clause | Pinned standard-library runtime and external compiler; WASM build copies the matching loader and original notices unchanged |
 | [Node.js 22.23.3](https://nodejs.org/dist/v22.23.3/) | MIT with bundled third-party notices | External development-only WASM test runtime; no npm dependencies or Node product build |
+| Chromium 159.0.8129.0, Linux x86_64 snapshot 1728820 | BSD-3-Clause with bundled third-party notices | External opt-in browser-test runtime, URL/digest in `scripts/browser.toml`; no proprietary browser or npm dependency required |
 | [x/crypto 0.58.0](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/argon2) | BSD-3-Clause | Admitted Argon2id/BLAKE2b and ChaCha20-Poly1305 composition for device-backup profile 2; exact hashes in `go.sum` |
 | [x/sys 0.49.0](https://pkg.go.dev/golang.org/x/sys@v0.49.0/cpu) | BSD-3-Clause | Indirect CPU-feature detection for x/crypto; exact hashes in `go.sum` |
 | [gofumpt 0.12.0](https://github.com/mvdan/gofumpt) | BSD-3-Clause | External Go formatter |
@@ -94,6 +95,26 @@ facilities are used by the test runners. The public verifier runner handles no
 passwords. The member runner handles only synthetic unlock bytes, encrypted backups,
 and public enrollment material for interoperability checks, never private-key
 fixtures or real credentials.
+
+### Browser-test runtime
+
+The opt-in [member-worker browser checks](testing.md#member-worker-browser-checks)
+use the open-source Chromium snapshot, not branded Chrome. The
+[official snapshot distribution](https://www.chromium.org/getting-involved/download-chromium/#chromium)
+and [Chromium license](https://chromium.googlesource.com/chromium/src/+/main/LICENSE)
+were consulted 2026-10-28. The external browser retains its BSD-3-Clause license
+and bundled third-party notices. No binary, browser library, or upstream source
+is copied into this repository or distributed with the product.
+
+The exact archive digest and version are pinned in `scripts/browser.toml`; the
+driver checks the executable's version and requires an explicitly supplied path.
+Users must verify the archive digest before extraction/execution. This does not
+authenticate a hostile replacement executable or its shared libraries. The
+snapshot has no automatic security updates and is admitted only for local synthetic
+tests, not ordinary browsing or a product support promise. Review upstream security
+status, source/notices, version/digest, and browser tests when updating it. A broader
+reviewed browser suite may replace this focused runtime. No automatic installer,
+third-party driver, or browser package manager is added.
 
 ### Documentation theme
 

@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# External, development-only open-source Chromium snapshot, not Chrome branding.
+# Linux x86_64 only. Consulted 2026-10-28; no automatic download or update.
+version = "Chromium 159.0.8129.0"
+revision = "1728820"
+url = "https://commondatastorage.googleapis.com/chromium-browser-snapshots/Linux_x64/1728820/chrome-linux.zip"
+sha256 = "eca425960357244bd645218db04c88d11f9ed5543cf2fb3474aedac11ea6ca12"

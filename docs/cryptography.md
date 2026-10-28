@@ -307,6 +307,9 @@ The [local dedicated-worker host](key-management.md#local-member-worker-host) ch
 execution, lock notification, and disposal only. It runs this same Go bridge without
 JavaScript cryptography, new profiles, or lower KDF costs. Termination discards
 runtime state without guaranteeing cleanup or complete memory erasure.
+The opt-in [synthetic browser checks](testing.md#member-worker-browser-checks)
+exercise native/worker compatibility under isolated test CSP without changing
+these profiles. They do not establish supported-device costs or product custody.
 
 The [browser account vault](key-management.md#browser-account-vault) is planned.
 WebAuthn Level 3 is the selected authentication design reference; its PRF extension

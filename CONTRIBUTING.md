@@ -52,7 +52,10 @@ limits and [deployment](docs/deployment.md#local-development) for process flags.
 `make check` also requires Node.js 22.23.3 for public-request WASM compatibility
 checks and separate local member-session WASM and worker checks. No npm install or
 Node product build is used; `make wasm` and `make member-wasm` build with Go alone. Container
-and database setup are not available.
+and database setup are not available. The separate opt-in `make member-browser-test`
+uses a pinned external Chromium executable supplied through `MEMBER_BROWSER`;
+see [browser check setup and limits](docs/testing.md#member-worker-browser-checks).
+It is not included in `make check` or hosted CI.
 
 ## Documentation site
 

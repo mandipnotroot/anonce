@@ -52,7 +52,8 @@ Distinguish implemented from planned behavior.
   bounded/correlated transferred messages, single active owner per module realm,
   fixed startup/operation/lifetime limits, terminal lock/disposal, secret-free
   same-partition lock notifications, and local pagehide termination;
-  native/Node checks, no HTTP delivery, browser evidence, or account logout integration.
+  native/Node checks and an isolated synthetic browser-test harness; no product HTTP
+  delivery, supported-browser matrix, or account logout integration.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
 
@@ -130,11 +131,13 @@ make wasm             # public-only Go WASM verifier, matching loader, hashes, s
 make wasm-test        # native/WASM public-request compatibility and bridge checks
 make member-wasm      # separate local member-session WASM and matching notices
 make member-wasm-test # native/Node backup compatibility, member bridge/worker checks
+make member-browser-test # opt-in synthetic Chromium checks; requires MEMBER_BROWSER
 ```
 
 See [testing](docs/testing.md) for required database, container, browser, and
-protocol targets, none available yet. WASM evidence covers request verification
-and local member sessions in Node, not browser custody. Add real Make targets with implementation.
+protocol targets, none available yet. The separate opt-in browser target checks
+synthetic member workers, not product custody or the account/vault journey.
+Add real Make targets with implementation.
 No successful no-op checks or claims that unavailable commands passed.
 
 ## Engineering boundaries
@@ -179,7 +182,7 @@ No successful no-op checks or claims that unavailable commands passed.
 - Every PR needs a [SemVer impact label](docs/versioning.md#commit-and-pr-mapping)
   and Unreleased entry unless the documented
   exception label applies.
-- Follow the [PR template](.github/pull_request_template.md) strictly when creating
+- Follow the [PR template](https://github.com/mandipnotroot/anonce/blob/main/.github/pull_request_template.md) strictly when creating
   a PR. Preserve every section, section order, and checklist item. Replace guidance
   with concise, change-specific details; do not omit the checklist or substitute a
   custom structure. Check items only after verification or explicit contributor
