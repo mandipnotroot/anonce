@@ -7,7 +7,7 @@ Audience: maintainers, redistributors, and license reviewers.
 
 Accessed: 2026-10-26. Proposed versions below are observations, not a transitive
 license or vulnerability audit. HTTP commands use only the standard library;
-the shared device-backup package imports the admitted modules below. No runtime
+the shared device-backup and separate migration packages import the admitted modules below. No runtime
 dependencies or assets are vendored. Recheck artifacts, hashes, licenses, and
 advisories before further imports.
 
@@ -65,6 +65,39 @@ may reject this algorithm; there is no algorithm fallback or FIPS-validation cla
   [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) in x/crypto's unmaintained
   OpenPGP package, with no fixed version. It is neither imported nor reachable.
   Do not introduce OpenPGP through this dependency.
+
+### Database migration modules
+
+Admitted on 2026-10-28 for the separate local operator runner only. HTTP services,
+device cryptography, and WASM import none of these modules. The native driver and
+Goose Provider avoid custom PostgreSQL wire handling and migration parsing. Exact
+direct/transitive pins and checksums are in `go.mod` and `go.sum`.
+
+| Module | Version | License and linked purpose |
+| --- | --- | --- |
+| [pgx/v5](https://github.com/jackc/pgx/tree/v5.11.0) | 5.11.0 | MIT; PostgreSQL protocol and `database/sql` adapter |
+| [pgpassfile](https://github.com/jackc/pgpassfile/tree/v1.0.0) | 1.0.0 | MIT; pgx configuration helper |
+| [pgservicefile](https://github.com/jackc/pgservicefile/tree/5a60cdf6a761) | 0.0.0-20240606120523-5a60cdf6a761 | MIT; pgx configuration helper |
+| [puddle/v2](https://github.com/jackc/puddle/tree/v2.2.3) | 2.2.3 | MIT; pgx adapter's linked pool helpers |
+| [goose/v3](https://github.com/pressly/goose/tree/v3.29.0) | 3.29.0 | MIT; embedded transactional SQL and version history |
+| [interpolate](https://github.com/mfridman/interpolate/tree/v0.0.2) | 0.0.2 | MIT; Goose SQL parser dependency; environment substitution stays disabled |
+| [go-retry](https://github.com/sethvargo/go-retry/tree/v0.5.0) | 0.5.0 | Apache-2.0; Goose initialization retries |
+| [multierr](https://github.com/uber-go/multierr/tree/v1.11.0) | 1.11.0 | MIT; Goose error composition |
+| [x/sync](https://pkg.go.dev/golang.org/x/sync@v0.24.0) | 0.24.0 | BSD-3-Clause; synchronization helpers |
+| [x/text](https://pkg.go.dev/golang.org/x/text@v0.43.0) | 0.43.0 | BSD-3-Clause; PostgreSQL text preparation |
+
+The pinned modules' license files and imported package graph were reviewed. Their
+original licenses are copied unchanged into the separate migration image, with
+Go patent notices for x/sync and x/text. No upstream source is copied or relicensed.
+Goose's other database drivers/CLI and dependency test packages are not linked.
+The runner does not load `.env`, arbitrary SQL files, or alternate drivers.
+
+`make vuln` checks reachable advisories and static errors, not protocol correctness
+or an independent audit. `make db-migration-test` tests actual pgx/Goose behavior and
+PostgreSQL privileges. Updates require reviewing the imported graph, upstream
+licenses/security status, Docker notice paths, and migration tests together. Remove
+these modules if the operator runner is removed; do not substitute a handwritten
+SQL migration parser. Production TLS and HTTP storage integration need separate review.
 
 ### WASM runtime support
 
@@ -134,7 +167,8 @@ build definitions are [Go](https://github.com/docker-library/golang/tree/41d9b4d
 and [PostgreSQL](https://github.com/docker-library/postgres/tree/e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc/18/bookworm).
 Go's BSD-3-Clause license/patent notice and the project AGPL license are copied
 unchanged into the scratch application image. Only standard-library HTTP commands
-are linked there; new module imports require reviewing their notices too. Builder
+are linked in the default application target. The separate `migration` target
+contains only the operator binary and its reviewed module notices above. Builder
 operating-system packages do not enter that final image.
 
 PostgreSQL uses the [PostgreSQL License](https://www.postgresql.org/about/licence/).

@@ -9,6 +9,8 @@
 !cmd/**
 !internal/
 !internal/**
+!migrations/
+!migrations/**
 !web/
 !web/**
 **/*_test.go

@@ -4,6 +4,7 @@
 """Local Compose lifecycle and explicit, real-container infrastructure checks."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import http.client
 import json
 import os
@@ -227,6 +228,31 @@ PGPASSFILE="$passfile" PGCONNECT_TIMEOUT=3 psql -XwqAt -v ON_ERROR_STOP=1 -v VER
             require(result.stdout.strip() == f"anonce_runtime|{side}|f|f|f".encode(), "runtime database privileges differ")
         return instances
 
+    def migration_image(self):
+        image = self.run(["docker", "build", "--target", "migration", "--quiet", "."], timeout=600).stdout.decode().strip()
+        require(re.fullmatch(r"sha256:[0-9a-f]{64}", image) is not None, "invalid migration image identity")
+        return image
+
+    def migrate(self, side, image, *, allowed=True, database_side=None):
+        require(side in ("identity", "submission"), "invalid migration service")
+        database_side = database_side or side
+        require(database_side in ("identity", "submission"), "invalid migration database")
+        config = self.config()
+        secret = config["secrets"][f"{database_side}_migration"]["file"]
+        name = "anonce-migrate-" + secrets.token_hex(6)
+        args = ["docker", "run", "--rm", "--name", name, "--network", config["networks"][database_side]["name"],
+                "--network-alias", "migration-operator", "--read-only", "--user", "65532:65532", "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges:true", "--log-driver", "none", "--cpus", "1",
+                "--memory", "128m", "--memory-swap", "128m", "--pids-limit", "64",
+                "--mount", f"type=bind,src={secret},dst=/run/secrets/migration_password,readonly", image, side]
+        try:
+            result = self.run(args, success=False, timeout=90)
+            require((result.returncode == 0) == allowed, "database migration expectation failed")
+            return result
+        finally:
+            # Only this invocation's randomly named operator container is eligible.
+            self.run(["docker", "rm", "--force", name], success=False)
+
 
 def database_checks(stack, instances):
     for side, other in (("identity", "submission"), ("submission", "identity")):
@@ -254,9 +280,54 @@ def database_checks(stack, instances):
         stack.sql(side, "runtime", "SELECT 1;", allowed=False, host=network["IPAddress"], database=other)
 
 
+def migration_checks(stack):
+    image = stack.migration_image()
+    for side, other in (("identity", "submission"), ("submission", "identity")):
+        table = f"anonce.{side}_schema_version"
+        # A failed migration must not record success. The conflicting table is
+        # synthetic and exists only in this invocation's disposable database.
+        stack.sql(side, "migrator", "SET ROLE anonce_owner; CREATE TABLE anonce.storage_boundary(id integer);")
+        stack.migrate(side, image, allowed=False)
+        result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table};")
+        require(result.stdout.strip() == b"0", "failed migration advanced history")
+        stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP TABLE anonce.storage_boundary;")
+        # Simultaneous first applications exercise the actual locked Go runner.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(lambda _: stack.migrate(side, image), range(2)))
+        stack.migrate(side, image)  # Already-current application is idempotent.
+        result = stack.sql(side, "runtime", "SELECT service FROM anonce.storage_boundary;")
+        require(result.stdout.strip() == side.encode(), "wrong storage boundary")
+        result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id;")
+        require(result.stdout.strip() == b"0\n1", "unexpected migration history")
+        result = stack.sql(side, "migrator", "SET ROLE anonce_owner; SELECT bool_and(tableowner = 'anonce_owner') FROM pg_tables WHERE schemaname = 'anonce';")
+        require(result.stdout.strip() == b"t", "migration objects have the wrong owner")
+        for query in (f"SELECT * FROM {table};", f"DELETE FROM {table};", "DELETE FROM anonce.storage_boundary;",
+                      "INSERT INTO anonce.storage_boundary VALUES (true, 'identity');", "ALTER TABLE anonce.storage_boundary ADD COLUMN forbidden integer;"):
+            denied = stack.sql(side, "runtime", query, allowed=False)
+            require(b"42501" in denied.stderr, "runtime accessed owner-only migration state")
+        # The other history must not appear even in an identically named schema.
+        result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT to_regclass('anonce.{other}_schema_version') IS NULL;")
+        require(result.stdout.strip() == b"t", "service migration histories overlap")
+        stack.migrate(other, image, allowed=False, database_side=side)
+        # Reject future, duplicate, missing-baseline, and down-version records.
+        for change, repair in (
+            (f"INSERT INTO {table}(version_id, is_applied) VALUES (2, true)", f"DELETE FROM {table} WHERE version_id = 2"),
+            (f"INSERT INTO {table}(version_id, is_applied) VALUES (1, true)", f"DELETE FROM {table} WHERE id = (SELECT max(id) FROM {table})"),
+            (f"UPDATE {table} SET is_applied = false WHERE version_id = 1", f"UPDATE {table} SET is_applied = true WHERE version_id = 1"),
+            (f"UPDATE {table} SET version_id = -1 WHERE version_id = 0", f"UPDATE {table} SET version_id = 0 WHERE version_id = -1"),
+        ):
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; " + change + ";")
+            stack.migrate(side, image, allowed=False)
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; " + repair + ";")
+        stack.sql(side, "migrator", "SET ROLE anonce_owner; DELETE FROM anonce.storage_boundary;")
+        stack.migrate(side, image, allowed=False)
+        stack.sql(side, "migrator", f"SET ROLE anonce_owner; INSERT INTO anonce.storage_boundary VALUES (true, '{side}');")
+        stack.migrate(side, image)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("secrets", "config", "up", "down", "smoke", "test"))
+    parser.add_argument("action", choices=("secrets", "config", "up", "down", "smoke", "test", "migration-test", "migrate-identity", "migrate-submission"))
     action = parser.parse_args().action
     directory = Path(os.environ.get("ANONCE_SECRETS_DIR", ROOT / ".secrets"))
     if action == "secrets":
@@ -269,7 +340,7 @@ def main():
         print("Compose configuration checks passed; no container execution.")
         return
     check_engine_version(stack.run(["docker", "info", "--format", "{{.ServerVersion}}"]).stdout.decode())
-    if action == "test":
+    if action in ("test", "migration-test"):
         scratch = ROOT / ".cache/tests"
         scratch.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="containers-", dir=scratch) as temporary:
@@ -282,10 +353,20 @@ def main():
             try:
                 isolated.compose("up", "--build", "--wait", "--wait-timeout", "120", timeout=600)
                 database_checks(isolated, isolated.smoke())
+                if action == "migration-test":
+                    migration_checks(isolated)
             finally:
                 # Remove only this invocation's fresh disposable project and volumes.
                 isolated.compose("down", "--volumes", "--remove-orphans")
         print("Real container liveness, isolation, PostgreSQL authentication and privilege checks passed.")
+        if action == "migration-test":
+            print("Separate database migration, concurrency, failure, version and grant checks passed; full db-test remains unavailable.")
+        return
+    if action.startswith("migrate-"):
+        prepare_secrets(directory)
+        stack.config()
+        stack.migrate(action.removeprefix("migrate-"), stack.migration_image())
+        print("Selected local database migrated; application readiness remains unavailable.")
         return
     if action == "down":
         stack.compose("down")  # Preserve all database volumes.

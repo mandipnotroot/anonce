@@ -53,8 +53,8 @@ limits and [deployment](docs/deployment.md#local-development) for process flags.
 checks and separate local member-session WASM and worker checks. No npm install or
 Node product build is used; `make wasm` and `make member-wasm` build with Go alone. Container
 setup is opt-in through the [local Compose stack](docs/deployment.md#container-stack),
-with separate databases and `make container-test`; application persistence and migrations
-remain unavailable. The separate opt-in `make member-browser-test`
+with separate databases and `make container-test`. Separate migration histories have
+an opt-in `make db-migration-test`; HTTP persistence remains unavailable. The separate opt-in `make member-browser-test`
 uses a pinned external Chromium executable supplied through `MEMBER_BROWSER`;
 see [browser check setup and limits](docs/testing.md#member-worker-browser-checks).
 It is not included in `make check` or hosted CI.

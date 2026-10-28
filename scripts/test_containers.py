@@ -7,8 +7,10 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from containers import EDGE_NETWORKS, INTERNAL_NETWORKS, NETWORKS, PORTS, POSTGRES_IMAGE, ROOT, SECRET_NAMES, check_engine_version, prepare_secrets, validate_config
+from containers import EDGE_NETWORKS, INTERNAL_NETWORKS, NETWORKS, PORTS, POSTGRES_IMAGE, ROOT, SECRET_NAMES, Stack, check_engine_version, prepare_secrets, validate_config
 
 
 def model():
@@ -110,6 +112,47 @@ class ContainerPolicyTests(unittest.TestCase):
         config["secrets"]["identity_admin"]["file"] = "/synthetic-secrets/submission_admin"
         with self.assertRaises(ValueError):
             validate_config(config)
+
+
+class MigrationOperatorTests(unittest.TestCase):
+    def test_one_shot_operator_scope_and_cleanup(self):
+        for side in ("identity", "submission"):
+            with self.subTest(side=side):
+                stack = Stack(env={})
+                calls = []
+
+                def run(args, **kwargs):
+                    calls.append((args, kwargs))
+                    return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+                with patch.object(stack, "config", return_value=model()), patch.object(stack, "run", side_effect=run):
+                    stack.migrate(side, "sha256:" + "a" * 64)
+                command, settings = calls[0]
+                self.assertEqual(command[:3], ["docker", "run", "--rm"])
+                self.assertEqual(command[command.index("--network") + 1], "synthetic_" + side)
+                self.assertEqual(command[command.index("--mount") + 1],
+                                 f"type=bind,src=/synthetic-secrets/{side}_migration,dst=/run/secrets/migration_password,readonly")
+                for expected in ("--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
+                                 "--memory", "128m", "--memory-swap", "--pids-limit", "64", "--user", "65532:65532",
+                                 "--log-driver", "none"):
+                    self.assertIn(expected, command)
+                self.assertNotIn("--publish", command)
+                self.assertNotIn("--env", command)
+                self.assertEqual(command[-1], side)
+                self.assertEqual(settings["timeout"], 90)
+                self.assertEqual(calls[1][0], ["docker", "rm", "--force", command[command.index("--name") + 1]])
+
+    def test_failures_and_invalid_targets(self):
+        stack = Stack(env={})
+        with patch.object(stack, "config", return_value=model()), patch.object(stack, "run") as run:
+            for side in ("", "../identity", "postgres", "Identity"):
+                with self.subTest(side=side), self.assertRaises(ValueError):
+                    stack.migrate(side, "synthetic")
+            run.assert_not_called()
+            run.side_effect = [RuntimeError("synthetic failure"), SimpleNamespace(returncode=0)]
+            with self.assertRaises(RuntimeError):
+                stack.migrate("identity", "synthetic")
+            self.assertEqual(run.call_args_list[-1].args[0][:3], ["docker", "rm", "--force"])
 
 
 class ContainerSecretTests(unittest.TestCase):

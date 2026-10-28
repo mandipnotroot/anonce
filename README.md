@@ -64,6 +64,11 @@ prepare `.env` and local secret files, then use `make up`, `make smoke`, and
 PostgreSQL instances. `make container-test` checks disposable infrastructure, not a
 working submission product.
 
+Separate [local database migrations](docs/deployment.md#local-database-migrations)
+are opt-in through `make migrate-identity` and `make migrate-submission`.
+`make db-migration-test` checks their histories and grants on disposable PostgreSQL;
+account/vault tables and HTTP persistence remain unavailable.
+
 To run the HTTP demonstration natively instead:
 
 ```sh

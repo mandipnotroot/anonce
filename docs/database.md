@@ -5,9 +5,9 @@
 
 Audience: storage implementers, database reviewers, and operators.
 
-Status: proposed application schema, with local PostgreSQL 18.6 container bootstrap
-for roles and an empty application schema. Application migrations, pgx integration,
-and protocol storage are not implemented.
+Status: local PostgreSQL 18.6 bootstrap plus separate Goose migration histories and
+an operator-only pgx runner. Only a storage-boundary marker is migrated. The account,
+vault, and protocol schemas below are proposed; HTTP persistence is not implemented.
 
 ## Storage boundary
 
@@ -30,7 +30,7 @@ Each instance has its own admin password and separate migration/runtime password
 | `identity_admin` or `submission_admin` | Upstream bootstrap superuser, available only to the database container/operator, never the application |
 | `anonce_owner` | Non-login owner of the database and its empty `anonce` schema |
 | `anonce_migrator` | Non-superuser login; requires explicit `SET ROLE anonce_owner` before creating owned objects; ownership is not inherited |
-| `anonce_runtime` | Non-owner login with database `CONNECT` and schema `USAGE` only; no table access until explicitly granted by a future migration |
+| `anonce_runtime` | Non-owner login with database `CONNECT` and schema `USAGE`; migration 1 explicitly grants only marker `SELECT` |
 
 Runtime roles cannot create databases, roles, schemas, temporary tables, extensions,
 or public-schema objects, assume ownership, bypass RLS, or replicate. Public access
@@ -47,8 +47,8 @@ is mounted into applications. This is a local operator boundary, not protection
 against database-container or host compromise. Data volumes follow the PostgreSQL 18
 [official image layout](https://hub.docker.com/_/postgres) (consulted 2026-10-28).
 
-Bootstrap SQL neither upgrades nor repairs existing volumes. Preserve separate
-Goose histories when application migrations are added. Evidence and limits live in
+Bootstrap SQL neither upgrades nor repairs existing volumes. Separate embedded
+Goose histories are applied explicitly as described below. Evidence and limits live in
 [container checks](testing.md#container-infrastructure-checks); quota/spend transactions
 and encrypted restoration remain unimplemented.
 
@@ -130,3 +130,38 @@ retention to scheduling/abuse needs. Never publish precise per-record times.
   backup restoration in an isolated disposable environment.
 - Follow [deployment](deployment.md) for backup separation. Database encryption
   does not replace device-side content encryption.
+
+### Local migration runner
+
+`migrations/identity/` and `migrations/submission/` are embedded in the operator-only
+`cmd/migrate` binary. Each starts at version 1 and creates `anonce.storage_boundary`
+with exactly one service-specific row. Runtime gets `SELECT` only. The separate
+`anonce.identity_schema_version` and `anonce.submission_schema_version` Goose tables
+and their sequences remain owner-only. No identity or submission records are added.
+
+The runner accepts exactly `identity` or `submission`, connects to that fixed
+Compose hostname/database as `anonce_migrator`, checks the database name and
+unprivileged login, and explicitly assumes `anonce_owner`. A single physical
+connection holds PostgreSQL session advisory lock `4097083626` across history
+inspection, version-table initialization, and migration application. Reconnection
+must reacquire the lock and repeat preflight. Each SQL migration and its version
+entry use Goose's transaction. No down/reset or out-of-order option is exposed.
+
+Supported histories are an absent ledger or an applied version 0 baseline followed
+optionally by version 1. Future, negative, duplicate, unapplied, or missing-baseline
+records fail before migration. Already-current runs also require the correct
+single marker row. When adding a migration, extend this explicit supported-history
+range and its tests. Published SQL must never be edited; the ledger records versions,
+not checksums, and is not protection against a privileged operator changing data.
+
+The total deadline is 60 seconds, connection timeout five seconds, statement timeout
+30 seconds, lock wait five seconds, and idle transaction timeout 30 seconds. SQL
+diagnostics are discarded. Password bytes are cleared after use; immutable driver
+and runtime copies cannot be erased. The fixed plaintext TCP connection is admitted
+only for the isolated local stack, not production deployment.
+
+This follows [Goose 3.29.0 SQL transaction/version semantics](https://github.com/pressly/goose/blob/v3.29.0/README.md#migrations)
+and PostgreSQL 18 [session advisory locks](https://www.postgresql.org/docs/18/explicit-locking.html#ADVISORY-LOCKS)
+(consulted 2026-10-28). See [operator commands](deployment.md#local-database-migrations)
+and [executable evidence](testing.md#database-migration-checks). Encrypted restoration,
+application concurrency, and full `db-test` remain unavailable.
