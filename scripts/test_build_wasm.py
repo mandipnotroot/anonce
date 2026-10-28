@@ -5,7 +5,9 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -13,6 +15,26 @@ from build_wasm import checked_material, check_wasm, member_notices
 
 
 class WASMBuildChecks(unittest.TestCase):
+    def test_ci_node_runtime(self):
+        root = Path(__file__).resolve().parents[1]
+        config = tomllib.loads((root / "scripts/wasm.toml").read_text())
+        for filename, job, command in (
+            ("checks.yml", "runtime", "make wasm-test"),
+            ("pages.yml", "build", "make docs-setup check docs-build"),
+        ):
+            with self.subTest(workflow=filename):
+                workflow = (root / ".github/workflows" / filename).read_text()
+                section = re.search(rf"(?ms)^  {job}:\n(.*?)(?=^  [\w-]+:|\Z)", workflow)
+                self.assertIsNotNone(section)
+                steps = section[1].split(f"run: {command}", 1)
+                self.assertEqual(len(steps), 2, "WASM check command must exist")
+                setup = re.search(
+                    r"actions/setup-node@[0-9a-f]{40}[^\n]*\n        with:\n          node-version: '([^']+)'",
+                    steps[0],
+                )
+                self.assertIsNotNone(setup, "install pinned Node before WASM checks")
+                self.assertEqual(f"v{setup[1]}", config["node_version"])
+
     def test_material_digest(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "notice"

@@ -52,7 +52,12 @@ limits and [deployment](docs/deployment.md#local-development) for process flags.
 `make check` also requires Node.js 22.23.3 for public-request WASM compatibility
 checks and separate local member-session WASM and worker checks. No npm install or
 Node product build is used; `make wasm` and `make member-wasm` build with Go alone. Container
-and database setup are not available.
+setup is opt-in through the [local Compose stack](docs/deployment.md#container-stack),
+with separate databases and `make container-test`; application persistence and migrations
+remain unavailable. The separate opt-in `make member-browser-test`
+uses a pinned external Chromium executable supplied through `MEMBER_BROWSER`;
+see [browser check setup and limits](docs/testing.md#member-worker-browser-checks).
+It is not included in `make check` or hosted CI.
 
 ## Documentation site
 
@@ -99,6 +104,18 @@ pipx run --spec pip-tools==7.6.2 pip-compile \
 - Use the title grammar in `scripts/commits.toml`.
 - Exclude secrets and personal data.
 - Pass checks and obtain maintainer review.
+
+### Squash-merge commit titles
+
+Maintainers append the PR number as ` (#N)` to the final squash-merge commit
+title, for example, `feat(client): add member sessions (#2)`. Keep individual
+development commit subjects and PR titles free of this suffix; add it only when
+merging.
+
+The final title must still follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
+and the types, scopes, and subject limit in `scripts/commits.toml`. The suffix is
+part of the description and counts toward the subject limit. Preserve any
+breaking-change notation when preparing the final title.
 
 ## Dependency updates
 

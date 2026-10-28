@@ -22,7 +22,7 @@ See the [user flow](ui-design.md#account-and-review-workflow) and
   Fix wrapping profiles and supported browser/provider evidence, not a promise of
   universal passkey decryption. Keep reviewer server backup excluded pending review.
 - Build the identity-side foundation for a complete browser workflow: separate
-  PostgreSQL instances and Compose, account authentication/sessions, owner-scoped
+  PostgreSQL application migrations/integration, account authentication/sessions, owner-scoped
   encrypted member-key backup storage, enrollment, protected CA signing, and
   revocation. Preserve [service boundaries](architecture.md#account-and-anonymous-flow).
 - Connect shared Go member-key and backup composition to reviewed browser interfaces
@@ -36,6 +36,12 @@ See the [user flow](ui-design.md#account-and-review-workflow) and
 
 Available foundations:
 
+- **Container infrastructure:** [local Compose stack](deployment.md#container-stack)
+  for non-root Go services and independent PostgreSQL 18.6 instances, with separate
+  volumes/credentials, owner/migration/runtime bootstrap roles, loopback publication,
+  liveness checks, and opt-in real-container privilege/isolation checks. Application
+  persistence, migrations, encrypted restoration, image scanning, and product readiness
+  remain unavailable.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).
@@ -62,10 +68,31 @@ Available foundations:
   adds bounded byte inputs, Promise-based setup/restoration, and lock/shutdown with
   native/Node backup compatibility checks. A separate
   [local worker owner](key-management.md#local-member-worker-host) keeps WASM off
-  its owner's thread, bounds transport/lifetime, and terminates on disposal.
-  Secret-free same-partition lock notifications and local pagehide termination
-  have Node checks. Actual browser delivery, partition/lifecycle evidence, and
-  account binding/logout integration remain unavailable.
+  its owner's thread, bounds transport/lifetime, rejects overdue work using local
+  monotonic/wall-clock checks even before delayed timeout callbacks, and terminates
+  on disposal.
+  Unlocked sessions can export a fresh encrypted member backup under a new local
+  password, without exporting private bytes or rotating the key. Native/Node checks
+  cover key preservation and cancellation. Opt-in confirmed setup/export methods
+  reject mismatched local passwords in shared Go before key generation or derivation;
+  native/Node checks cover bounds, snapshots, failure state, and cancellation.
+  Independent user-entry prompts, server replacement, and product UI remain
+  integration work.
+  Opt-in worker text methods now provide bounded, exact UTF-8 passphrases for
+  confirmed setup/export and expected-key restoration, clearing owned encoding
+  buffers before return. Immutable strings cannot be erased. This is a development
+  interface, not an input form or a configured account unlock method.
+  A public, secret-free `closed` Promise observes terminal local cleanup, including
+  idle peer locks, without polling; it does not acknowledge worker exit or logout.
+  An optional `AbortSignal` lets a future host cancel startup or restoration through
+  terminal local disposal without notifying peers or exposing the abort reason.
+  Secret-free same-partition lock notifications and local pagehide/hidden-page
+  termination have Node checks. An opt-in
+  [synthetic browser target](testing.md#member-worker-browser-checks) exercises
+  isolated test delivery, CSP, same-origin peer locking, background-tab locking,
+  explicit foreground restoration, and navigation termination in pinned headless
+  Chromium. Product delivery, partition/suspension coverage, and account binding/logout
+  integration remain unavailable.
 
 These foundations do not establish protocol or storage security. Browser custody,
 enrollment, signing-service integration, reviewer round binding, expiry, submission

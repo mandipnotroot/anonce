@@ -3,21 +3,38 @@
 
 import assert from "node:assert/strict";
 import { randomInt } from "node:crypto";
+import { getEventListeners } from "node:events";
 import { test } from "node:test";
 import { byteView, command, inputViews, result } from "../internal/memberworker/protocol.mjs";
 import { lockMemberWorkers, MemberWorkerSession } from "../internal/memberworker/member-client.mjs";
 
 const enrollment = () => ({ publicKey: new Uint8Array(32), csr: new Uint8Array(129) });
 const setup = () => ({ ...enrollment(), backup: new Uint8Array(108) });
+const encrypted = () => ({ backup: new Uint8Array(108) });
 
 function harness(t) {
   const original = { Worker: globalThis.Worker, BroadcastChannel: globalThis.BroadcastChannel,
-    addEventListener: globalThis.addEventListener, removeEventListener: globalThis.removeEventListener, setTimeout, clearTimeout };
+    document: globalThis.document, addEventListener: globalThis.addEventListener,
+    removeEventListener: globalThis.removeEventListener, performance: globalThis.performance, setTimeout, clearTimeout };
+  const dateNow = Date.now;
+  const time = { monotonic: 10_000, wall: 1_700_000_000_000 };
   const timers = new Map();
   const workers = [];
   const channels = [];
   const notifications = [];
   const listeners = new Set();
+  const visibilityListeners = new Set();
+  const document = {
+    visibilityState: "visible",
+    addEventListener(type, listener) {
+      assert.equal(type, "visibilitychange");
+      visibilityListeners.add(listener);
+    },
+    removeEventListener(type, listener) {
+      assert.equal(type, "visibilitychange");
+      visibilityListeners.delete(listener);
+    },
+  };
   class BroadcastChannel {
     closed = false;
     posts = [];
@@ -60,7 +77,10 @@ function harness(t) {
     answer(value) { this.send({ version: 1, id: this.posts.at(-1).id, result: value }); }
   }
   globalThis.Worker = Worker;
+  globalThis.performance = { now: () => time.monotonic };
+  Date.now = () => time.wall;
   globalThis.BroadcastChannel = BroadcastChannel;
+  globalThis.document = document;
   globalThis.addEventListener = (type, listener) => {
     assert.equal(type, "pagehide");
     listeners.add(listener);
@@ -79,16 +99,25 @@ function harness(t) {
   t.after(() => {
     for (const session of sessions) session.close();
     Object.assign(globalThis, original);
+    Date.now = dateNow;
     assert.equal(timers.size, 0, "timer leaked");
     assert.equal(listeners.size, 0, "page listener leaked");
+    assert.equal(visibilityListeners.size, 0, "visibility listener leaked");
     assert.ok(channels.every((channel) => channel.closed), "lock channel leaked");
   });
   return {
     workers,
     channels,
-    open(Owner = MemberWorkerSession) { const session = new Owner(); sessions.push(session); return session; },
+    document,
+    visibilityListeners,
+    time,
+    open(Owner = MemberWorkerSession, ...args) { const session = new Owner(...args); sessions.push(session); return session; },
     deliver() { for (const notify of notifications.splice(0)) notify(); },
     pagehide(persisted) { for (const listener of [...listeners]) listener({ persisted }); },
+    visibility(state) {
+      document.visibilityState = state;
+      for (const listener of [...visibilityListeners]) listener();
+    },
     fire(delay) {
       const found = [...timers].find(([, timer]) => timer.delay === delay);
       assert.ok(found, "missing timeout");
@@ -97,6 +126,185 @@ function harness(t) {
     },
   };
 }
+
+test("member worker text passphrases preserve exact UTF-8 and confirmed transport", async (t) => {
+  const h = harness(t), session = h.open(), worker = h.workers[0];
+  assert.equal(await session.createWithPassphrase("synthetic", "synthetic"), null);
+  worker.ready();
+  assert.equal(await session.ready, true);
+  const vectors = ["a", " ", "\0\r\n ", "é", "e\u0301", "\uFEFFx", "\uFFFD", "😀",
+    "a".repeat(1024), "é".repeat(512), "€".repeat(341) + "a", "😀".repeat(256)];
+  for (const text of vectors) {
+    for (const [method, transport, inputs, value] of [
+      ["createWithPassphrase", "createConfirmed", [text, text], setup()],
+      ["backupWithPassphrase", "backupConfirmed", [text, text], encrypted()],
+      ["unlockWithPassphrase", "unlock", [text, new Uint8Array(108), new Uint8Array(32)], enrollment()],
+    ]) {
+      const pending = session[method](...inputs);
+      const post = worker.posts.at(-1);
+      assert.equal(post.method, transport);
+      assert.deepEqual(post.inputs[0], new Uint8Array(Buffer.from(text, "utf8")));
+      if (transport !== "unlock") assert.deepEqual(post.inputs[1], post.inputs[0]);
+      assert.equal(await session.backupWithPassphrase(text, text), null, "busy text operation admitted");
+      worker.answer(value);
+      assert.deepEqual(await pending, value);
+    }
+  }
+  // Comparison belongs to shared Go, including canonically equivalent text.
+  const mismatch = session.createWithPassphrase("é", "e\u0301");
+  const post = worker.posts.at(-1);
+  assert.notDeepEqual(post.inputs[0], post.inputs[1]);
+  worker.answer(null);
+  assert.equal(await mismatch, null);
+  const pending = session.backupWithPassphrase("synthetic", "synthetic");
+  session.lock();
+  assert.equal(await pending, null);
+  assert.equal(await session.closed, undefined);
+  const count = worker.posts.length;
+  assert.equal(await session.createWithPassphrase("a", "a"), null);
+  assert.equal(worker.posts.length, count);
+});
+
+test("member worker text passphrases reject bounds, malformed Unicode, and coercion", async (t) => {
+  const h = harness(t), session = h.open(), worker = h.workers[0];
+  worker.ready();
+  assert.equal(await session.ready, true);
+  const hostile = new Proxy({}, { get() { assert.fail("inspected passphrase object"); } });
+  const invalid = [undefined, null, false, 7, {}, hostile, new String("synthetic"), Uint8Array.of(7),
+    "", "a".repeat(1025), "é".repeat(513), "€".repeat(342), "😀".repeat(257),
+    "\uD800", "\uDC00", "a\uD800b", "\uD800\uD800", "\uDC00\uD800"];
+  for (const text of invalid) {
+    assert.equal(await session.createWithPassphrase(text, "a"), null);
+    assert.equal(await session.createWithPassphrase("a", text), null);
+    assert.equal(await session.backupWithPassphrase(text, "a"), null);
+    assert.equal(await session.backupWithPassphrase("a", text), null);
+    assert.equal(await session.unlockWithPassphrase(text, new Uint8Array(108), new Uint8Array(32)), null);
+  }
+  for (const method of ["createWithPassphrase", "backupWithPassphrase", "unlockWithPassphrase"]) {
+    assert.equal(await session[method](), null);
+    assert.equal(await session[method]("a"), null);
+    assert.equal(await session[method]("a", "a", "extra", "extra"), null);
+  }
+  for (const [backup, expected] of [[new Uint8Array(107), new Uint8Array(32)],
+    [new Uint8Array(108), new Uint8Array(33)], [hostile, new Uint8Array(32)],
+    [new Uint8Array(new SharedArrayBuffer(108)), new Uint8Array(32)]]) {
+    assert.equal(await session.unlockWithPassphrase("a", backup, expected), null);
+  }
+  assert.equal(worker.posts.length, 0, "invalid text inputs reached worker");
+  const pending = session.request();
+  worker.answer(enrollment());
+  assert.deepEqual(await pending, enrollment(), "invalid text closed owner");
+});
+
+test("member worker text buffers clear before return on success and partial encoding failure", async (t) => {
+  const h = harness(t), buffers = [];
+  const original = TextEncoder.prototype.encodeInto;
+  let fail = false, afterEncode = null;
+  TextEncoder.prototype.encodeInto = function (text, buffer) {
+    buffers.push(buffer);
+    const result = Reflect.apply(original, this, [text, buffer]);
+    if (fail) throw new Error("synthetic encoder failure");
+    afterEncode?.();
+    return result;
+  };
+  let Owner;
+  try { ({ MemberWorkerSession: Owner } = await import("../internal/memberworker/member-client.mjs?text-cleanup")); }
+  finally { TextEncoder.prototype.encodeInto = original; }
+  const session = h.open(Owner), worker = h.workers[0];
+  worker.ready();
+  assert.equal(await session.ready, true);
+  for (const [text, confirmation, valid] of [["synthetic", "synthetic", true],
+    ["synthetic", "é".repeat(513), false], ["é".repeat(513), "a", false]]) {
+    const pending = session.createWithPassphrase(text, confirmation);
+    assert.ok(buffers.length > 0);
+    assert.ok(buffers.every((buffer) => buffer.every((byte) => byte === 0)), "text buffer retained before return");
+    if (valid) worker.answer(setup());
+    assert.deepEqual(await pending, valid ? setup() : null);
+    buffers.length = 0;
+  }
+  fail = true;
+  assert.equal(await session.createWithPassphrase("synthetic", "synthetic"), null);
+  assert.ok(buffers.every((buffer) => buffer.every((byte) => byte === 0)));
+  fail = false;
+  buffers.length = 0;
+  assert.equal(await session.unlockWithPassphrase("synthetic", new Uint8Array(1), new Uint8Array(32)), null);
+  assert.equal(buffers.length, 0, "encoded before binary input validation");
+  const pending = session.createWithPassphrase("a", "a");
+  buffers.length = 0;
+  assert.equal(await session.createWithPassphrase("a", "a"), null);
+  assert.equal(buffers.length, 0, "encoded while busy");
+  session.close();
+  assert.equal(await pending, null);
+  assert.equal(await session.createWithPassphrase("a", "a"), null);
+  assert.equal(buffers.length, 0, "encoded after closure");
+  const failed = h.open(Owner), failedWorker = h.workers.at(-1);
+  failedWorker.ready();
+  assert.equal(await failed.ready, true);
+  failedWorker.throwing = true;
+  assert.equal(await failed.createWithPassphrase("synthetic", "synthetic"), null);
+  assert.equal(buffers.length, 2);
+  assert.ok(buffers.every((buffer) => buffer.every((byte) => byte === 0)), "text buffer retained after transport failure");
+  assert.ok(failedWorker.failedInputs.every((input) => input.every((byte) => byte === 0)));
+  assert.equal(await failed.closed, undefined);
+  const expired = h.open(Owner), expiredWorker = h.workers.at(-1);
+  expiredWorker.ready();
+  assert.equal(await expired.ready, true);
+  buffers.length = 0;
+  afterEncode = () => { h.time.wall += 300_000; };
+  assert.equal(await expired.createWithPassphrase("a", "a"), null);
+  assert.equal(expiredWorker.posts.length, 0, "lifecycle not rechecked after encoding");
+  assert.ok(buffers.every((buffer) => buffer.every((byte) => byte === 0)));
+  assert.equal(await expired.closed, undefined);
+});
+
+test("member worker text passphrases have bounded generated Unicode admission checks", async (t) => {
+  const h = harness(t), session = h.open(), worker = h.workers[0];
+  worker.ready();
+  assert.equal(await session.ready, true);
+  const units = ["a", "é", "€", "😀", "\uD800", "\uDC00", "\0", " ", "e\u0301"];
+  for (let i = 0; i < 2048; i++) {
+    const text = (units[randomInt(units.length)].repeat(randomInt(1026)) + units[randomInt(units.length)]).slice(0, 1025);
+    const bytes = Buffer.from(text, "utf8");
+    const admitted = bytes.length > 0 && bytes.length <= 1024 && bytes.toString("utf8") === text;
+    const before = worker.posts.length;
+    const pending = session.createWithPassphrase(text, text);
+    assert.equal(worker.posts.length, before + Number(admitted));
+    if (admitted) {
+      assert.deepEqual(worker.posts.at(-1).inputs[0], new Uint8Array(bytes));
+      worker.answer(null);
+    }
+    assert.equal(await pending, null);
+  }
+});
+
+test("member worker missing text APIs fail without a byte or unconfirmed fallback", async (t) => {
+  const h = harness(t);
+  for (const missing of ["encoder", "encodeInto", "isWellFormed"]) {
+    const Encoder = globalThis.TextEncoder, encode = Encoder.prototype.encodeInto, well = String.prototype.isWellFormed;
+    let Owner;
+    try {
+      if (missing === "encoder") globalThis.TextEncoder = undefined;
+      if (missing === "encodeInto") Encoder.prototype.encodeInto = undefined;
+      if (missing === "isWellFormed") String.prototype.isWellFormed = undefined;
+      ({ MemberWorkerSession: Owner } = await import(`../internal/memberworker/member-client.mjs?missing-${missing}`));
+    } finally {
+      globalThis.TextEncoder = Encoder;
+      Encoder.prototype.encodeInto = encode;
+      String.prototype.isWellFormed = well;
+    }
+    const session = h.open(Owner), worker = h.workers.at(-1);
+    worker.ready();
+    assert.equal(await session.ready, true);
+    assert.equal(await session.createWithPassphrase("a", "a"), null);
+    assert.equal(await session.backupWithPassphrase("a", "a"), null);
+    assert.equal(await session.unlockWithPassphrase("a", new Uint8Array(108), new Uint8Array(32)), null);
+    assert.equal(worker.posts.length, 0);
+    const pending = session.createConfirmed(Uint8Array.of(7), Uint8Array.of(7));
+    worker.answer(setup());
+    assert.deepEqual(await pending, setup(), "existing byte interface changed");
+    session.close();
+  }
+});
 
 test("member worker owner admission, snapshots, public results, and terminal lock", async (t) => {
   const h = harness(t);
@@ -134,6 +342,272 @@ test("member worker owner admission, snapshots, public results, and terminal loc
   assert.equal(await replacement.ready, true);
 });
 
+test("member worker closed Promise observes every terminal path after local cleanup", { timeout: 5000 }, async (t) => {
+  const h = harness(t);
+  const actions = {
+    abort: (_session, _worker, _channel, controller) => controller.abort(),
+    close: (session) => session.close(),
+    lock: (session) => session.lock(),
+    "global lock": () => lockMemberWorkers(),
+    "peer lock": (_session, _worker, channel) => channel.onmessage({ data: "lock" }),
+    "channel decode failure": (_session, _worker, channel) => channel.onmessageerror(),
+    "notification failure": (session, _worker, channel) => { channel.throwing = true; session.lock(); },
+    pagehide: () => h.pagehide(false),
+    "cached pagehide": () => h.pagehide(true),
+    visibility: () => h.visibility("hidden"),
+    error: (_session, worker) => worker.onerror({ preventDefault() {} }),
+    "message decode failure": (_session, worker) => worker.onmessageerror(),
+    "invalid reply": (_session, worker) => worker.send({ version: 2 }),
+    "startup timeout": () => h.fire(30_000),
+    "operation timeout": () => h.fire(120_000),
+    "lifetime timeout": () => h.fire(300_000),
+    "clock failure": () => { h.time.wall = NaN; h.visibility("visible"); },
+    "delayed deadline": () => { h.time.wall += 300_000; h.visibility("visible"); },
+  };
+  for (const state of ["startup", "idle", "pending"]) {
+    for (const [name, act] of Object.entries(actions)) {
+      if (name === "startup timeout" && state !== "startup") continue;
+      if (name === "operation timeout" && state !== "pending") continue;
+      const controller = new AbortController();
+      const session = h.open(MemberWorkerSession, controller.signal), worker = h.workers.at(-1), channel = h.channels.at(-1);
+      const closure = session.closed;
+      assert.ok(closure instanceof Promise);
+      assert.equal(session.closed, closure, "getter replaced the Promise");
+      if (state !== "startup") { worker.ready(); assert.equal(await session.ready, true); }
+      const pending = state === "pending" ? session.create(Uint8Array.of(7)) : null;
+      const late = worker.onmessage;
+      let observed = 0;
+      const observation = closure.then((value) => {
+        observed++;
+        assert.equal(value, undefined, "closure exposed data or a reason");
+        assert.equal(worker.terminated, true, "notified before requesting termination");
+        assert.equal(worker.onmessage, null);
+        assert.equal(worker.onerror, null);
+        assert.equal(worker.onmessageerror, null);
+        assert.equal(channel.closed, true);
+        assert.equal(channel.onmessage, null);
+        assert.equal(channel.onmessageerror, null);
+        assert.equal(h.visibilityListeners.size, 0);
+        assert.equal(getEventListeners(controller.signal, "abort").length, 0, "abort listener leaked");
+      });
+      await Promise.resolve();
+      assert.equal(observed, 0, `${state}/${name}: live owner reported closed`);
+      act(session, worker, channel, controller);
+      assert.equal(observed, 0, "observer ran synchronously inside termination");
+      await observation;
+      assert.equal(await session.ready, state !== "startup", "closure changed readiness history");
+      if (pending) assert.equal(await pending, null);
+      session.close(); session.lock();
+      late({ data: { version: 1, type: "ready" } });
+      assert.equal(await session.request(), null);
+      assert.equal(await session.closed, undefined, "late subscriber missed closure");
+      assert.equal(observed, 1, "closure notified repeatedly");
+      h.document.visibilityState = "visible";
+      h.time.wall = 1_700_000_000_000;
+      const replacement = h.open();
+      h.workers.at(-1).ready();
+      assert.equal(await replacement.ready, true, "closure retained singleton admission");
+      replacement.close();
+    }
+  }
+});
+
+test("member worker backup snapshots, ciphertext-only results, failures, and terminal cancellation", async (t) => {
+  const h = harness(t);
+  for (const terminal of ["close", "lock", "abort", "peer", "visibility", "deadline", "timeout"]) {
+    const controller = new AbortController();
+    const session = h.open(MemberWorkerSession, controller.signal), worker = h.workers.at(-1);
+    assert.equal(await session.backup(Uint8Array.of(7)), null, "export queued before startup");
+    worker.ready();
+    assert.equal(await session.ready, true);
+    const password = Uint8Array.of(7, 0, 255);
+    const pending = session.backup(password);
+    password.fill(0);
+    assert.deepEqual([...worker.posts.at(-1).inputs[0]], [7, 0, 255]);
+    assert.equal(worker.posts.at(-1).method, "backup");
+    assert.equal(await session.request(), null, "busy request admitted");
+    assert.equal(await session.backup(password), null, "busy export admitted");
+    worker.answer(null); // Locked shared session or failed encryption, not terminal.
+    assert.equal(await pending, null);
+    const success = session.backup(password);
+    worker.answer(encrypted());
+    assert.deepEqual(await success, encrypted());
+    const cancelled = session.backup(password);
+    const late = worker.onmessage, id = worker.posts.at(-1).id;
+    if (terminal === "close") session.close();
+    if (terminal === "lock") session.lock();
+    if (terminal === "abort") controller.abort();
+    if (terminal === "peer") h.channels.at(-1).onmessage({ data: "lock" });
+    if (terminal === "visibility") h.visibility("hidden");
+    if (terminal === "deadline") { h.time.wall += 120_000; worker.answer(encrypted()); }
+    if (terminal === "timeout") h.fire(120_000);
+    assert.equal(await cancelled, null, "cancelled backup published ciphertext");
+    assert.equal(await session.closed, undefined);
+    assert.equal(worker.terminated, true);
+    late({ data: { version: 1, id, result: encrypted() } });
+    assert.equal(await session.backup(password), null, "late export reopened owner");
+    h.visibility("visible");
+  }
+  for (const output of [enrollment(), setup(), {}, { backup: new Uint8Array(107) },
+    { backup: new Uint8Array(109) }, { backup: new Uint8Array(new SharedArrayBuffer(108)) },
+    { ...encrypted(), privateKey: new Uint8Array(64) }]) {
+    const session = h.open(), worker = h.workers.at(-1);
+    worker.ready();
+    const pending = session.backup(Uint8Array.of(7));
+    worker.answer(output);
+    assert.equal(await pending, null, "malformed backup reply admitted");
+    assert.equal(await session.closed, undefined);
+  }
+});
+
+test("member worker abort admission rejects invalid and already-aborted signals before resources", async (t) => {
+  const h = harness(t);
+  const aborted = new AbortController();
+  aborted.abort(new Proxy({}, { get() { assert.fail("abort reason inspected"); } }));
+  const revoked = Proxy.revocable({}, {}); revoked.revoke();
+  for (const args of [[null], [false], [1], ["signal"], [{}], [new EventTarget()],
+    [Object.create(AbortSignal.prototype)], [revoked.proxy], [aborted.signal], [undefined, undefined]]) {
+    const session = h.open(MemberWorkerSession, ...args);
+    assert.equal(await session.ready, false);
+    assert.equal(await session.closed, undefined);
+    assert.equal(await session.request(), null);
+    assert.equal(h.workers.length, 0);
+    assert.equal(h.channels.length, 0);
+    assert.equal(getEventListeners(aborted.signal, "abort").length, 0);
+  }
+  const controller = new AbortController();
+  const live = h.open(MemberWorkerSession, controller.signal);
+  const denied = h.open(MemberWorkerSession, controller.signal);
+  assert.equal(await denied.closed, undefined);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 1, "denied owner registered a listener");
+  controller.abort();
+  assert.equal(await live.ready, false);
+  assert.equal(await live.closed, undefined);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  const replacement = h.open(MemberWorkerSession, undefined);
+  h.workers.at(-1).ready();
+  assert.equal(await replacement.ready, true);
+});
+
+test("member worker abort is local, ignores shadowed properties and reasons, and never revives", async (t) => {
+  const h = harness(t);
+  const controller = new AbortController(), signal = controller.signal;
+  for (const name of ["aborted", "reason", "addEventListener", "removeEventListener"]) {
+    Object.defineProperty(signal, name, { get() { assert.fail(`shadowed signal ${name} read`); } });
+  }
+  const session = h.open(MemberWorkerSession, signal), worker = h.workers.at(-1);
+  worker.ready();
+  assert.equal(await session.ready, true);
+  const created = session.create(Uint8Array.of(7));
+  worker.answer(setup());
+  assert.deepEqual(await created, setup());
+  const pending = session.unlock(Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32));
+  const late = worker.onmessage;
+  controller.abort(new Proxy({}, { get() { assert.fail("abort reason inspected"); } }));
+  assert.equal(worker.terminated, true, "abort did not synchronously request termination");
+  assert.equal(await pending, null);
+  assert.equal(await session.closed, undefined);
+  assert.equal(await session.ready, true, "abort rewrote settled readiness");
+  assert.equal(h.channels[0].posts.length, 0, "local cancellation notified peers");
+  late({ data: { version: 1, id: worker.posts.at(-1).id, result: enrollment() } });
+  assert.equal(await session.request(), null);
+  const replacement = h.open();
+  h.workers.at(-1).ready();
+  controller.abort();
+  assert.equal(await replacement.ready, true);
+  assert.equal(h.workers.at(-1).terminated, false, "old signal closed a replacement owner");
+});
+
+test("member worker rechecks abort state when event delivery is suppressed", async (t) => {
+  const h = harness(t);
+  for (const boundary of ["startup", "admission", "busy", "reply", "visibility"]) {
+    const controller = new AbortController(), signal = controller.signal;
+    signal.addEventListener("abort", (event) => event.stopImmediatePropagation());
+    const session = h.open(MemberWorkerSession, signal), worker = h.workers.at(-1);
+    if (boundary !== "startup") worker.ready();
+    const pending = ["busy", "reply"].includes(boundary) ? session.create(Uint8Array.of(7)) : null;
+    controller.abort();
+    assert.equal(worker.terminated, false, "test did not suppress abort delivery");
+    if (boundary === "startup") worker.ready();
+    else if (boundary === "reply") worker.answer(setup());
+    else if (boundary === "visibility") h.visibility("visible");
+    else assert.equal(await session.request(), null);
+    assert.equal(worker.terminated, true);
+    assert.equal(await session.closed, undefined);
+    assert.equal(await session.ready, boundary !== "startup");
+    if (pending) assert.equal(await pending, null);
+    assert.equal(getEventListeners(signal, "abort").length, 1, "owner abort listener leaked");
+    assert.equal(h.channels.at(-1).posts.length, 0);
+  }
+});
+
+test("member worker removes abort listeners on failed startup without cancelling the host signal", async (t) => {
+  const h = harness(t);
+  const Worker = globalThis.Worker;
+  for (const failure of ["hidden", "clock", "worker"]) {
+    const controller = new AbortController();
+    h.document.visibilityState = failure === "hidden" ? "hidden" : "visible";
+    h.time.wall = failure === "clock" ? NaN : 1_700_000_000_000;
+    globalThis.Worker = failure === "worker" ? class { constructor() { throw new Error("synthetic startup failure"); } } : Worker;
+    const session = h.open(MemberWorkerSession, controller.signal);
+    assert.equal(await session.closed, undefined);
+    assert.equal(await session.ready, false);
+    assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+    assert.equal(controller.signal.aborted, false, "local cleanup cancelled host scope");
+  }
+});
+
+test("member worker closed Promise settles for failed construction and denied owners", { timeout: 5000 }, async (t) => {
+  const h = harness(t);
+  const owner = h.open();
+  const denied = h.open();
+  assert.equal(await denied.closed, undefined);
+  assert.equal(await denied.ready, false);
+  let ownerClosed = false;
+  void owner.closed.then(() => { ownerClosed = true; });
+  await Promise.resolve();
+  assert.equal(ownerClosed, false, "denied construction closed the active owner");
+  owner.close();
+  assert.equal(await owner.closed, undefined);
+  const Worker = globalThis.Worker, Channel = globalThis.BroadcastChannel;
+  for (const failure of ["hidden", "clock", "channel", "worker"]) {
+    h.document.visibilityState = failure === "hidden" ? "hidden" : "visible";
+    h.time.wall = failure === "clock" ? NaN : 1_700_000_000_000;
+    globalThis.BroadcastChannel = failure === "channel" ? class { constructor() { throw new Error("synthetic channel failure"); } } : Channel;
+    globalThis.Worker = failure === "worker" ? class { constructor() { throw new Error("synthetic startup failure"); } } : Worker;
+    const session = h.open();
+    assert.equal(await session.closed, undefined, failure);
+    assert.equal(await session.ready, false);
+  }
+});
+
+test("member worker closed Promise stays pending across rejected calls and successful work", async (t) => {
+  const h = harness(t);
+  const session = h.open(), worker = h.workers.at(-1);
+  let closed = false;
+  void session.closed.then(() => { closed = true; });
+  assert.equal(await session.request(), null);
+  worker.ready();
+  assert.equal(await session.ready, true);
+  assert.equal(await session.create(new Uint8Array()), null);
+  const failed = session.unlock(Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32));
+  worker.answer(null); // Invalid backup/password, not terminal transport failure.
+  assert.equal(await failed, null);
+  const created = session.create(Uint8Array.of(7));
+  assert.equal(await session.request(), null); // Busy admission is not terminal.
+  worker.answer(setup());
+  assert.deepEqual(await created, setup());
+  const requested = session.request();
+  worker.answer(enrollment());
+  assert.deepEqual(await requested, enrollment());
+  session.lock("extra"); session.close("extra");
+  await Promise.resolve();
+  assert.equal(closed, false, "nonterminal action reported closure");
+  session.close();
+  assert.equal(await session.closed, undefined);
+  assert.equal(closed, true);
+});
+
 test("member worker rejects input types, arity, bounds, and hostile properties before posting", async (t) => {
   const h = harness(t);
   const session = h.open();
@@ -150,12 +624,21 @@ test("member worker rejects input types, arity, bounds, and hostile properties b
   invalid.push(new Uint8Array(forged));
   const password = Uint8Array.of(1), backup = new Uint8Array(108), key = new Uint8Array(32);
   for (const value of invalid) {
+    for (const method of ["createConfirmed", "backupConfirmed"]) {
+      assert.equal(await session[method](value, password), null);
+      assert.equal(await session[method](password, value), null);
+    }
     assert.equal(await session.create(value), null);
+    assert.equal(await session.backup(value), null);
     assert.equal(await session.unlock(value, backup, key), null);
     assert.equal(await session.unlock(password, value, key), null);
     assert.equal(await session.unlock(password, backup, value), null);
   }
   for (const args of [[], [password, password]]) assert.equal(await session.create(...args), null);
+  for (const args of [[], [password, password]]) assert.equal(await session.backup(...args), null);
+  for (const method of ["createConfirmed", "backupConfirmed"]) {
+    for (const args of [[], [password], [password, password, password]]) assert.equal(await session[method](...args), null);
+  }
   for (const args of [[], [password], [password, backup], [password, backup, key, key]]) assert.equal(await session.unlock(...args), null);
   assert.equal(await session.request(1), null);
   for (const size of [1, 107, 109, 1024]) assert.equal(await session.unlock(password, new Uint8Array(size), key), null);
@@ -171,6 +654,58 @@ test("member worker rejects input types, arity, bounds, and hostile properties b
   assert.deepEqual([...storage], [9, 7, 8, 9]);
   worker.answer(setup());
   assert.ok(await pending);
+});
+
+test("member worker confirmed operations snapshot both inputs and preserve terminal cancellation", async (t) => {
+  const h = harness(t);
+  for (const method of ["createConfirmed", "backupConfirmed"]) {
+    for (const terminal of ["close", "lock", "abort", "peer", "visibility", "timeout"]) {
+      const controller = new AbortController();
+      const session = h.open(MemberWorkerSession, controller.signal), worker = h.workers.at(-1);
+      const channel = h.channels.at(-1);
+      assert.equal(await session[method](Uint8Array.of(1), Uint8Array.of(1)), null);
+      worker.ready();
+      const storage = Uint8Array.of(9, 0, 255, 9), password = storage.subarray(1, 3);
+      const confirmation = Uint8Array.of(0, 255);
+      for (const name of ["buffer", "byteLength", "byteOffset", "length", "constructor", Symbol.iterator]) {
+        Object.defineProperty(confirmation, name, { get() { assert.fail("shadowed confirmation inspected"); } });
+      }
+      const pending = session[method](password, confirmation);
+      assert.deepEqual([...storage], [9, 0, 255, 9], "caller input changed or detached");
+      password.fill(0); confirmation.fill(0);
+      assert.deepEqual(worker.posts.at(-1).inputs.map((view) => [...view]), [[0, 255], [0, 255]]);
+      assert.equal(worker.posts.at(-1).method, method);
+      assert.equal(await session[method](password, password), null, "busy confirmation admitted");
+      worker.answer(null); // Mismatch is a normal failure, not a terminal transport error.
+      assert.equal(await pending, null);
+      const value = method === "createConfirmed" ? setup() : encrypted();
+      const success = session[method](password, password);
+      worker.answer(value);
+      assert.deepEqual(await success, value);
+      const cancelled = session[method](password, password), late = worker.onmessage, id = worker.posts.at(-1).id;
+      if (terminal === "close") session.close();
+      if (terminal === "lock") session.lock();
+      if (terminal === "abort") controller.abort();
+      if (terminal === "peer") channel.onmessage({ data: "lock" });
+      if (terminal === "visibility") h.visibility("hidden");
+      if (terminal === "timeout") h.fire(120_000);
+      assert.equal(await cancelled, null);
+      assert.equal(await session.closed, undefined);
+      assert.equal(worker.terminated, true);
+      late({ data: { version: 1, id, result: value } });
+      assert.equal(await session[method](password, password), null);
+      h.document.visibilityState = "visible";
+    }
+    for (const malformed of [method === "createConfirmed" ? encrypted() : setup(), {},
+      method === "createConfirmed" ? { ...setup(), csr: new Uint8Array(130) } : { backup: new Uint8Array(109) }]) {
+      const session = h.open(), worker = h.workers.at(-1);
+      worker.ready();
+      const pending = session[method](Uint8Array.of(1), Uint8Array.of(1));
+      worker.answer(malformed);
+      assert.equal(await pending, null);
+      assert.equal(worker.terminated, true, "invalid confirmed result admitted");
+    }
+  }
 });
 
 test("member worker timeouts terminate startup, operations, and total lifetime", async (t) => {
@@ -189,6 +724,196 @@ test("member worker timeouts terminate startup, operations, and total lifetime",
     else assert.equal(await session.ready, false);
     assert.equal(await session.request(), null);
   }
+});
+
+test("member worker rejects delayed startup at either clock deadline without waiting for timers", async (t) => {
+  const h = harness(t);
+  for (const clock of ["monotonic", "wall"]) {
+    for (const elapsed of [29_999, 30_000, 30_001]) {
+      for (const boundary of ["ready", "call", "visibility"]) {
+        const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+        h.time[clock] += elapsed;
+        const late = worker.onmessage;
+        if (boundary === "call") assert.equal(await session.request(), null);
+        if (boundary === "visibility") h.visibility("visible");
+        worker.ready();
+        const expired = elapsed >= 30_000;
+        assert.equal(await session.ready, !expired, `${clock}/${elapsed}/${boundary}`);
+        assert.equal(worker.terminated, expired);
+        if (expired) {
+          late({ data: { version: 1, type: "ready" } });
+          assert.equal(await session.request(), null, "late startup reopened owner");
+          assert.deepEqual(channel.posts, [], "expiry notified peers");
+        }
+        session.close();
+      }
+    }
+  }
+});
+
+test("member worker enforces delayed operation deadlines before replies and busy calls", async (t) => {
+  const h = harness(t);
+  for (const clock of ["monotonic", "wall"]) {
+    for (const method of ["create", "createConfirmed", "unlock", "backup", "backupConfirmed", "request",
+      "createWithPassphrase", "unlockWithPassphrase", "backupWithPassphrase"]) {
+      for (const elapsed of [119_999, 120_000, 120_001]) {
+        for (const boundary of ["reply", "busy", "visibility"]) {
+          const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+          worker.ready();
+          // Operation budgets start on admission, not at owner construction.
+          h.time[clock] += 15_000;
+          const inputs = { create: [Uint8Array.of(7)], createConfirmed: [Uint8Array.of(7), Uint8Array.of(7)],
+            unlock: [Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32)], backup: [Uint8Array.of(7)],
+            backupConfirmed: [Uint8Array.of(7), Uint8Array.of(7)], request: [],
+            createWithPassphrase: ["a", "a"], backupWithPassphrase: ["a", "a"],
+            unlockWithPassphrase: ["a", new Uint8Array(108), new Uint8Array(32)] };
+          const pending = session[method](...inputs[method]);
+          const late = worker.onmessage, id = worker.posts.at(-1).id;
+          h.time[clock] += elapsed;
+          if (boundary === "busy") assert.equal(await session.create(Uint8Array.of(7)), null);
+          if (boundary === "visibility") h.visibility("visible");
+          const value = method.startsWith("create") ? setup() : method.startsWith("backup") ? encrypted() : enrollment();
+          worker.answer(value);
+          const expired = elapsed >= 120_000;
+          assert.deepEqual(await pending, expired ? null : value, `${clock}/${method}/${elapsed}/${boundary}`);
+          assert.equal(worker.terminated, expired);
+          assert.equal(worker.posts.length, 1, "busy or expired call posted input");
+          if (expired) {
+            late({ data: { version: 1, id, result: value } });
+            assert.equal(await session.request(), null, "late reply reopened owner");
+            assert.deepEqual(channel.posts, [], "expiry notified peers");
+          }
+          session.close();
+        }
+      }
+    }
+  }
+});
+
+test("member worker lifetime is never renewed by successful work or delayed timers", async (t) => {
+  const h = harness(t);
+  for (const clock of ["monotonic", "wall"]) {
+    for (const boundary of ["create", "unlock", "request", "reply", "visibility"]) {
+      const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+      worker.ready();
+      h.time[clock] += 299_999;
+      const first = session.request();
+      worker.answer(enrollment());
+      assert.deepEqual(await first, enrollment(), "closed before lifetime deadline");
+      const pending = boundary === "reply" ? session.request() : null;
+      h.time[clock]++;
+      const hostile = new Proxy({}, { get() { assert.fail("expired input inspected"); } });
+      if (boundary === "create") assert.equal(await session.create(hostile), null);
+      if (boundary === "unlock") assert.equal(await session.unlock(hostile, hostile, hostile), null);
+      if (boundary === "request") assert.equal(await session.request(), null);
+      if (boundary === "reply") { worker.answer(enrollment()); assert.equal(await pending, null); }
+      if (boundary === "visibility") h.visibility("visible");
+      assert.equal(worker.terminated, true, `${clock}/${boundary}`);
+      assert.equal(worker.posts.length, boundary === "reply" ? 2 : 1);
+      assert.deepEqual(channel.posts, []);
+      const replacement = h.open();
+      h.workers.at(-1).ready();
+      assert.equal(await replacement.ready, true, "expiry retained owner admission");
+      replacement.close();
+    }
+  }
+});
+
+test("member worker fails closed on unavailable or invalid clocks before worker startup", async (t) => {
+  const h = harness(t);
+  const performance = globalThis.performance, wall = Date.now;
+  for (const clock of ["monotonic", "wall"]) {
+    const hostile = { valueOf() { assert.fail("clock value coerced"); } };
+    for (const value of [undefined, null, false, "10000", 1n, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, hostile,
+      ...(clock === "monotonic" ? [-1] : [1.5])]) {
+      const initial = h.time[clock];
+      h.time[clock] = value;
+      assert.equal(await h.open().ready, false, clock);
+      h.time[clock] = initial;
+    }
+  }
+  for (const value of [undefined, null, {}, { now: null }, { now() { throw new Error("synthetic clock failure"); } }]) {
+    globalThis.performance = value;
+    assert.equal(await h.open().ready, false);
+  }
+  globalThis.performance = performance;
+  for (const value of [undefined, null, () => { throw new Error("synthetic clock failure"); }]) {
+    Date.now = value;
+    assert.equal(await h.open().ready, false);
+  }
+  Date.now = wall;
+  assert.equal(h.workers.length, 0);
+  assert.equal(h.channels.length, 0);
+  const valid = h.open();
+  h.workers.at(-1).ready();
+  assert.equal(await valid.ready, true, "clock failure retained admission");
+});
+
+test("member worker clock failures and rollback terminate pending work locally", async (t) => {
+  const h = harness(t);
+  for (const clock of ["monotonic", "wall"]) {
+    for (const failure of ["rollback", "invalid", "throw"]) {
+      for (const boundary of ["ready", "call", "reply", "visibility"]) {
+        const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+        h.time[clock] += 100;
+        // Record a later reading, so rollback above construction time also fails.
+        assert.equal(await session.request(), null);
+        let pending;
+        if (boundary !== "ready") {
+          worker.ready();
+          pending = session.create(Uint8Array.of(7));
+        }
+        const initial = h.time[clock];
+        if (failure === "rollback") h.time[clock]--;
+        if (failure === "invalid") h.time[clock] = NaN;
+        if (failure === "throw") Object.defineProperty(h.time, clock, {
+          configurable: true, get() { throw new Error("synthetic clock failure"); },
+        });
+        if (boundary === "ready") worker.ready();
+        if (boundary === "call") assert.equal(await session.request(), null);
+        if (boundary === "reply") worker.answer(setup());
+        if (boundary === "visibility") h.visibility("visible");
+        assert.equal(worker.terminated, true, `${clock}/${failure}/${boundary}`);
+        assert.equal(await session.ready, boundary !== "ready");
+        if (pending) assert.equal(await pending, null);
+        assert.deepEqual(channel.posts, [], "clock failure notified peers");
+        Object.defineProperty(h.time, clock, { configurable: true, writable: true, value: initial });
+        assert.equal(await session.request(), null, "clock recovery reopened owner");
+      }
+    }
+  }
+});
+
+test("member worker rechecks clocks after lifecycle registration and cleans up failed startup", async (t) => {
+  const h = harness(t);
+  const add = h.document.addEventListener;
+  for (const clock of ["monotonic", "wall"]) {
+    for (const change of [30_000, -1, NaN]) {
+      const initial = h.time[clock];
+      h.document.addEventListener = (type, listener) => {
+        add(type, listener);
+        h.time[clock] += change;
+      };
+      assert.equal(await h.open().ready, false, `${clock}/${change}`);
+      assert.equal(h.workers.length, 0, "started after clock admission failed");
+      assert.equal(h.visibilityListeners.size, 0);
+      assert.ok(h.channels.every((channel) => channel.closed));
+      h.time[clock] = initial;
+    }
+  }
+});
+
+test("member worker captures owner clocks without resetting deadlines on global replacement", async (t) => {
+  const h = harness(t);
+  const session = h.open(), worker = h.workers.at(-1);
+  worker.ready();
+  const pending = session.request();
+  globalThis.performance = { now() { assert.fail("replacement monotonic clock used"); } };
+  Date.now = () => { assert.fail("replacement wall clock used"); };
+  h.time.wall += 120_000; // Monotonic time does not advance, as on some sleeping systems.
+  worker.answer(enrollment());
+  assert.equal(await pending, null);
+  assert.equal(worker.terminated, true);
 });
 
 test("member worker lock notifies other owners without secrets, echo, or replacement", async (t) => {
@@ -243,6 +968,135 @@ test("member worker local disposal and pagehide close resources without broadcas
     session.lock();
     assert.deepEqual(channel.posts, [], "local disposal broadcast or closed session reused");
   }
+});
+
+test("member worker visibility loss terminates startup, idle, unlocked, and pending sessions locally", async (t) => {
+  const h = harness(t);
+  for (const state of ["startup", "idle", "unlocked", "pending-create", "pending-unlock", "pending-request"]) {
+    const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+    const visibility = [...h.visibilityListeners][0];
+    const late = worker.onmessage;
+    let pending;
+    if (state !== "startup") {
+      worker.ready();
+      assert.equal(await session.ready, true);
+    }
+    if (state === "unlocked") {
+      pending = session.create(Uint8Array.of(7));
+      worker.answer(setup());
+      assert.ok(await pending);
+      pending = null;
+    }
+    if (state === "pending-create") pending = session.create(Uint8Array.of(7));
+    if (state === "pending-unlock") pending = session.unlock(Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32));
+    if (state === "pending-request") pending = session.request();
+    h.visibility("visible");
+    assert.equal(worker.terminated, false, "visible notification closed session");
+    h.visibility("hidden");
+    assert.equal(worker.terminated, true, state);
+    assert.equal(await session.ready, state !== "startup");
+    if (pending) assert.equal(await pending, null);
+    assert.equal(h.visibilityListeners.size, 0);
+    assert.equal(channel.closed, true);
+    assert.deepEqual(channel.posts, [], "backgrounding notified peers");
+    h.visibility("visible");
+    visibility(); // A queued old event cannot resurrect the instance.
+    late({ data: { version: 1, type: "ready" } });
+    assert.equal(await session.request(), null, "visibility restored old instance");
+    const replacement = h.open();
+    h.workers.at(-1).ready();
+    visibility();
+    assert.equal(await replacement.ready, true, "stale event closed replacement");
+    replacement.close();
+  }
+});
+
+test("member worker rejects hidden or unavailable visibility before starting a worker", async (t) => {
+  const h = harness(t);
+  for (const state of ["hidden", "prerender", "", undefined, null, true, { toString() { assert.fail("state coerced"); } }]) {
+    h.document.visibilityState = state;
+    const session = h.open();
+    assert.equal(await session.ready, false);
+    assert.equal(await session.create(Uint8Array.of(7)), null);
+  }
+  h.document.visibilityState = "visible";
+  const documents = [undefined, null, {}, { visibilityState: "visible" },
+    { ...h.document, addEventListener: undefined }, { ...h.document, removeEventListener: undefined }];
+  const throwing = { ...h.document, get visibilityState() { throw new Error("synthetic visibility failure"); } };
+  documents.push(throwing);
+  for (const document of documents) {
+    globalThis.document = document;
+    assert.equal(await h.open().ready, false);
+  }
+  assert.equal(h.workers.length, 0);
+  assert.equal(h.channels.length, 0, "allocated lock channel for invisible page");
+  globalThis.document = h.document;
+  const visible = h.open();
+  h.workers.at(-1).ready();
+  assert.equal(await visible.ready, true, "failed startup retained admission");
+});
+
+test("member worker visibility registration failures clean up without starting a worker", async (t) => {
+  const h = harness(t);
+  const add = h.document.addEventListener;
+  for (const failure of ["throw", "hidden"]) {
+    h.document.visibilityState = "visible";
+    h.document.addEventListener = (type, listener) => {
+      add(type, listener);
+      if (failure === "throw") throw new Error("synthetic visibility registration failure");
+      h.document.visibilityState = "hidden";
+    };
+    assert.equal(await h.open().ready, false);
+    assert.equal(h.workers.length, 0, "started after visibility registration failed");
+    assert.equal(h.visibilityListeners.size, 0);
+    assert.ok(h.channels.every((channel) => channel.closed));
+  }
+});
+
+test("member worker rechecks visibility before input admission and response publication", async (t) => {
+  const h = harness(t);
+  for (const boundary of ["create", "unlock", "request", "startup-call", "busy", "ready", "result", "read-failure"]) {
+    h.document.visibilityState = "visible";
+    const session = h.open(), worker = h.workers.at(-1);
+    let pending;
+    if (boundary !== "ready" && boundary !== "startup-call") worker.ready();
+    if (boundary === "result" || boundary === "busy") pending = session.create(Uint8Array.of(7));
+    h.document.visibilityState = "hidden"; // No notification delivered yet.
+    const hostile = new Proxy({}, { get() { assert.fail("hidden-page input inspected"); } });
+    if (boundary === "read-failure") Object.defineProperty(h.document, "visibilityState", {
+      configurable: true, get() { throw new Error("synthetic visibility failure"); },
+    });
+    if (boundary === "create") assert.equal(await session.create(hostile), null);
+    if (boundary === "unlock") assert.equal(await session.unlock(hostile, hostile, hostile), null);
+    if (["request", "read-failure", "startup-call", "busy"].includes(boundary)) assert.equal(await session.request(), null);
+    if (boundary === "ready") { worker.ready(); assert.equal(await session.ready, false); }
+    if (boundary === "result") { worker.answer(setup()); assert.equal(await pending, null); }
+    if (boundary === "busy") assert.equal(await pending, null);
+    assert.equal(worker.terminated, true, boundary);
+    assert.equal(worker.posts.length, boundary === "result" || boundary === "busy" ? 1 : 0);
+    Object.defineProperty(h.document, "visibilityState", { configurable: true, writable: true, value: "visible" });
+    assert.equal(await session.request(), null);
+  }
+});
+
+test("member worker pins its owner document and background locking does not notify peers", async (t) => {
+  const h = harness(t);
+  const local = h.open(), localWorker = h.workers.at(-1);
+  const { MemberWorkerSession: Peer } = await import("../internal/memberworker/member-client.mjs?visibility-peer");
+  // A separate visible document models a peer page in another realm.
+  const peerDocument = new EventTarget();
+  peerDocument.visibilityState = "visible";
+  globalThis.document = peerDocument;
+  const peer = h.open(Peer), peerWorker = h.workers.at(-1);
+  localWorker.ready(); peerWorker.ready();
+  h.visibility("hidden");
+  h.deliver();
+  assert.equal(localWorker.terminated, true, "read replacement global document instead of owner");
+  assert.equal(peerWorker.terminated, false, "backgrounding locked visible peer");
+  assert.equal(h.visibilityListeners.size, 0, "removed listener from wrong document");
+  const pending = peer.request();
+  peerWorker.answer(enrollment());
+  assert.ok(await pending);
 });
 
 test("member worker local close isolates peers and queued locks cannot target later owners", async (t) => {
@@ -403,13 +1257,26 @@ test("member worker bounded protocol parser regression corpus", () => {
   for (let size = 0; size <= 1025; size++) {
     const bytes = new Uint8Array(size);
     assert.equal(inputViews("create", [bytes]) !== null, size >= 1 && size <= 1024);
+    assert.equal(inputViews("backup", [bytes]) !== null, size >= 1 && size <= 1024);
+    for (const method of ["createConfirmed", "backupConfirmed"]) {
+      assert.equal(inputViews(method, [bytes, password]) !== null, size >= 1 && size <= 1024);
+      assert.equal(inputViews(method, [password, bytes]) !== null, size >= 1 && size <= 1024);
+    }
     assert.equal(command({ ...valid, inputs: [password, bytes, key] }), size === 108);
     assert.equal(command({ ...valid, inputs: [password, backup, bytes] }), size === 32);
     assert.equal(byteView(bytes, 32) !== null, size === 32);
   }
   assert.equal(result(null, "create"), true);
   assert.equal(result(setup(), "create"), true);
+  assert.equal(result(setup(), "createConfirmed"), true);
+  assert.equal(result(encrypted(), "backupConfirmed"), true);
+  assert.equal(result(enrollment(), "createConfirmed"), false);
+  assert.equal(result(setup(), "backupConfirmed"), false);
   assert.equal(result(enrollment(), "unlock"), true);
+  assert.equal(result(encrypted(), "backup"), true);
+  assert.equal(result(null, "backup"), true);
+  assert.equal(result(setup(), "backup"), false);
+  assert.equal(result(encrypted(), "request"), false);
   assert.equal(result(setup(), "request"), false);
   for (const value of [undefined, false, [], {}, { ...enrollment(), csr: new Uint8Array(130) },
     { ...enrollment(), publicKey: new Uint8Array(new SharedArrayBuffer(32)) }]) assert.equal(result(value, "request"), false);
@@ -420,7 +1287,7 @@ test("member worker bounded command fuzzing", () => {
   // has at most four views of at most 1025 elements; no KDF or I/O occurs.
   const choose = (values) => values[randomInt(values.length)];
   for (let iteration = 0; iteration < 2048; iteration++) {
-    const method = choose(["create", "unlock", "request", "close", "__proto__", "", null]);
+    const method = choose(["create", "createConfirmed", "unlock", "backup", "backupConfirmed", "request", "close", "__proto__", "", null]);
     const version = randomInt(3), id = choose([-1, 0, 1, 2, 1.5, Number.MAX_SAFE_INTEGER + 1]);
     const metadata = Array.from({ length: randomInt(5) }, () => ({
       size: choose([0, 1, 31, 32, 33, 107, 108, 109, 1024, 1025]), type: randomInt(3),
@@ -432,7 +1299,9 @@ test("member worker bounded command fuzzing", () => {
     let expected = false;
     if (!extra && version === 1 && (id === 1 || id === 2)) {
       if (method === "request") expected = metadata.length === 0;
-      if (method === "create") expected = metadata.length === 1 && metadata[0].type === 0 && metadata[0].size >= 1 && metadata[0].size <= 1024;
+      if (method === "create" || method === "backup") expected = metadata.length === 1 && metadata[0].type === 0 && metadata[0].size >= 1 && metadata[0].size <= 1024;
+      if (method === "createConfirmed" || method === "backupConfirmed") expected = metadata.length === 2 &&
+        metadata.every(({ type, size }) => type === 0 && size >= 1 && size <= 1024);
       if (method === "unlock") expected = metadata.length === 3 && metadata.every(({ type }) => type === 0) &&
         metadata[0].size >= 1 && metadata[0].size <= 1024 && metadata[1].size === 108 && metadata[2].size === 32;
     }

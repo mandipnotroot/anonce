@@ -96,3 +96,8 @@ func validSizes(password, backup, expected int, unlock bool) bool {
 	}
 	return backup == 0 && expected == 0
 }
+
+func validConfirmationSizes(password, confirmation int) bool {
+	return password >= 1 && password <= keystore.MaxPasswordSize &&
+		confirmation >= 1 && confirmation <= keystore.MaxPasswordSize
+}

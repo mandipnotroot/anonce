@@ -25,6 +25,7 @@ advisories before further imports.
 | pip-tools 7.6.2 | BSD-3-Clause | External documentation lock compiler |
 | [Go 1.27.3](https://go.dev/dl/?mode=json) | BSD-3-Clause | Pinned standard-library runtime and external compiler; WASM build copies the matching loader and original notices unchanged |
 | [Node.js 22.23.3](https://nodejs.org/dist/v22.23.3/) | MIT with bundled third-party notices | External development-only WASM test runtime; no npm dependencies or Node product build |
+| Chromium 159.0.8129.0, Linux x86_64 snapshot 1728820 | BSD-3-Clause with bundled third-party notices | External opt-in browser-test runtime, URL/digest in `scripts/browser.toml`; no proprietary browser or npm dependency required |
 | [x/crypto 0.58.0](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/argon2) | BSD-3-Clause | Admitted Argon2id/BLAKE2b and ChaCha20-Poly1305 composition for device-backup profile 2; exact hashes in `go.sum` |
 | [x/sys 0.49.0](https://pkg.go.dev/golang.org/x/sys@v0.49.0/cpu) | BSD-3-Clause | Indirect CPU-feature detection for x/crypto; exact hashes in `go.sum` |
 | [gofumpt 0.12.0](https://github.com/mvdan/gofumpt) | BSD-3-Clause | External Go formatter |
@@ -94,6 +95,60 @@ facilities are used by the test runners. The public verifier runner handles no
 passwords. The member runner handles only synthetic unlock bytes, encrypted backups,
 and public enrollment material for interoperability checks, never private-key
 fixtures or real credentials.
+
+### Browser-test runtime
+
+The opt-in [member-worker browser checks](testing.md#member-worker-browser-checks)
+use the open-source Chromium snapshot, not branded Chrome. The
+[official snapshot distribution](https://www.chromium.org/getting-involved/download-chromium/#chromium)
+and [Chromium license](https://chromium.googlesource.com/chromium/src/+/main/LICENSE)
+were consulted 2026-10-28. The external browser retains its BSD-3-Clause license
+and bundled third-party notices. No binary, browser library, or upstream source
+is copied into this repository or distributed with the product.
+
+The exact archive digest and version are pinned in `scripts/browser.toml`; the
+driver checks the executable's version and requires an explicitly supplied path.
+Users must verify the archive digest before extraction/execution. This does not
+authenticate a hostile replacement executable or its shared libraries. The
+snapshot has no automatic security updates and is admitted only for local synthetic
+tests, not ordinary browsing or a product support promise. Review upstream security
+status, source/notices, version/digest, and browser tests when updating it. A broader
+reviewed browser suite may replace this focused runtime. No automatic installer,
+third-party driver, or browser package manager is added.
+
+### Container runtime and images
+
+The opt-in stack uses open-source Docker Engine and Compose, not a required Docker
+Desktop subscription. Both upstream projects use Apache-2.0. Local observations on
+2026-10-28 are Engine 29.9.2 and Compose 5.6.1. Engine 28 or newer is required for
+the documented loopback publication boundary. Other engines/platforms need separate
+validation before support is claimed.
+
+| Image | Admitted purpose and index SHA-256 |
+| --- | --- |
+| `golang:1.27.3-bookworm` | Build-only official image; `df4bb0305771186a85d0fd3a40f5c5da9af97ac8053d391ffce2c070817a20c6` |
+| `postgres:18.6-bookworm` | Independent development databases; `5c4783a8cc3f0074912164f94dfa1be4e043438f0f707cf968d7af9a0d31a2c8` |
+
+Digests were retrieved from the official registry on 2026-10-28. Reviewed upstream
+build definitions are [Go](https://github.com/docker-library/golang/tree/41d9b4da70324ae7b6461ac2cc401b06719ff57d/1.27/bookworm)
+and [PostgreSQL](https://github.com/docker-library/postgres/tree/e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc/18/bookworm).
+Go's BSD-3-Clause license/patent notice and the project AGPL license are copied
+unchanged into the scratch application image. Only standard-library HTTP commands
+are linked there; new module imports require reviewing their notices too. Builder
+operating-system packages do not enter that final image.
+
+PostgreSQL uses the [PostgreSQL License](https://www.postgresql.org/about/licence/).
+Its official Debian image retains original package notices and bundled licenses;
+it is not relicensed as project code. No upstream source is copied into this
+repository. Image admission is not a complete transitive license or vulnerability
+audit. `make vuln` does not scan operating-system packages; container scanning and
+SBOM generation remain unavailable. Keep this stack synthetic-only.
+
+Updating a pin requires reviewing upstream packages, licenses, security status,
+non-root IDs, volume layout, and real-container checks. Update `Dockerfile`, Compose,
+the policy check, and this reference together. Never fall back to floating tags.
+Secret preparation uses Python's standard OS-backed `secrets` module, with no new
+application module or Python package.
 
 ### Documentation theme
 

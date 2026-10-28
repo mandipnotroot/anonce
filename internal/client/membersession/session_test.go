@@ -353,7 +353,7 @@ func (c *cancelOnCheck) Err() error {
 func TestMemberSessionPendingLock(t *testing.T) {
 	s, setup, password := testSetup(t)
 	s.Lock()
-	for _, action := range []string{"create", "unlock"} {
+	for _, action := range []string{"create", "createConfirmed", "unlock"} {
 		t.Run(action, func(t *testing.T) {
 			// Hold the shared derivation slot before Argon2id. No session call
 			// can finish cryptographic work until this barrier is released.
@@ -377,8 +377,14 @@ func TestMemberSessionPendingLock(t *testing.T) {
 			started := &notifyContext{Context: t.Context(), entered: make(chan struct{})}
 			done := make(chan error, 1)
 			go func() {
-				if action == "create" {
-					result, err := s.Create(started, password)
+				if action == "create" || action == "createConfirmed" {
+					var result *Setup
+					var err error
+					if action == "createConfirmed" {
+						result, err = s.CreateConfirmed(started, password, password)
+					} else {
+						result, err = s.Create(started, password)
+					}
 					if result != nil {
 						t.Error("locked pending setup returned public output")
 					}
@@ -477,6 +483,15 @@ func FuzzMemberSessionUnlockInputs(f *testing.F) {
 	f.Fuzz(func(t *testing.T, password, backup, expected []byte) {
 		if len(password) > keystore.MaxPasswordSize+1 || len(backup) > keystore.MaxBackupSize+1 || len(expected) > ed25519.PublicKeySize+1 {
 			return
+		}
+		locked := new(Session)
+		output, err := locked.Backup(t.Context(), password)
+		want := ErrState
+		if len(password) == 0 || len(password) > keystore.MaxPasswordSize {
+			want = keystore.ErrInvalidInput
+		}
+		if output != nil || !errors.Is(err, want) || locked.pending != nil {
+			t.Fatal("locked backup admission returned output or retained work")
 		}
 		// Exercise admission bounds without derivation. Backup grammar and typed
 		// payload parsing retain their shared, separately fuzzed implementations.

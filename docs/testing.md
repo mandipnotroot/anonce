@@ -15,13 +15,18 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make build` | All Go commands with Go 1.27.3 |
 | `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no native-package exclusions, including wrappers and signal handling. JS-only code is checked separately below |
 | `make lint` | Native and WASM entry-point vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzMemberWASMSizes`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make fuzz` | `FuzzConfig`, `FuzzContainerListen`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzMemberWASMSizes`, `FuzzMemberBrowserManifest`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 | `make wasm` | Go `js/wasm` public-request verifier; matching reviewed loader/notices, SHA-256 manifest, 8 MiB uncompressed size gate |
 | `make wasm-test` | Rebuild artifacts, compare native and Node WASM public-request results, exercise the actual bridge, and run adapter unit tests under the Go JS/WASM runner |
 | `make member-wasm` | Separate local member-session module, dedicated-worker/client assets, matching reviewed loader/module notices, manifest, and 8 MiB gate |
 | `make member-wasm-test` | Native race/lifecycle tests, actual Node direct bridge and dedicated-worker setup/restoration, rejection, termination, bidirectional encrypted-backup compatibility, owner lifecycle unit tests, and bounded command fuzzing |
+| `make member-browser-test` | Opt-in pinned headless Chromium, isolated Go test host, native/worker backup compatibility, page CSP probes, event-loop progress, synthetic-clock expiry/restoration, same-origin peer lock, background-tab lock/foreground restoration, and navigation termination; requires `MEMBER_BROWSER`, not included in `make check` or CI |
+| `make container-secrets` | Generate/validate separate database secret files without replacing existing files; no Docker daemon required |
+| `make container-config` | Validate the real Compose parser's normalized configuration, image pin, loopback publication, networks, secret scopes, volumes, resource bounds, and hardening; requires Docker Compose but not a daemon |
+| `make up`, `make smoke`, `make down` | Start/build/wait and check the demo stack, inspect the running stack, or stop without deleting database volumes; requires local Docker access |
+| `make container-test` | Opt-in fresh Compose project with actual app containers and PostgreSQL: liveness/unavailable readiness, live isolation/hardening, authenticated runtime access, denied escalation/DDL/default function access, explicit table grants, and cross-instance TCP rejection; disposable synthetic volumes only |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -33,12 +38,15 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Parser | Input/work bounds |
 | --- | --- |
 | Configuration | 8192 bytes before parsing; separate listen/source-URL limits |
+| Container bind opt-in | `FuzzContainerListen`: 129-byte listen input cap and one Boolean; only native loopback or explicitly opted-in IPv4 unspecified binding |
 | Backup structure | Maximum backup size plus one byte; allocation-free parser, no Argon2id |
 | Member/reviewer payload | 49-byte input cap, 48-byte ASN.1 profile; no KDF work |
 | Member CSR | 130-byte fuzz input cap, 129-byte DER profile; bounded ASN.1 and signature verification, no KDF work |
-| Member session unlock admission | 1025-byte password, 65597-byte backup, and 33-byte expected-key fuzz caps; exercise invalid password/key lengths only, no KDF work; backup/payload parsing reuse the shared fuzzed implementations |
+| Member session admission | 1025-byte password, 65597-byte backup, and 33-byte expected-key fuzz caps; exercise invalid unlock password/key lengths and locked backup export, no KDF work; backup/payload parsing reuse the shared fuzzed implementations |
 | Member WASM admission sizes | Fixed-width integer fuzz inputs for password/backup/key lengths and operation kind; exact member bounds, no allocations or KDF work; byte parsing reuses shared backup/payload validation |
+| Browser-test asset manifest | `FuzzMemberBrowserManifest`: 4097-byte cap, exact fixed filename set, bounded synthetic assets, no KDF or network work |
 | Member worker transport | `member_worker_test.mjs`: exhaustive byte-size boundary sweep and 2048 generated commands per run, each with at most four views of 1025 elements; independent metadata admission oracle, no KDF or I/O |
+| Worker text passphrases | `member_worker_test.mjs`: 2048 generated Unicode strings per run, capped at 1025 UTF-16 units, checked against independent UTF-8 round-trip/byte-size admission; no KDF or I/O |
 | WASM request adapter | 259-byte request fuzz input cap, exact 258-byte ASCII hex representation before bounded shared CSR parsing; expected-key fuzzing also caps the key input at 65 bytes for an exact 64-byte ASCII hex representation; no KDF work |
 | CLI arguments | 8193-byte fuzz input cap; no file, network, or KDF work |
 | CLI expected-key record | 75-byte data and 9-byte kind fuzz caps; exact 72/74-byte lowercase kind-tagged lines, no file, network, or KDF work |
@@ -47,16 +55,18 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 Review and license synthetic regression inputs before committing. Retain failures
 in the relevant package's `testdata/fuzz/<target>` directory:
 
-- `internal/service`: `FuzzConfig`.
+- `internal/service`: `FuzzConfig` and `FuzzContainerListen`.
 - `internal/web`: `FuzzLookup`.
 - `internal/client/keystore`: `FuzzBackup`.
 - `internal/client/memberkey`: `FuzzMemberKeyPayload`.
 - `internal/client/membercsr`: `FuzzMemberCSR`, public requests or malformed data only.
-- `internal/client/membersession`: `FuzzMemberSessionUnlockInputs`, synthetic
+- `internal/client/membersession`: `FuzzMemberSessionUnlockInputs` and
+  `FuzzMemberSessionConfirmation`, synthetic
   admission inputs only; no real passwords or private-key fixtures.
 - `internal/clientwasm`: `FuzzWASMRequest` and `FuzzWASMExpectedKey`, public hex
   requests/expected keys or malformed data only.
-- `internal/memberwasm`: `FuzzMemberWASMSizes`, integer admission bounds only.
+- `internal/memberwasm`: `FuzzMemberWASMSizes`, integer admission bounds only;
+  `FuzzMemberBrowserManifest`, synthetic manifests only.
 - `internal/client/reviewerkey`: `FuzzReviewerKeyPayload`.
 - `internal/clientcli`: `FuzzClientArguments`, `FuzzClientPublicKeyLine`,
   `FuzzClientPassword`, and `FuzzClientRewrapPasswords`.
@@ -84,7 +94,9 @@ profile-2 nonce prefix and library composition.
 
 | Area | Tests |
 | --- | --- |
-| Configuration | `TestConfig`, `TestConfigSourceURL`, `TestRunFailures` |
+| Configuration | `TestConfig`, `TestConfigSourceURL`, `TestRunFailures`, `TestContainerNetwork`, `TestContainerNetworkFlag`, `FuzzContainerListen` |
+| Fixed-target local liveness probe, exact bounded body/status, no redirect/credentials, response-header limit, cancellation, and unavailable targets | `TestProbe`, `TestProbeCancellationAndFailures` |
+| No-replace/distinct secret generation, existing-file preservation, directory/file permissions, malformed/missing/duplicate files, symlinks/FIFOs, engine version boundary, and unsafe normalized Compose model rejection | `scripts/test_containers.py`, included in `make policy-test` |
 | Routing and input isolation | `TestInfrastructureRoutes`, `TestInfrastructureMethods`, `TestUnavailableRoutesRespectServiceBoundary`, `TestInfrastructureDoesNotReadOrReflectRequestData`, `TestServeRejectsBodyBeforeContinue` |
 | Lifecycle and limits | `TestServeLifecycle`, `TestServePropagatesCancellationToRequests`, `TestServeClosesUnresponsiveRequests`, `TestServeListenerFailureClosesRequests`, `TestConnectionLimitAndClose`, `TestServerBounds` |
 | Shell paths, development gate, SRI, headers, methods, HEAD, no body reads/reflection | `TestSite`, `TestStylesheetIntegrity`, `TestSiteRejectsBrokenAssets`, `TestWebServiceBoundary`, `TestWebDelivery`, `TestDevelopmentStyleGuideFlag` |
@@ -110,6 +122,8 @@ profile-2 nonce prefix and library composition.
 | Optional rewrap expected-key matching for both kinds, either-case hex, malformed/repeated flags rejected before stdin/file access, mismatch rejection before replacement encryption or file creation, unchanged source, preserved keys, no overwrite, cancellation and concurrent matching | `TestClientExpectedPublicKeyArguments`, `TestClientRewrapExpectedKey`, `TestClientRewrapRejectsInvalidBackup`, `TestClientRewrapCancellation`, `TestClientRewrapConcurrent`, `FuzzClientArguments` |
 | Member CSR library verification, deterministic fixed profile, buffer ownership, invalid/inconsistent keys, extra claims, algorithms, byte mutations, cancellation, concurrent calls | `TestMemberCSRRoundTrip`, `TestMemberCSRRejectsInvalidKeys`, `TestMemberCSRRejectsInvalidRequests`, `TestMemberCSRCancellation`, `TestMemberCSRConcurrent`, `FuzzMemberCSR` |
 | In-memory automatic member setup/restoration, profile compatibility, public-output ownership, fresh generation, opaque bounded passwords, invalid inputs/backups, every-byte expected-key mismatches, unchanged inputs, state admission, owned-key clearing, cancellation at installation boundaries, pending lock with a blocked derivation slot, and concurrent setup/request/lock | `TestMemberSessionRoundTrip`, `TestMemberSessionFreshSetup`, `TestMemberSessionPasswordOwnership`, `TestMemberSessionRejectsInvalidInputs`, `TestMemberSessionUnlockRejectsBackup`, `TestMemberSessionExpectedKey`, `TestMemberSessionState`, `TestMemberSessionCancellation`, `TestMemberSessionPendingLock`, `TestMemberSessionConcurrent`, `FuzzMemberSessionUnlockInputs` |
+| Unlocked encrypted-backup export, exact private-key preservation, fresh salt/nonce, unchanged password/profile, old-backup validity, locked/busy/invalid admission, temporary-key ownership, pending cancel/lock without output, publication-boundary ciphertext clearing, retained key after operation cancellation, and concurrent export/lock | `TestMemberSessionBackup`, `TestMemberSessionBackupState`, `TestMemberSessionBackupCancellation`, `TestMemberSessionBackupPublication`, `TestMemberSessionBackupConcurrent`, `FuzzMemberSessionUnlockInputs` |
+| Confirmed setup/export, minimum/maximum opaque matching bytes, mismatched lengths/contents, bounds, no output or state change on mismatch, unchanged inputs, preserved key/profile, busy/locked rejection, cancellation before/after confirmation, and pending lock | `TestMemberSessionConfirmation`, `TestMemberSessionRejectsConfirmation`, `TestMemberSessionConfirmationStateAndCancellation`, `TestMemberSessionPendingLock`, `TestMemberSessionBackupCancellation`, `FuzzMemberSessionConfirmation` |
 | CLI member CSR exact public DER, unchanged backup, wrong password/purpose, authenticated non-key or tampered input, secret-free errors, cancellation, help, short/failed writes | `TestClientCSRRoundTrip`, `TestClientCSRRejectsInvalidBackup`, `TestClientCSRFailsClosed`, `TestClientArguments`, `FuzzClientArguments` |
 | CSR file export matching stdout, direct password-free verification, owner-only no-replace publication, unchanged backup/destination, unsafe paths, cancellation before/after publication, concurrent export and cleanup | `TestClientCSRRoundTrip`, `TestClientCSRFileRejectsUnsafePaths`, `TestClientCSRFileCancellation`, `TestClientCSRFileConcurrentPublication`, `TestClientCSRRejectsInvalidBackup`, `TestClientArguments`, `FuzzClientArguments` |
 | Optional CSR expected-key matching for stdout/file output, either-case hex, malformed/repeated flags rejected before stdin/file access, mismatches without output/files, unchanged source/profile, no overwrite, typed validation, short/failed writes, cancellation and concurrent publication | `TestClientExpectedPublicKeyArguments`, `TestClientCSRExpectedKey`, `TestClientCSRRejectsInvalidBackup`, `TestClientCSRFileCancellation`, `TestClientCSRFileConcurrentPublication`, `FuzzClientArguments` |
@@ -120,12 +134,21 @@ profile-2 nonce prefix and library composition.
 | WASM adapter valid/malformed hex, shared profile rejection, every-byte request mutations, concurrent native calls, bounded fuzzing | `TestWASMVerifyCSR`, `TestWASMVerifyCSRRejectsInvalidInput`, `FuzzWASMRequest` |
 | WASM expected-key matching in either hex case, malformed/empty/oversized keys, every-byte key mismatches, unchanged profile/signature rejection, concurrent calls and bounded two-input fuzzing | `TestWASMVerifyCSRForKey`, `TestWASMVerifyCSRForKeyRejectsInvalidInput`, `FuzzWASMExpectedKey` |
 | Actual WASM bridge, type/arity/size rejection without object coercion, native/public result parity, shutdown and namespace collisions | `TestClientNativeWASMCompatibility` with `scripts/wasm_test.mjs`, through `make wasm-test` |
-| Member bridge admission, cancellation before shared-session entry, cleanup-before-shutdown, repeated lock/close, concurrent lock/admission, and size fuzzing | `TestMemberWASMSizes`, `TestMemberWASMLifecycle`, `TestMemberWASMConcurrent`, `FuzzMemberWASMSizes` |
+| Member bridge admission, confirmation bounds, cancellation before shared-session entry, cleanup-before-shutdown, repeated lock/close, concurrent lock/admission, and size fuzzing | `TestMemberWASMSizes`, `TestMemberWASMConfirmationSizes`, `TestMemberWASMLifecycle`, `TestMemberWASMConcurrent`, `FuzzMemberWASMSizes` |
 | Actual member WASM bridge, opaque passwords, native backup restore, WASM backup opened natively, public CSR validation, wrong password/purpose, corruption/key mismatch, byte types/arity/bounds, hostile objects/shadowed getters, shared/detached arrays, input snapshots, public-output ownership, lock/close and namespace collision | `TestMemberNativeWASMCompatibility` with `scripts/member_wasm_test.mjs`, through `make member-wasm-test` |
 | Worker owner single-instance/operation admission, snapshots/transfers, input types/arity/bounds, hostile properties, timeout/termination, late replies, protocol/transport failures, and bounded command fuzzing | Named `node:test` cases in `scripts/member_worker_test.mjs`, through `make member-wasm-test` |
+| Ciphertext-only backup export, changed-password restoration, native exact-key/randomness compatibility, input snapshots, locked/invalid rejection, pending disposal/lock, unchanged deadlines, malformed reply rejection, and bounded command fuzzing | `TestMemberNativeWASMCompatibility`, `TestMemberNativeWorkerCompatibility`, named backup/protocol/deadline cases in `scripts/member_worker_test.mjs`, and synthetic export cases in `TestMemberNativeBrowserCompatibility` |
+| Actual confirmed bridge/worker setup/export, native key/backup compatibility, mismatch without state change or fallback, dual input snapshots, hostile confirmation getters, invalid types/arity/bounds, terminal cancellation, unchanged deadlines, and bounded transport fuzzing | `TestMemberNativeWASMCompatibility`, `TestMemberNativeWorkerCompatibility`, named confirmed-operation/input/deadline/protocol cases in `scripts/member_worker_test.mjs`, and synthetic confirmation cases in `TestMemberNativeBrowserCompatibility` |
+| Worker text UTF-8 preservation, Unicode/byte boundaries, malformed surrogate rejection, no coercion or normalization, shared confirmation, synchronous buffer clearing including partial/failed encoding, missing APIs without fallback, busy/closed rejection, unchanged deadlines, and bounded Unicode generation | Named text passphrase/buffer/API cases in `scripts/member_worker_test.mjs`; actual setup, byte/text restoration, native exact-key export, mismatch state, and cancellation in `TestMemberNativeWorkerCompatibility` and synthetic text cases in `TestMemberNativeBrowserCompatibility` |
+| Stable secret-free closure Promise, every terminal path during startup/idle/pending work, failed/denied construction, cleanup before observers, late subscribers, unchanged readiness, no nonterminal settlement, and explicit replacement | Named `node:test` closed Promise cases in `scripts/member_worker_test.mjs`; actual Node worker lock/disposal/failure/expiry observations in `TestMemberNativeWorkerCompatibility` |
+| Optional owner abort signal, pre-aborted/invalid admission without resources, startup/idle/pending cancellation, unchanged settled results, ignored reasons/shadowed properties, suppressed-event state checks, listener cleanup, no peer notification, and explicit replacement | Named `node:test` abort cases in `scripts/member_worker_test.mjs`; actual startup/idle/pending cancellation in `TestMemberNativeWorkerCompatibility` and `TestMemberNativeBrowserCompatibility` |
+| Delayed startup/operation/lifetime deadline checks on each clock, exact boundaries, pre-admission/busy/reply/visibility rejection, unchanged lifetime after successful work, invalid/missing/failed/backward readings, captured clocks, local cleanup and explicit replacement | Named `node:test` deadline, lifetime, and clock cases in `scripts/member_worker_test.mjs`; valid actual-worker replies discarded after synthetic clock advances in `TestMemberNativeWorkerCompatibility` |
 | Secret-free peer/global lock, startup/pending cancellation, no echo/restart, required coordination APIs, notification failures, local disposal, and cached-pagehide cleanup | Named `node:test` lock, channel failure, global lock, and pagehide cases in `scripts/member_worker_test.mjs`; controlled channels and lifecycle events, not actual browser tabs |
+| Local visibility-loss lock in startup/idle/unlocked/pending states, hidden/missing/failed visibility admission, registration cleanup, pinned owner document, pre-admission/reply checks, no peer notification, no restart, and explicit replacement | Named `node:test` visibility cases in `scripts/member_worker_test.mjs`; actual Node worker termination under synthetic visibility events in `TestMemberNativeWorkerCompatibility` |
 | Actual dedicated worker and owner, native restore, generated backup opened natively, wrong password/corruption/mismatch without replacement, public-output ownership, pending disposal, replay/malformed commands, failed/malformed/oversized runtime loads | `TestMemberNativeWorkerCompatibility` with `scripts/member_worker_integration.mjs` and test-only Node API adapter `scripts/member_worker_node.mjs` |
 | Reviewed loader/notice digest rejection, invalid artifact headers and size bounds | `scripts/test_build_wasm.py` |
+| Test-only browser asset bounds, complete manifest/digests, duplicate/traversal rejection, exact routes, hosts/origins, methods/HEAD, headers, and unread bodies | `TestMemberBrowserAssets`, `TestMemberBrowserDelivery`, `FuzzMemberBrowserManifest` |
+| Actual browser member worker, native backup restore and browser backup opened natively, failed restoration without replacement, snapshots, admission, public output, pending disposal, UI event-loop progress, page CSP probes, synthetic-clock expiry/rollback and explicit restoration, same-origin peer lock, background-tab lock/foreground restoration, and navigation termination | `TestMemberNativeBrowserCompatibility` with `scripts/member_browser_test.mjs`, through the opt-in `make member-browser-test` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
 Web checks validate allowlists/delivery, not full HTML/CSS grammar or browser execution.
@@ -143,6 +166,39 @@ Browser costs, reviewer-backup native/WASM compatibility, independent cryptograp
 independent file-custody review, certificate/enrollment integration, and end-to-end device
 confidentiality remain untested. Reviewer round binding, expiry enforcement, and
 envelope-decryption workflows are not implemented.
+
+### Container infrastructure checks
+
+The [local stack](deployment.md#container-stack) has separate opt-in checks, not a
+working product `e2e` or complete `db-test`. `make container-config` uses the real
+Compose JSON model without starting containers. Python policy/secret unit tests run
+in `make check` without a Docker dependency. Database privileges are not inferred
+from those unit tests.
+
+`make container-test` requires a local Linux Docker daemon, Engine 28 or newer,
+Compose, Python, and Make. It builds the actual scratch image and initializes both
+PostgreSQL instances under a unique test project, with fresh secrets and ephemeral
+loopback host ports. It never uses or resets the normal development stack's volumes.
+Failures or missing tools fail the target rather than skipping it. Cleanup removes
+only the test project's containers/networks/volumes; build cache/images remain.
+Forced termination or a daemon failure can leave owned test resources for explicit
+inspection and cleanup.
+
+The checks inspect running users, read-only roots, capabilities, resource settings,
+logging drivers, actual network attachments, and port publication. HTTP requests
+confirm liveness, `503` readiness, demonstration status, source discovery, and no
+cookies. Real TCP-authenticated SQL checks run as the actual runtime/migration roles:
+no ownership escalation, server-file reads, schema/public/temporary DDL, default table/function access,
+wrong-password rejection, and successful use only after an explicit owner grant. The opposite instance must
+reject a TCP connection using the first instance's runtime credential. Synthetic
+test tables/functions exist only in disposable volumes. Passwords and SQL error
+bodies are not printed.
+
+The stack was exercised on Linux x86_64 with Engine 29.9.2 and Compose 5.6.1 on
+2026-10-28. This is not evidence for malicious-host isolation, production networking,
+rootless/Podman support, application migrations, concurrent quota/spend transactions,
+encrypted backup restoration, OS-package vulnerability scanning, SBOMs, or the full
+account/vault/submission journey. Those remain required work.
 
 ### WASM verifier checks
 
@@ -188,19 +244,123 @@ maps fixed WASM fetching to a local file and rejects other fetches. Backups and 
 are checked natively, just as for the direct bridge. Owner tests use controlled
 timers for the fixed startup/operation/lifetime limits and verify synchronous
 termination and pending settlement. These are not browser timing or erasure claims.
+Separate controlled-clock tests advance either monotonic or wall time without
+firing timers, check exact deadlines, reject clock failure/rollback, and ensure
+late results cannot revive an owner. The actual Node worker checks also discard
+valid restoration replies after synthetic clock advances, without waiting for
+the timeout callback. They do not model real sleep or suspension.
+The public `closed` Promise is also checked with actual Node workers, including
+idle peer locking without polling. Controlled tests check cleanup before observer
+callbacks and settlement for failed construction, without claiming worker exit.
+Optional host-signal checks exercise already-aborted admission, local cancellation
+during startup/idle/pending work, reason-free closure, cleanup of abort listeners,
+and state rechecks when another listener suppresses abort event delivery. Actual
+Node worker checks cancel startup, unlocked custody, and pending restoration.
 Lock checks additionally model independent owner modules, inspect the exact
 secret-free notification, reject missing/failed channel facilities, and exercise
 local pagehide cleanup, including a synthetic back/forward cache event. The real
 Node worker runner receives native BroadcastChannel notifications and handles a
-synthetic pagehide with pending WASM work. Node does not model browser origin or
-storage partition rules, navigation caching, suspension, or real logout.
+synthetic pagehide and visibility loss with pending operations. Node does not model
+browser origin or storage partition rules, navigation caching, suspension, or real logout.
+
+Native/Node export checks open the new backup under a different synthetic password
+and compare the complete restored key with the native original. Direct WASM work
+may finish before its Promise-returning call returns; pending admission is checked
+deterministically through native tests and the worker owner, not by assuming a
+Promise means a derivation is still running.
+Confirmed setup/export checks use separately copied synthetic password inputs,
+mutate both caller buffers after invocation, and reject mismatches without public
+or encrypted output. They test the byte interface, not independent human entry,
+text encoding, password-manager behavior, or a browser prompt.
+Separate worker text checks exercise strict UTF-8 encoding, immutable-string input
+bounds, and synchronous mutable-buffer cleanup. Actual Node workers compare text
+setup with independent byte restoration and export a native member key under a
+synthetic 1024-byte Unicode passphrase, opened and compared natively. These checks
+do not establish independent human entry, DOM cleanup, autofill behavior, or erasure
+of JavaScript strings. The synthetic browser harness also exercises text setup,
+byte/text restoration, encrypted export, mismatch handling, and pending cancellation.
 Bounded transport fuzzing runs with `member-wasm-test`, not `make fuzz`; retain
 failures as synthetic cases in `scripts/member_worker_test.mjs`, never key fixtures.
 
-No page host, actual browser tests, mobile memory/latency measurements, CSP delivery,
-passkeys, account/vault authorization, recovery, browser multi-tab evidence, or
-independent cryptographic review is supplied. These checks do not satisfy the
+The separate opt-in browser target below adds isolated synthetic page delivery and
+browser checks. The Node target supplies no mobile measurements, product CSP,
+passkeys, account/vault authorization, recovery, or independent cryptographic review.
+Neither target satisfies the
 [browser acceptance cases](#browser-account-and-vault-acceptance).
+
+### Member-worker browser checks
+
+`make member-browser-test` requires Linux x86_64, the pinned Go/Node runtimes, and
+the external open-source Chromium snapshot in `scripts/browser.toml`. It is an
+opt-in development check, separate from `make check`, CI, and the unavailable
+product `make e2e`. Missing tools, wrong versions, blocked sandbox startup, failed
+assertions, and timeouts fail the target without skipping or disabling controls.
+
+Download the exact archive URL in that manifest using the
+[official Chromium snapshot instructions](https://www.chromium.org/getting-involved/download-chromium/#chromium).
+Verify its SHA-256 against the manifest **before extracting or executing it**.
+Keep the complete extraction and original notices in a trusted local directory.
+Install the browser's Linux shared-library dependencies through the operating
+system package manager, and run as an unprivileged user with a working sandbox.
+Do not add `--no-sandbox` or disable CSP to bypass an environment failure.
+
+```sh
+MEMBER_BROWSER=/trusted/path/chrome-linux/chrome make member-browser-test
+```
+
+The Go test host binds an ephemeral `127.0.0.1` port. It verifies the complete
+bounded WASM build manifest and serves only an exact in-memory asset allowlist,
+not a working directory or product route. Unknown paths, queries, encoded aliases,
+foreign hosts/origins, cross-site requests, and request bodies are rejected without
+reading bodies or reflecting inputs. Responses use `no-store`, no-referrer,
+nosniff, same-origin resource policy, and no cookies/CORS. The disposable page has
+no input controls, uploads, persistence, or key display.
+
+The page permits same-origin modules/workers but no fetches or WASM compilation.
+Only the worker response permits same-origin fetches and `wasm-unsafe-eval`, never
+JavaScript `unsafe-eval` or inline execution. Page probes check that inline script,
+fetch, and main-thread WASM compilation are blocked; successful worker operations
+exercise the worker policy. This uses
+[CSP Level 3, Working Draft 2026-10-27](https://www.w3.org/TR/2026/WD-CSP3-20261027/),
+not a final Recommendation, and the [HTML worker model](https://html.spec.whatwg.org/multipage/workers.html)
+(consulted 2026-10-28). No product service or shell CSP changes.
+
+The Node driver uses Chromium's private DevTools pipe, not an open debugging port
+or npm package. Synthetic unlock inputs enter through the pipe, never HTTP. It
+uses a fresh disposable profile, closes the browser/workers, and removes its owned
+scratch directory. It returns only encrypted backup and public enrollment material
+for native validation, with fixed failure diagnostics. Page network events are
+checked against a fixed allowlist; this is not a complete browser/worker network
+capture, proxy-log audit, or malicious-site isolation boundary.
+
+These checks cover one headless desktop build and same-origin/same-partition pages.
+Synthetic owner wall-clock advances exercise late startup/operation replies,
+lifetime expiry, backward-clock termination, and explicit same-key restoration.
+These are injected clock readings, not real suspension or operating-system time changes.
+The driver switches real foreground tabs, observes a trusted hidden-state event
+and worker disappearance before calling the owner again, rejects hidden-page startup,
+and checks that returning cannot revive the old owner. Explicit new-owner restoration
+then reuses the same native backup/key. No synthetic visibility dispatch or page
+visibility override is used for these browser checks.
+Peer-lock and visibility checks observe the public `closed` Promise, without an
+extra notification channel or a data call to trigger termination. Other browser
+checks cover closure after lock, disposal, startup denial, and synthetic expiry.
+Browser abort-controller checks additionally cancel startup, unlocked custody, and
+pending restoration, reject already-aborted startup, and explicitly restore the
+same native backup/key through a new owner. Worker disappearance is checked after
+the cancellation cases; this is not an erasure or hard cancellation-time guarantee.
+On 2026-10-28, `make member-browser-test` passed on Linux x86_64 with the pinned
+Chromium 159.0.8129.0 executable and Go/Node runtimes. This includes the host-signal,
+encrypted-export, password-confirmation, and UTF-8 text passphrase cases. The successful
+run supersedes earlier attempts blocked by missing libraries or an unset executable
+path. The driver retained the browser sandbox and CSP checks.
+
+Navigation and tab-switch checks observe worker disappearance, not memory erasure
+or reliable global revocation. Event-loop progress is not a mobile latency/memory budget.
+Other engines, storage partitions, background suspension, back/forward-cache
+restoration, real logout, provider/passkey compatibility, screenshots, keyboard and
+assistive technology, and the complete account/vault journey remain untested.
+No supported-browser matrix or readiness claim follows from this target.
 
 ## Required runtime command contract
 
@@ -216,8 +376,6 @@ JavaScript and full syntax validation.
 | --- | --- |
 | `make db-test` | Migrations, privileges, concurrency, backup/restore on real PostgreSQL |
 | `make e2e` | Headless browser checks against the Compose stack |
-| `make up` | `docker compose up --build --wait` with loopback-only demo exposure |
-| `make smoke` | Health/readiness checks and service isolation checks |
 | `make simulation` | Readable multi-user/attack coverage report with honest case status |
 | `make container-scan` | Inspect the built image and its dependency inventory |
 | `make sbom` | Produce a versioned SPDX or CycloneDX inventory |

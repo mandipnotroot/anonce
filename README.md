@@ -58,6 +58,14 @@ local deployment.
 
 ## Run the local infrastructure
 
+For containerized development, follow the [Compose setup](docs/deployment.md#container-stack):
+prepare `.env` and local secret files, then use `make up`, `make smoke`, and
+`make down`. The stack builds the Go services in Docker and runs two independent
+PostgreSQL instances. `make container-test` checks disposable infrastructure, not a
+working submission product.
+
+To run the HTTP demonstration natively instead:
+
 ```sh
 make build test
 ./bin/server -source-url "$ANONCE_SOURCE_URL"
@@ -71,7 +79,7 @@ source, including local modifications. There is no default.
 - Unavailable operations: `/readyz` always returns `503`; owned protocol routes
   return `501` without reading request bodies.
 - Read-only server pages: `/` and `/about`. `-dev-styleguide` enables labelled mocks.
-- No forms, database, signing, enrollment, or submission operations.
+- No forms, application database integration, signing, enrollment, or submission operations.
 
 See [deployment](docs/deployment.md#local-development) for flags and limits and
 [API](docs/api.md) for endpoint behavior.

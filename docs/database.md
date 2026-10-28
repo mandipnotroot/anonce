@@ -5,14 +5,52 @@
 
 Audience: storage implementers, database reviewers, and operators.
 
-Status: proposed logical schema; no database or migrations exist in this checkout.
-PostgreSQL 18 with pgx is the accepted target.
+Status: proposed application schema, with local PostgreSQL 18.6 container bootstrap
+for roles and an empty application schema. Application migrations, pgx integration,
+and protocol storage are not implemented.
 
 ## Storage boundary
 
 Use [independent identity and ciphertext instances](deployment.md#production-separation).
 No shared identity key, database link, foreign data wrapper, or cross-service query.
 Infrastructure administrators remain a [collusion risk](threat-model.md).
+
+## Local container bootstrap
+
+The [Compose stack](deployment.md#container-stack) uses independent PostgreSQL
+instances and volumes for `identity` and `submission`. The shared
+`deploy/postgres/bootstrap.sql` runs transactionally only when
+each volume is empty. It creates no proposed application tables, migration version
+table, vault records, or submission state.
+
+Each instance has its own admin password and separate migration/runtime passwords:
+
+| Role | Initial authority |
+| --- | --- |
+| `identity_admin` or `submission_admin` | Upstream bootstrap superuser, available only to the database container/operator, never the application |
+| `anonce_owner` | Non-login owner of the database and its empty `anonce` schema |
+| `anonce_migrator` | Non-superuser login; requires explicit `SET ROLE anonce_owner` before creating owned objects; ownership is not inherited |
+| `anonce_runtime` | Non-owner login with database `CONNECT` and schema `USAGE` only; no table access until explicitly granted by a future migration |
+
+Runtime roles cannot create databases, roles, schemas, temporary tables, extensions,
+or public-schema objects, assume ownership, bypass RLS, or replicate. Public access
+to the application/default databases and public-schema writes is revoked. Future
+owner-created functions do not grant `EXECUTE` to `PUBLIC` by default. Runtime
+statements have a five-second timeout and idle transactions a 30-second timeout.
+These choices follow PostgreSQL 18's [role grants](https://www.postgresql.org/docs/18/sql-grant.html)
+and [default privileges](https://www.postgresql.org/docs/18/sql-alterdefaultprivileges.html)
+(consulted 2026-10-28).
+
+TCP authentication uses SCRAM-SHA-256. Upstream initialization uses trusted Unix-socket
+administration inside each database container; no database socket or secret directory
+is mounted into applications. This is a local operator boundary, not protection
+against database-container or host compromise. Data volumes follow the PostgreSQL 18
+[official image layout](https://hub.docker.com/_/postgres) (consulted 2026-10-28).
+
+Bootstrap SQL neither upgrades nor repairs existing volumes. Preserve separate
+Goose histories when application migrations are added. Evidence and limits live in
+[container checks](testing.md#container-infrastructure-checks); quota/spend transactions
+and encrypted restoration remain unimplemented.
 
 ## Identity database
 

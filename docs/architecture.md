@@ -124,7 +124,9 @@ the [protocol design](protocol.md#review-and-replies).
 
 Current implementation limits:
 
-- No databases or membership, issuance, or submission domain packages exist.
+- The [local Compose stack](deployment.md#container-stack) supplies independent
+  PostgreSQL instances and role/schema bootstrap. No application database integration,
+  migrations, or membership/issuance/submission domain packages exist.
 - `internal/web` pre-renders fixed pages at startup using escaped templates and
   first-party CSS embedded in `web/`. Request data never enters templates.
   Only the submission service serves these pages; they load no executable browser code.

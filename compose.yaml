@@ -1,0 +1,139 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+x-app: &app
+  build: .
+  user: "65532:65532"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  cpus: 1.0
+  mem_limit: 128m
+  memswap_limit: 128m
+  pids_limit: 64
+  stop_grace_period: 10s
+  logging:
+    driver: none
+  ulimits:
+    nofile: {soft: 256, hard: 256}
+
+x-postgres: &postgres
+  image: postgres:18.6-bookworm@sha256:5c4783a8cc3f0074912164f94dfa1be4e043438f0f707cf968d7af9a0d31a2c8
+  user: "999:999"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  cpus: 1.0
+  mem_limit: 512m
+  memswap_limit: 512m
+  pids_limit: 128
+  shm_size: 128m
+  stop_grace_period: 60s
+  logging:
+    driver: none
+  tmpfs:
+    - /tmp:size=16m,mode=1777,noexec,nosuid,nodev
+    - /var/run/postgresql:size=16m,uid=999,gid=999,mode=0700,noexec,nosuid,nodev
+  command: [postgres, -c, max_connections=32, -c, shared_buffers=64MB, -c, password_encryption=scram-sha-256, -c, log_statement=none, -c, log_min_error_statement=panic, -c, log_connections=off, -c, log_disconnections=off]
+  healthcheck:
+    test: [CMD-SHELL, 'pg_isready -q -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" && psql -XwqAt -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "SELECT to_regnamespace(''anonce'') IS NOT NULL" | grep -qx t']
+    interval: 5s
+    timeout: 3s
+    retries: 12
+    start_period: 10s
+
+services:
+  server:
+    <<: *app
+    command: [/app/server, -container-network, -listen, '0.0.0.0:8080', -source-url, '${ANONCE_SOURCE_URL:?Set ANONCE_SOURCE_URL to this exact build source URL}']
+    ports: ['127.0.0.1:${ANONCE_SERVER_PORT:-8080}:8080']
+    networks: [submission, server-edge]
+    depends_on:
+      submission-db: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, /app/probe, server]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+
+  issuer:
+    <<: *app
+    command: [/app/issuer, -container-network, -listen, '0.0.0.0:8081', -source-url, '${ANONCE_SOURCE_URL:?Set ANONCE_SOURCE_URL to this exact build source URL}']
+    ports: ['127.0.0.1:${ANONCE_ISSUER_PORT:-8081}:8081']
+    networks: [identity, signer, issuer-edge]
+    depends_on:
+      identity-db: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, /app/probe, issuer]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+
+  ca:
+    <<: *app
+    command: [/app/ca, -container-network, -listen, '0.0.0.0:8082', -source-url, '${ANONCE_SOURCE_URL:?Set ANONCE_SOURCE_URL to this exact build source URL}']
+    ports: ['127.0.0.1:${ANONCE_CA_PORT:-8082}:8082']
+    networks: [signer, ca-edge]
+    healthcheck:
+      test: [CMD, /app/probe, ca]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+
+  identity-db:
+    <<: *postgres
+    environment:
+      POSTGRES_USER: identity_admin
+      POSTGRES_DB: identity
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=trust
+    networks: [identity]
+    volumes:
+      - identity-data:/var/lib/postgresql
+      - ./deploy/postgres/bootstrap.sql:/docker-entrypoint-initdb.d/10-bootstrap.sql:ro
+    secrets:
+      - {source: identity_admin, target: admin_password}
+      - {source: identity_migration, target: migration_password}
+      - {source: identity_runtime, target: runtime_password}
+
+  submission-db:
+    <<: *postgres
+    environment:
+      POSTGRES_USER: submission_admin
+      POSTGRES_DB: submission
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=trust
+    networks: [submission]
+    volumes:
+      - submission-data:/var/lib/postgresql
+      - ./deploy/postgres/bootstrap.sql:/docker-entrypoint-initdb.d/10-bootstrap.sql:ro
+    secrets:
+      - {source: submission_admin, target: admin_password}
+      - {source: submission_migration, target: migration_password}
+      - {source: submission_runtime, target: runtime_password}
+
+networks:
+  identity: {internal: true}
+  submission: {internal: true}
+  signer: {internal: true}
+  server-edge:
+    internal: false
+    driver_opts: {com.docker.network.bridge.host_binding_ipv4: '127.0.0.1'}
+  issuer-edge:
+    internal: false
+    driver_opts: {com.docker.network.bridge.host_binding_ipv4: '127.0.0.1'}
+  ca-edge:
+    internal: false
+    driver_opts: {com.docker.network.bridge.host_binding_ipv4: '127.0.0.1'}
+
+volumes:
+  identity-data:
+  submission-data:
+
+secrets:
+  identity_admin: {file: '${ANONCE_SECRETS_DIR:-./.secrets}/identity_admin'}
+  identity_migration: {file: '${ANONCE_SECRETS_DIR:-./.secrets}/identity_migration'}
+  identity_runtime: {file: '${ANONCE_SECRETS_DIR:-./.secrets}/identity_runtime'}
+  submission_admin: {file: '${ANONCE_SECRETS_DIR:-./.secrets}/submission_admin'}
+  submission_migration: {file: '${ANONCE_SECRETS_DIR:-./.secrets}/submission_migration'}
+  submission_runtime: {file: '${ANONCE_SECRETS_DIR:-./.secrets}/submission_runtime'}

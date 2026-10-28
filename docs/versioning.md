@@ -173,6 +173,79 @@ The [fixed notification contract and delivery limits](key-management.md#lock-not
 are separate from the unchanged version-1 worker command transport. Direct bridge
 methods, cryptographic profiles, CLI, and HTTP behavior are unchanged.
 
+The opt-in [browser check target](testing.md#member-worker-browser-checks) adds only
+test-binary delivery and external development-tool setup. It changes no product
+HTTP route, shell CSP, worker contract, or cryptographic format, and carries no
+automatic release bump under the test-change policy below.
+
+Requiring a visible owner document with visibility events and terminating on
+backgrounding is a breaking development lifecycle change requiring `semver:major`
+review. Hosts must construct only while visible, handle interrupted operations,
+and explicitly restore through a new owner after returning. There is no automatic
+restart, silent unlock, or replacement key. See the
+[lifecycle contract and limits](key-management.md#lock-notifications-and-page-disposal).
+Direct bridge methods, worker transport, cryptographic profiles, CLI, HTTP, and
+the inert shell remain unchanged.
+
+Requiring valid monotonic/wall clocks and rejecting overdue work or backward
+readings is a breaking development lifecycle change requiring `semver:major`
+review. Hosts must provide `performance.now()` and `Date.now()` and handle terminal
+expiry or clock corrections with explicit new-owner restoration. Budgets are
+unchanged, but delayed callbacks no longer permit overdue readiness/results or
+new operations. No hard suspension-expiry guarantee is added. Direct bridge,
+worker transport, HTTP, CLI, and cryptographic formats remain unchanged.
+
+The worker owner's `closed` Promise is an additive development interface requiring
+`semver:minor` review. Hosts may observe terminal local cleanup without polling;
+settlement supplies no reason or worker-exit guarantee. Existing readiness, method
+results, termination rules, transport, direct bridge, HTTP, CLI, and cryptographic
+formats are unchanged. See the [owner contract](key-management.md#local-member-worker-host).
+
+The optional worker-owner `AbortSignal` constructor argument is an additive
+development interface requiring `semver:minor` review. Existing no-argument
+construction is unchanged. Cancellation terminates only that owner, never peers,
+and uses existing `ready`, `closed`, and Promise/null results. Invalid arguments
+fail before worker startup. Direct bridge, worker transport, HTTP, CLI, and
+cryptographic profiles are unchanged.
+
+The shared session's `Backup` and direct bridge/worker-owner `backup(password)`
+add ciphertext-only export under the existing password-backup profile. Treat the
+expanded fixed bridge method set and worker command allowlist as a breaking
+development interface change requiring `semver:major` review. Rebuild and deploy
+the WASM, matching runtime, client, worker, and protocol as one artifact set;
+mixed builds are unsupported. Strict bridge-shape checks reject incompatible
+method sets. The correlated version-1 message
+envelope and existing commands are unchanged, but older workers reject `backup`
+without fallback. HTTP, CLI, and cryptographic formats are unchanged. Export does
+not invalidate old backups or change server vault state.
+
+`CreateConfirmed`/`BackupConfirmed` and bridge/worker `createConfirmed`/
+`backupConfirmed` add opt-in password confirmation without changing existing method
+arity or results. The expanded fixed bridge method set and command allowlist still
+require `semver:major` review under the same mixed-build rule above: rebuild and
+deploy every member artifact together. Older workers reject the new commands;
+there is no fallback to an unconfirmed operation. Version-1 envelopes, existing
+methods, HTTP, CLI, and cryptographic formats are unchanged.
+
+The worker owner's [text passphrase methods](key-management.md#browser-passphrase-text-interface)
+are additive opt-in interfaces requiring `semver:minor` review. They use the existing
+confirmed setup/export and expected-key restoration commands. Their strict UTF-8,
+well-formed-string, and encoded-size rules apply only to these methods; byte inputs,
+worker command allowlists, direct bridge, CLI, HTTP, and backup formats are unchanged.
+Changing this text encoding later requires breaking-impact review. There is no
+normalization, lossy conversion, or fallback to an unconfirmed operation.
+
+### Local container compatibility
+
+The [local container stack](deployment.md#container-stack), fixed-target `probe`
+command, and explicit `-container-network` flag are additive development interfaces
+requiring `semver:minor` review. Default native binds, HTTP routes, readiness, CLI key
+operations, and cryptographic formats are unchanged. New Compose settings, bootstrap
+roles, and secret-file contracts are development-only, not a production deployment
+API or migration compatibility promise. Existing volumes are never automatically
+upgraded or discarded; changing bootstrap ownership or authentication needs explicit
+compatibility review.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

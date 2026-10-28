@@ -14,15 +14,39 @@ properties described below.
 
 ### HTTP services and shell
 
-- [Local services](deployment.md#local-development) reject non-loopback binds,
+- [Local services](deployment.md#local-development) reject non-loopback binds by default,
   read no request bodies, and discard HTTP diagnostics that could expose peer
-  addresses or panic values. No protocol operations, signers, credentials, or
-  databases exist.
+  addresses or panic values. Protocol operations, signing, account credentials,
+  and application database integration remain unavailable.
 - The shell serves public HTML and local CSS without forms or browser execution.
   Mocks require explicit development mode. [Browser and manual checks](ui-design.md#current-local-shell)
   remain outstanding.
 - These controls do not isolate local users, browser-initiated requests, host
   compromise, or externally configured proxies.
+- The separate [synthetic browser-test host](testing.md#member-worker-browser-checks)
+  exists only in test binaries on an ephemeral loopback origin. It rejects foreign
+  hosts/origins and unread bodies, verifies bounded assets, and separates page and
+  worker CSP. Product services remain inert. This is neither product custody nor
+  a boundary against hostile local code or a malicious browser distributor.
+
+### Local container infrastructure
+
+- The [Compose stack](deployment.md#container-stack) separates database instances,
+  volumes, passwords, and internal networks. Runtime SQL roles do not own schema
+  objects and cannot assume the migration owner. Applications receive no database
+  credentials until a storage integration exists. Bootstrap is not a migration runner.
+- Explicit `-container-network` allows only the additional IPv4 wildcard; native
+  defaults stay loopback-only. Compose publishes HTTP ports only on host loopback.
+  Per-application edge bridges are needed for publication and allow outbound traffic;
+  they are not a network-anonymity or egress-control mechanism.
+- Non-root users, read-only roots, dropped capabilities, configured resource limits,
+  and disabled Docker logging reduce local exposure. SQL checks use file-based
+  credentials without reflecting passwords or database error bodies. Secret files
+  remain plaintext on the host and readable by the authorized database container.
+- Host/daemon administrators can read both instances and observe traffic. Containers
+  are not independent operators or proof of anonymity. The stack has no TLS,
+  production authentication, encrypted database backup/restore evidence, container
+  vulnerability scan, or SBOM. It must not receive real data.
 
 ### Device keys and backups
 
@@ -54,7 +78,14 @@ properties described below.
   material. Restoring a different key fails before request signing or installation;
   the expected key must be independently trusted. Failed unlock never creates a
   replacement key.
-- Lock clears the owned key and cancels pending setup/restoration. Cancelled work
+- Unlocked backup export encrypts the retained key without reopening an old backup
+  or returning private bytes. The temporary key copy remains owned until bounded
+  work finishes; lock cancels output and clears the retained key without waiting
+  for that copy's cleanup. The host supplies password confirmation and safe
+  ciphertext persistence. An unlocked hostile host can request a backup under its
+  own password. Export adds no reauthentication, rotation, revocation, deletion,
+  rollback detection, or recovery.
+- Lock clears the owned key and cancels pending setup/restoration/export. Cancelled work
   cannot later install a key, and each session admits only one pending operation.
   This does not limit hostile callers creating many sessions, erase runtime copies,
   or revoke already returned public material/backups.
@@ -143,6 +174,20 @@ properties described below.
 
 ### Local WASM member bridge
 
+- The worker's opt-in [text passphrase interface](key-management.md#browser-passphrase-text-interface)
+  bounds UTF-8 output, rejects unpaired surrogates instead of replacing them, and
+  preserves exact spelling without normalization. Setup/export still require shared
+  Go byte confirmation. Owned encoding buffers are cleared before invocation returns;
+  immutable strings, caller fields, autofill state, and runtime copies cannot be
+  cleared by this component. It supplies no prompt, password-strength policy, storage,
+  authentication, or protection from hostile host code.
+- Optional [confirmed setup/export](key-management.md#in-memory-member-sessions)
+  rejects mismatched bounded password bytes in shared Go before key generation,
+  private-key snapshot, or derivation. Both bridge/worker input copies are bounded;
+  accessible owned copies are cleared on normal completion. A mismatch returns no
+  output and leaves the session unchanged. Confirmation does not establish password
+  strength, persistence, independent user entry, authentication, or recovery. The
+  trusted host still sees both inputs, and runtime copies prevent complete erasure.
 - The [separate adapter](key-management.md#local-wasm-member-sessions) retains one
   shared session, snapshots bounded nonshared byte inputs, and returns only public
   enrollment material and encrypted backups. Invalid or busy calls start no operation;
@@ -157,24 +202,46 @@ properties described below.
   [local worker owner](key-management.md#local-member-worker-host) bounds admission
   before posting, checks response correlation/shapes, and terminates from the owner
   on lock, disposal, load/protocol errors, or timeout. This discards pending output
-  without waiting for worker cleanup; it cannot guarantee erasure. Owner timers can
-  be delayed by suspension or a blocked event loop. No HTTP or page integration exists.
+  without waiting for worker cleanup; it cannot guarantee erasure. Elapsed monotonic
+  and wall time are checked before admission, readiness/reply publication, and on
+  visibility events. Either deadline, invalid/failed readings, or observed clock
+  rollback terminates locally without notifying peers or extending the lifetime.
+  This rejects overdue replies even before delayed timeout callbacks run. Clock
+  corrections may interrupt valid work; explicit restoration is required. A
+  suspended/blocked owner cannot enforce these checks until it resumes, and hostile
+  or simultaneously stalled clocks remain outside protection. No product HTTP or
+  page integration exists.
   Hostile code in the loading realm can steal unlock material or inspect WASM memory;
   owned-buffer clearing does not erase runtime/library copies. Native/Node checks
   establish limited format/lifecycle evidence, not browser custody or security review.
   The worker's fixed local imports and bounded credential-free WASM fetch still
   require trusted delivery. One active owner per module realm does not constrain
   other realms/tabs or authenticate an account.
+  Its public `closed` Promise lets hosts observe terminal local cleanup without
+  polling, including idle peer locking. It exposes no reason or identifiers and
+  does not acknowledge worker exit or remote locking. Handlers require a running
+  owner event loop; they add no suspension, erasure, logout, or revocation guarantee.
+  An optional host `AbortSignal` terminates only its owner, with the same local
+  cleanup and pending-output rejection as disposal. Already-aborted signals start
+  no worker; abort reasons are not read or exposed. Signal state is rechecked before
+  admission and readiness/reply publication if abort event delivery was suppressed.
+  This does not cancel peers, preserve the unlocked key, undo returned output, or
+  provide a hard cancellation deadline while the owner is blocked.
 - The worker owner's [lock notifications](key-management.md#lock-notifications-and-page-disposal)
   contain no secrets or account/key identifiers. Explicit lock can notify eligible
   same-origin, same-partition peers; all incoming traffic terminates locally without
-  echo. Missing coordination facilities fail startup closed. Pagehide also terminates
-  locally, including back/forward caching. These are development-only controls, not
-  integrated account logout. Notifications are asynchronous, unacknowledged, and
+  echo. Missing coordination facilities fail startup closed. Pagehide and loss of
+  document visibility also terminate locally; hidden pages cannot start an owner.
+  Visibility is checked before data admission and reply publication, not only on
+  events. Foregrounding cannot resume the closed instance. These are development-only
+  controls, not integrated account logout. Notifications are asynchronous, unacknowledged, and
   nondurable; suspended, new, or nonparticipating contexts may miss them. Page events
   are not guaranteed, and same-origin code can observe timing or force locking.
   Neither mechanism supplies a global singleton, durable revocation, hard expiry,
-  or protection from hostile code in the owner realm. Browser evidence is outstanding.
+  or protection from hostile code in the owner realm. Visibility is browser-reported,
+  not user-presence proof; unobserved transitions during suspension can be missed.
+  Synthetic Chromium checks cover tab switching and explicit foreground restoration,
+  not mobile suspension, a supported-browser matrix, or product custody.
 
 ## Browser account and vault risks
 

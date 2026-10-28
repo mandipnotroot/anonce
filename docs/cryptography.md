@@ -23,6 +23,12 @@ Submission, enrollment, and public-proof protocols remain prospective.
 
 ## Membership and authorization
 
+The development [database bootstrap](database.md#local-container-bootstrap) uses
+PostgreSQL 18's native [SCRAM-SHA-256 authentication](https://www.postgresql.org/docs/18/auth-password.html)
+for TCP connections (consulted 2026-10-28), with separate random machine credentials.
+This is not an account-password policy, vault unlock method, or device-key wrapping
+profile. Existing backup, member-key, and CSR profiles are unchanged.
+
 - Local requests use [member CSR profile 1](#member-csr-profile-1). This is not
   certificate issuance or an enrollment transport.
 - Generate keys and CSRs on the device. The CA checks proof of possession and
@@ -117,13 +123,41 @@ before retaining the key. Restoration authenticates and validates the backup,
 then compares the complete public key with a required independently trusted
 expected key before preparing a request or installing the key in the session.
 
+An unlocked session can export a fresh encrypted backup under a supplied local
+password through the same `memberkey.Seal` composition. Each export uses full
+profile-2 costs and fresh salt/nonce, preserves the member key, and returns only
+ciphertext. It neither changes the session's key nor revokes existing backups.
+Lock cancels pending export without waiting for Argon2id; owned temporary key
+copies and discarded ciphertext are cleared before admission is released.
+
+Opt-in `CreateConfirmed` and `BackupConfirmed` validate two independent password
+bounds and use [Go 1.27.3 `crypto/subtle.ConstantTimeCompare`](https://pkg.go.dev/crypto/subtle@go1.27.3#ConstantTimeCompare)
+before delegating to those same compositions (consulted 2026-10-28). Equal-length
+comparison is independent of byte contents; differing lengths reject immediately.
+No padding copies, text normalization, JavaScript comparison, or new cryptographic
+profile is introduced. This is a local confirmation check, not a universal browser
+timing guarantee or proof that two independent entries were collected.
+
 Only public enrollment material and encrypted backups leave the session API.
-Lock clears its owned private buffer and cancels pending setup/restoration; a
-cancelled operation cannot install a key. One pending setup/restoration per session
-is admitted, including while cancellation waits for bounded Argon2id work. This
+Lock clears its owned private buffer and cancels pending setup/restoration/export; a
+cancelled operation cannot install a key. One pending setup/restoration/export per
+session is admitted, including while cancellation waits for bounded Argon2id work. This
 does not bound the number of sessions a caller creates. See the
 [session lifecycle](key-management.md#in-memory-member-sessions) for ownership and
 integration limits. PRF wrapping and account recovery remain unspecified.
+
+### Browser passphrase text encoding
+
+The development worker's opt-in [text passphrase interface](key-management.md#browser-passphrase-text-interface)
+uses UTF-8 through the [WHATWG Encoding Standard](https://encoding.spec.whatwg.org/#interface-textencoder)
+(Living Standard consulted 2026-10-28). Only primitive, well-formed JavaScript
+strings are accepted, with 1–1024 encoded bytes. Unpaired UTF-16 surrogates fail
+before encoding, rather than being silently replaced with U+FFFD. No trimming,
+normalization, case folding, BOM insertion, or password-strength claim is added.
+Whitespace, NUL, and explicitly supplied U+FEFF remain part of the password.
+Setup/export confirmation still compares encoded bytes in shared Go, not JavaScript.
+This is an explicit text-to-byte adapter over profile 2, not a new backup format;
+the existing opaque-byte methods remain unchanged.
 
 ## Encryption and public proofs
 
@@ -304,9 +338,13 @@ or encoding changes. Passwords are opaque bytes, never PRF outputs or server log
 credentials. The bridge exposes only encrypted backups and public enrollment
 material, requires expected-key restoration, and adds no wrapping/recovery profile.
 The [local dedicated-worker host](key-management.md#local-member-worker-host) changes
-execution, lock notification, and disposal only. It runs this same Go bridge without
-JavaScript cryptography, new profiles, or lower KDF costs. Termination discards
-runtime state without guaranteeing cleanup or complete memory erasure.
+execution, local deadline checks, host-signal cancellation, lock notification, and
+page/visibility disposal only. It runs this same Go bridge without JavaScript
+cryptography, new profiles, or lower KDF costs. Termination discards runtime state
+without guaranteeing cleanup or complete memory erasure.
+The opt-in [synthetic browser checks](testing.md#member-worker-browser-checks)
+exercise native/worker compatibility under isolated test CSP without changing
+these profiles. They do not establish supported-device costs or product custody.
 
 The [browser account vault](key-management.md#browser-account-vault) is planned.
 WebAuthn Level 3 is the selected authentication design reference; its PRF extension

@@ -10,6 +10,53 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Local Docker Compose stack for non-root Go HTTP services and independent
+  PostgreSQL 18.6 instances, with pinned images, separate credentials/volumes/networks,
+  owner/migration/runtime bootstrap roles, loopback host publication, bounded
+  resources, read-only roots, disabled container logging, and liveness checks.
+  Explicit `-container-network` enables container binding without changing native
+  defaults. Add no-replace secret preparation, configuration/lifecycle/smoke targets,
+  and opt-in real-container SQL privilege/isolation checks. Application persistence,
+  migrations, product readiness, encrypted database recovery, image scanning, and
+  production deployment remain unavailable.
+- Development member-worker `createWithPassphrase`, `backupWithPassphrase`, and
+  `unlockWithPassphrase` for strict, bounded UTF-8 text over existing confirmed
+  setup/export and expected-key restoration. Owned encoding buffers clear before
+  return; malformed Unicode and oversized encodings fail without truncation or
+  fallback. Immutable strings cannot be erased. Node bounds/cleanup/Unicode checks
+  and native/worker backup checks cover the interface; the opt-in synthetic browser
+  checks also pass. Byte methods, worker transport, HTTP, CLI, and cryptographic
+  formats are unchanged. No UI, storage, authentication, PRF, or recovery is added.
+- Opt-in confirmed member setup and encrypted-backup export through shared Go
+  `CreateConfirmed`/`BackupConfirmed` and development WASM/worker
+  `createConfirmed`/`backupConfirmed`. Bounded exact password matching precedes key
+  generation, private-key snapshots, and derivation; mismatches return no output
+  and preserve session state. Native race/fuzz and Node bridge/worker checks cover
+  confirmation and cancellation; the opt-in synthetic browser checks also pass.
+  No UI, storage, account authentication, recovery, or cryptographic profile is added.
+- Unlocked member-session encrypted-backup export through shared Go `Backup` and
+  development WASM/worker `backup(password)`, preserving the key with fresh profile-2
+  encryption and ciphertext-only output. Native race/cancellation, Node compatibility,
+  and worker bounds/fuzz checks cover export; the opt-in synthetic browser checks
+  also pass. Old backups remain valid. No persistence, account-password change,
+  key rotation, revocation, recovery, product UI, or new cryptographic profile is added.
+- Optional development member-worker `AbortSignal` ownership for immediate local
+  cancellation of startup, unlocked custody, or pending restoration. Cancellation
+  terminates the instance without notifying peers or exposing the abort reason;
+  an already-aborted signal starts no worker. Existing no-argument construction,
+  transport, HTTP, and cryptographic profiles are unchanged.
+- Development member-worker `closed` Promise for secret-free observation of terminal
+  local cleanup, including idle peer lock and failed startup, without polling.
+  Node lifecycle and actual-worker checks plus synthetic browser checks cover the
+  observer. Existing methods, transport, HTTP, and cryptographic profiles are unchanged;
+  settlement does not establish worker exit, erasure, account logout, or revocation.
+- Opt-in `make member-browser-test` for synthetic member workers in sandboxed
+  headless Chromium: native/worker backup compatibility, restoration failures,
+  page CSP probes, UI event-loop progress, same-origin peer lock, and worker
+  termination on navigation. A Go test-only loopback host verifies bounded assets
+  and rejects unexpected hosts, origins, paths, methods, and bodies. Product HTTP,
+  shell CSP, and cryptographic profiles are unchanged. No account/vault journey,
+  mobile/provider support, accessibility, or complete-erasure claim is added.
 - Development-only member-worker lock coordination using a fixed, secret-free
   BroadcastChannel notification and local pagehide termination. Explicit lock
   notifies peers; disposal remains local. A host helper can lock peers without a
@@ -128,6 +175,29 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking development bridge/worker method-set expansion for opt-in password
+  confirmation. Rebuild and deploy all member assets together; mixed method sets
+  fail closed. Existing methods, command envelopes, HTTP, CLI, and backup formats
+  are unchanged; confirmed calls never fall back to unconfirmed operations.
+- Breaking development bridge/worker method-set expansion for encrypted-backup
+  export. Rebuild and deploy all member WASM/worker assets together; incompatible
+  bridge method sets fail closed. Existing command envelopes, HTTP, CLI, and backup
+  formats are unchanged.
+- Breaking development member-worker lifecycle change: require valid monotonic and
+  wall clocks and enforce existing startup, operation, and lifetime deadlines before
+  admission or publishing readiness/results, even when timeout callbacks are delayed.
+  Failed, invalid, or backward readings terminate locally without notifying peers;
+  restoration needs an explicit new owner. Node boundary/failure tests and actual
+  Node/Chromium worker checks use synthetic clock advances, not real suspension.
+  No account/vault integration, hard expiry, format, or product HTTP change is added.
+- Breaking development member-worker lifecycle change: require a visible owner
+  document, terminate locally on visibility loss, and reject hidden-page startup.
+  Data admission and reply publication recheck visibility. Foregrounding requires
+  explicit restoration through a new owner; peers are not notified by backgrounding.
+  Node failure/lifecycle tests and synthetic Chromium tab-switch/restoration checks
+  cover this behavior. Direct bridge, transport, HTTP, and cryptographic profiles
+  are unchanged; no reliable suspension, user-presence, or memory-erasure claim is added.
+- Document the maintainer rule for PR-number suffixes on squash-merge commit titles.
 - Breaking development worker-owner lifecycle change: BroadcastChannel and page
   event APIs are now required, and explicit lock also notifies participating peers.
   Direct bridge methods, worker commands, CLI, HTTP, and cryptographic profiles
@@ -176,6 +246,8 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Pages CI now installs the pinned development Node.js runtime before running
+  WASM checks instead of relying on the runner's preinstalled version.
 - Backup inspection now reports short public-key writes as failures, rather than
   treating a partial stdout line as successful inspection.
 

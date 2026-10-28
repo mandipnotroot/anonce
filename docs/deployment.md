@@ -5,8 +5,9 @@
 
 Audience: operators, maintainers, and organizations planning a demo or deployment.
 
-Status: local HTTP infrastructure and read-only shell only. No Dockerfile, Compose
-stack, production image, or working protocol. Do not collect real data.
+Status: local HTTP infrastructure, read-only shell, and an opt-in Docker Compose
+stack with separate PostgreSQL instances. Application persistence, production
+deployment, and the submission protocol remain unavailable. Do not collect real data.
 
 ## Local development
 
@@ -27,6 +28,7 @@ modifications and build/install material:
 | Flag | Validation |
 | --- | --- |
 | `-listen` | Unzoned loopback IP literal, canonical decimal port `0`–`65535`; no hostname, wildcard, or non-loopback bind. Port `0` is ephemeral; use a fixed port for manual inspection |
+| `-container-network` | Default false; explicitly permits the additional IPv4 literal `0.0.0.0` with `-listen`. Use only behind container isolation and loopback host publication; this flag does not detect containers or enforce firewall policy |
 | `-source-url` | Required absolute HTTPS URL; no credentials, query, or fragment. Missing value fails startup |
 | `-help` | Available on all HTTP commands |
 | `-dev-styleguide` | Submission only, default false; rejected by identity commands and configuration validation |
@@ -64,16 +66,95 @@ builds with `make wasm`; `make wasm-test` requires development-only Node.js 22.2
 Artifacts remain in `bin/wasm/` and are not served by the HTTP commands. This does
 not add a browser deployment or change the shell's CSP.
 
-Required future local stack:
+### Container stack
 
-- Reproducible Docker/Podman-compatible image; Compose issuer, submission/web,
-  and independent PostgreSQL services.
-- Loopback-only ports, non-root processes, bounded resources, health checks,
-  and explicit volume-removal instructions.
-- `.env.example` without working secrets. Startup rejects missing required secrets.
-- `make up` after documented secret creation, per the
-  [command contract](testing.md#required-runtime-command-contract).
-- Kubernetes/Helm is optional, not a local-development prerequisite.
+The root `Dockerfile` builds the HTTP commands and a liveness probe
+with the pinned Go compiler. The final `scratch` image contains static binaries and
+original project/Go license notices, runs as `65532:65532`, and has no shell,
+compiler, key CLI, browser, or Node runtime. The allowlisted build context excludes
+secrets, `.env`, Git metadata, tests, and generated artifacts. This is a local
+development build, not a production image or signed release.
+
+`compose.yaml` runs `server`, `issuer`, `ca`, `identity-db`, and
+`submission-db`. PostgreSQL 18.6 and the Go builder use pinned image-index digests;
+see [dependency review](dependencies.md#container-runtime-and-images).
+Use a local Linux Docker Engine 28 or newer and Compose with `up --wait` and JSON
+configuration support. Older engines are rejected because their loopback publication
+can expose ports to the local network; see the official
+[port-publishing guidance](https://docs.docker.com/engine/network/port-publishing/)
+(consulted 2026-10-28). Podman, remote daemons, and other platforms are not validated.
+Docker access is privileged. Do not relax socket permissions to bypass a failure.
+
+Copy `.env.example` to `.env` without replacing existing settings.
+Set `ANONCE_SOURCE_URL` to an HTTPS location for this exact build's complete source,
+including these container files. The example intentionally has no working URL or
+passwords. From the repository root, run:
+
+```sh
+make container-secrets
+make container-config
+make up
+make smoke
+```
+
+`container-secrets` generates six independent random passwords without replacing
+existing files. Startup validates the whole set. The `.secrets` directory must be
+owned by the current user with mode `0700`; files use `0444` so database user `999`
+can read their individual Compose bind mounts. The enclosing directory prevents
+other host users from traversing to the files. Protect its ancestors and backups.
+These are plaintext database credentials, not encrypted device-key backups.
+`ANONCE_SECRETS_DIR` may select another trusted directory under the same rules.
+Never commit them or put passwords in `.env`, arguments, or images. Python/runtime
+copies cannot be explicitly erased.
+
+Each database receives only its own admin, migration, and runtime passwords. The
+official image reads the admin secret through `POSTGRES_PASSWORD_FILE`; its internal
+process handling is not an erasure guarantee. Applications receive no database
+password or connection setting yet because their handlers do not use storage.
+[Bootstrap roles and grants](database.md#local-container-bootstrap) prepare that
+boundary without claiming account, vault, or protocol persistence.
+
+| Boundary | Local configuration |
+| --- | --- |
+| HTTP | Only `127.0.0.1:8080`, `:8081`, and `:8082`; `ANONCE_SERVER_PORT`, `ANONCE_ISSUER_PORT`, and `ANONCE_CA_PORT` may change host ports, never the loopback address |
+| Database networks | Internal identity network for issuer/identity DB; separate internal submission network for server/submission DB; no published PostgreSQL ports |
+| Signer | Issuer and CA share an internal signer network; CA has no database-network attachment |
+| Edge networks | Each application has its own non-internal bridge for host port publication, not a shared identity/submission network; this permits application outbound traffic and is not an egress firewall |
+| Storage | Independent named database volumes; PostgreSQL 18 mounts at `/var/lib/postgresql`; no application host mounts |
+| Hardening | Non-root users, read-only roots, dropped capabilities, no-new-privileges, and disabled Docker logging for every service; database writes use its volume and bounded temporary filesystems |
+| Limits | Each application: one CPU, 128 MiB memory/no extra swap, 64 processes; each database: one CPU, 512 MiB memory/no extra swap, 128 processes |
+| Shutdown | Applications get 10 seconds around their existing five-second shutdown; PostgreSQL gets 60 seconds and its upstream fast-shutdown signal |
+
+This follows the [Compose service specification](https://docs.docker.com/reference/compose-file/services/)
+and [file-mounted secrets](https://docs.docker.com/compose/how-tos/use-secrets/)
+(consulted 2026-10-28). A shared host/daemon administrator can still access both
+instances, secrets, and traffic. No TLS, production authentication, or anonymity
+guarantee is added. Never publish these ports publicly or use `-container-network`
+on a normal host process.
+
+`make up` validates secrets/configuration, runs `docker compose up --build --wait`,
+and checks the running stack. Container health means liveness and database bootstrap,
+not product readiness: `/readyz` remains `503`. `make smoke` checks the current
+stack without starting or deleting services. `make container-test` runs the
+[real-container checks](testing.md#container-infrastructure-checks) in a fresh project
+with generated secrets, ephemeral loopback ports, and disposable volumes. It removes
+only its own test containers, networks, and volumes; build images/cache remain.
+
+`make down` preserves database volumes. Initialization runs only on empty volumes;
+changing files does not rotate existing database passwords, and bootstrap SQL is
+not an upgrade runner. After failed initialization, inspect the failure and data
+before deciding whether to discard a synthetic volume. No automatic reset is used.
+
+Only when deliberately discarding **all local demo data**, remove the current
+Compose project's volumes with:
+
+```sh
+docker compose down --volumes
+```
+
+This does not delete `.secrets`. Never use volume deletion as recovery for real data.
+Application migrations, encrypted backup/restore exercises, container scanning,
+SBOMs, and production deployment remain Next work. Kubernetes/Helm stays optional.
 
 ## Production separation
 

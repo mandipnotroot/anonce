@@ -26,10 +26,13 @@ globalThis.onmessage = async (event) => {
   lastID = message.id;
   let output;
   try {
-    // Dispatch only the three named methods, never caller-selected properties.
+    // Dispatch only named methods, never caller-selected properties.
     switch (message.method) {
       case "create": output = await api.create(...message.inputs); break;
+      case "createConfirmed": output = await api.createConfirmed(...message.inputs); break;
       case "unlock": output = await api.unlock(...message.inputs); break;
+      case "backup": output = await api.backup(...message.inputs); break;
+      case "backupConfirmed": output = await api.backupConfirmed(...message.inputs); break;
       case "request": output = await api.request(); break;
     }
     if (!result(output, message.method)) { fail(); return; }
@@ -72,7 +75,7 @@ async function boot() {
   const { instance } = await WebAssembly.instantiate(bytes.subarray(0, size), go.importObject);
   const running = go.run(instance);
   api = globalThis.anonceMember;
-  if (!record(api, ["create", "unlock", "request", "lock", "close"])) throw new Error("unavailable bridge");
+  if (!record(api, ["create", "createConfirmed", "unlock", "backup", "backupConfirmed", "request", "lock", "close"])) throw new Error("unavailable bridge");
   globalThis.postMessage({ version, type: "ready" });
   // Any runtime exit is terminal. Recovery needs a new explicit instance.
   await running;

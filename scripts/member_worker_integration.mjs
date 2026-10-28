@@ -32,10 +32,12 @@ const password = decode(native.password), backup = decode(native.backup), key = 
 const exits = [];
 const workers = [];
 let mode;
-// Node supplies BroadcastChannel, but not a Window lifecycle event target.
+// Node supplies BroadcastChannel, but not Window/Document lifecycle facilities.
 const lifecycle = new EventTarget();
 globalThis.addEventListener = lifecycle.addEventListener.bind(lifecycle);
 globalThis.removeEventListener = lifecycle.removeEventListener.bind(lifecycle);
+globalThis.document = new EventTarget();
+globalThis.document.visibilityState = "visible";
 globalThis.Worker = class {
   constructor(url, options) {
     assert.equal(url.href, pathToFileURL(join(directory, "member-worker.mjs")).href);
@@ -51,7 +53,7 @@ globalThis.Worker = class {
 };
 const { MemberWorkerSession } = await import(pathToFileURL(join(directory, "member-client.mjs")));
 const sessions = [];
-const open = () => { const session = new MemberWorkerSession(); sessions.push(session); return session; };
+const open = (...args) => { const session = new MemberWorkerSession(...args); sessions.push(session); return session; };
 let exported;
 try {
   const session = open();
@@ -59,6 +61,8 @@ try {
   assert.equal(globalThis.Go, undefined, "runtime loaded into owner realm");
   assert.equal(globalThis.anonceMember, undefined, "private session loaded into owner realm");
   assert.equal(await session.request(), null);
+  assert.equal(await session.backup(password), null, "locked export admitted");
+  assert.equal(await session.backupConfirmed(password, password), null, "locked confirmed export admitted");
   const snapshot = password.slice();
   const restoring = session.unlock(snapshot, backup, key);
   snapshot.fill(0);
@@ -69,9 +73,67 @@ try {
   assert.equal(encode(backup), native.backup);
   restored.csr.fill(0); restored.publicKey.fill(0);
   assert.equal(encode((await session.request()).csr), native.csr);
+  const replacement = password.slice(); replacement[0] ^= 1;
+  assert.equal(await session.backupConfirmed(replacement, password), null, "mismatched export admitted");
+  assert.equal(encode((await session.request()).csr), native.csr, "mismatch changed retained key");
+  const exportInput = replacement.slice();
+  const exportConfirmation = replacement.slice();
+  const exporting = session.backupConfirmed(exportInput, exportConfirmation);
+  exportInput.fill(0); exportConfirmation.fill(0);
+  assert.equal(await session.backup(password), null, "concurrent export admitted");
+  const rebackup = await exporting;
+  assert.deepEqual(Object.keys(rebackup), ["backup"]);
+  const backupExport = encode(rebackup.backup);
   session.lock();
+  assert.equal(await session.closed, undefined);
   assert.equal(workers.at(-1).terminated, true);
   assert.equal(await session.request(), null);
+
+  const changed = open();
+  assert.equal(await changed.ready, true);
+  assert.equal(await changed.unlock(password, rebackup.backup, key), null);
+  assert.equal(encode((await changed.unlock(replacement, rebackup.backup, key)).csr), native.csr);
+  rebackup.backup.fill(0);
+  const cancelledExport = changed.backup(replacement);
+  changed.close();
+  assert.equal(await cancelledExport, null, "disposed export published output");
+  assert.equal(await changed.closed, undefined);
+  assert.equal(await changed.request(), null);
+  replacement.fill(0);
+
+  // A maximum-size, mixed Unicode text input must match independent UTF-8 bytes.
+  const text = " é😀\0".repeat(128);
+  const textBytes = new Uint8Array(Buffer.from(text, "utf8"));
+  const textSetup = open();
+  assert.equal(await textSetup.ready, true);
+  assert.equal(await textSetup.createWithPassphrase("é", "e\u0301"), null);
+  assert.equal(await textSetup.request(), null, "text mismatch generated a key");
+  const textCreated = await textSetup.createWithPassphrase(text, text);
+  assert.ok(textCreated);
+  textSetup.close();
+  const byteRestore = open();
+  assert.equal(await byteRestore.ready, true);
+  assert.equal(encode((await byteRestore.unlock(textBytes, textCreated.backup, textCreated.publicKey)).csr), encode(textCreated.csr));
+  textBytes.fill(0);
+  byteRestore.close();
+
+  const textExport = open();
+  assert.equal(await textExport.ready, true);
+  assert.ok(await textExport.unlock(password, backup, key));
+  assert.equal(await textExport.backupWithPassphrase(text, text.slice(0, -1) + "x"), null);
+  assert.equal(encode((await textExport.request()).csr), native.csr);
+  const textBackup = (await textExport.backupWithPassphrase(text, text)).backup;
+  textExport.close();
+  const textRestore = open();
+  assert.equal(await textRestore.ready, true);
+  assert.equal(await textRestore.unlockWithPassphrase("wrong synthetic input", textBackup, key), null);
+  const wrongTextKey = key.slice(); wrongTextKey[0] ^= 1;
+  assert.equal(await textRestore.unlockWithPassphrase(text, textBackup, wrongTextKey), null);
+  assert.equal(await textRestore.request(), null, "failed text unlock generated a replacement");
+  assert.equal(encode((await textRestore.unlockWithPassphrase(text, textBackup, key)).csr), native.csr);
+  const textPending = textRestore.backupWithPassphrase(text, text);
+  textRestore.close();
+  assert.equal(await textPending, null);
 
   const fresh = open();
   assert.equal(await fresh.ready, true);
@@ -82,11 +144,19 @@ try {
     assert.equal(await fresh.unlock(...inputs), null);
     assert.equal(await fresh.request(), null, "restoration failure created replacement key");
   }
+  assert.equal(await fresh.createConfirmed(password, wrong), null, "mismatched setup admitted");
+  assert.equal(await fresh.createConfirmed(password, password.subarray(1)), null, "unequal lengths admitted");
+  assert.equal(await fresh.request(), null, "failed confirmation created a key");
   wrong.fill(0);
-  const setup = await fresh.create(password);
+  const createInput = password.slice(), createConfirmation = password.slice();
+  const creating = fresh.createConfirmed(createInput, createConfirmation);
+  createInput.fill(0); createConfirmation.fill(0);
+  const setup = await creating;
   assert.notEqual(encode(setup.publicKey), native.publicKey);
-  exported = { backup: encode(setup.backup), csr: encode(setup.csr), publicKey: encode(setup.publicKey) };
+  exported = { backup: encode(setup.backup), csr: encode(setup.csr), publicKey: encode(setup.publicKey), backupExport,
+    textBackup: encode(textBackup) };
   fresh.close();
+  assert.equal(await fresh.closed, undefined);
   const again = open();
   assert.equal(await again.ready, true);
   assert.equal(encode((await again.unlock(password, setup.backup, setup.publicKey)).csr), exported.csr);
@@ -101,19 +171,37 @@ try {
   assert.equal(workers.at(-1).terminated, true);
   assert.equal(await cancelled.request(), null);
 
+  for (const state of ["startup", "idle", "pending"]) {
+    const controller = new AbortController();
+    const aborted = open(controller.signal), worker = workers.at(-1);
+    if (state !== "startup") assert.equal(await aborted.ready, true);
+    if (state === "idle") assert.ok(await aborted.unlock(password, backup, key));
+    const pending = state === "pending" ? aborted.unlock(password, backup, key) : null;
+    controller.abort("synthetic cancellation");
+    assert.equal(worker.terminated, true);
+    assert.equal(await aborted.closed, undefined);
+    assert.equal(await aborted.ready, state !== "startup");
+    if (pending) assert.equal(await pending, null);
+    assert.equal(await aborted.request(), null);
+    const count = workers.length;
+    assert.equal(await open(controller.signal).ready, false);
+    assert.equal(workers.length, count, "already-aborted signal started a worker");
+  }
+
   // Exercise the actual BroadcastChannel API with a live WASM worker, not only
   // the controlled channel harness. Node does not model browser partitioning.
   const notifier = new BroadcastChannel("anonce.member-lock.v1");
   try {
-    for (const state of ["startup", "pending"]) {
+    for (const state of ["startup", "idle", "pending"]) {
       const remote = open(), worker = workers.at(-1);
       let pending;
-      if (state === "pending") {
+      if (state !== "startup") {
         assert.equal(await remote.ready, true);
-        pending = remote.create(password);
+        if (state === "pending") pending = remote.create(password);
       }
       const exited = new Promise((resolve) => worker.thread.once("exit", resolve));
       notifier.postMessage("lock");
+      assert.equal(await remote.closed, undefined); // Observe even an idle owner without polling.
       if (pending) assert.equal(await pending, null);
       else await remote.ready; // Startup may win the race with notification delivery.
       await exited;
@@ -127,19 +215,76 @@ try {
   assert.equal(await hidden.ready, true);
   const hiding = hidden.create(password);
   lifecycle.dispatchEvent(new Event("pagehide"));
+  assert.equal(await hidden.closed, undefined);
   assert.equal(await hiding, null);
   assert.equal(workers.at(-1).terminated, true);
+
+  const background = open();
+  assert.equal(await background.ready, true);
+  const backgroundWorker = workers.at(-1);
+  assert.ok(await background.unlock(password, backup, key));
+  const backgroundPending = background.request();
+  globalThis.document.visibilityState = "hidden";
+  globalThis.document.dispatchEvent(new Event("visibilitychange"));
+  assert.equal(await background.closed, undefined);
+  assert.equal(await backgroundPending, null);
+  assert.equal(backgroundWorker.terminated, true);
+  assert.equal(await open().ready, false, "hidden page started a worker");
+  globalThis.document.visibilityState = "visible";
+  globalThis.document.dispatchEvent(new Event("visibilitychange"));
+  assert.equal(await background.request(), null, "visible page revived its old session");
+
+  // Synthetic clock jumps exercise actual worker replies without a long sleep or
+  // firing owner timers. They are not real browser/OS suspension measurements.
+  const performance = globalThis.performance, wall = Date.now;
+  try {
+    for (const boundary of ["startup", "operation", "lifetime-reply", "lifetime-call"]) {
+      let monotonic = performance.now(), now = wall();
+      globalThis.performance = { now: () => monotonic };
+      Date.now = () => now;
+      const expired = open(), worker = workers.at(-1);
+      if (boundary === "startup") {
+        now += 30_000;
+        assert.equal(await expired.ready, false, "late worker startup accepted");
+      } else {
+        assert.equal(await expired.ready, true);
+        if (boundary === "lifetime-reply") monotonic += 299_999;
+        const response = new Promise((resolve) => worker.thread.once("message", resolve));
+        const pending = expired.unlock(password, backup, key);
+        if (boundary === "operation") now += 120_000;
+        if (boundary === "lifetime-reply") monotonic++;
+        const message = await response;
+        assert.equal(encode(message.result.csr), native.csr, "worker did not produce a valid restoration reply");
+        if (boundary === "lifetime-call") {
+          assert.ok(await pending);
+          now += 300_000;
+          assert.equal(await expired.request(), null, "expired worker admitted more work");
+        } else {
+          assert.equal(await pending, null, "overdue worker result published");
+        }
+      }
+      assert.equal(await expired.closed, undefined);
+      assert.equal(worker.terminated, true);
+      assert.equal(await expired.request(), null, "expired worker restarted");
+    }
+  } finally {
+    globalThis.performance = performance;
+    Date.now = wall;
+  }
 
   for (const failure of ["fetch-error", "http-error", "bad-wasm", "oversized"]) {
     mode = failure;
     const failed = open();
     assert.equal(await failed.ready, false);
+    assert.equal(await failed.closed, undefined);
     assert.equal(await failed.create(password), null);
     assert.equal(workers.at(-1).terminated, true);
   }
   mode = undefined;
   // Exercise the real worker's replay and malformed-command fail-closed paths.
   for (const malformed of [{ version: 2, id: 1, method: "request", inputs: [] },
+    { version: 1, id: 2, method: "createConfirmed", inputs: [password] },
+    { version: 1, id: 2, method: "backupConfirmed", inputs: [password, new Uint8Array(1025)] },
     { version: 1, id: 1, method: "unlock", inputs: [password] },
     { version: 1, id: 1, method: "close", inputs: [] },
     { version: 1, id: 1, method: "request", inputs: [] }]) {
@@ -155,6 +300,7 @@ try {
     });
     worker.thread.postMessage(malformed);
     await failed;
+    assert.equal(await victim.closed, undefined);
     assert.equal(worker.terminated, true);
     assert.equal(await victim.request(), null);
   }

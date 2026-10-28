@@ -9,7 +9,8 @@ Status: shared in-memory device-backup encryption and local member/reviewer-key
 generation, encrypted export, validated import, and an offline backup CLI are
 implemented, along with local member certificate requests and in-memory member
 sessions, a separate development-only WASM member bridge, and a local dedicated-worker
-host. Browser page custody, round binding, recovery, enrollment, and signing
+host with a separate synthetic browser-test harness. Product browser custody,
+round binding, recovery, enrollment, and signing
 services are not implemented.
 
 ## Browser account vault
@@ -170,9 +171,12 @@ I/O. It uses the existing [profiles](cryptography.md#in-memory-member-session-co
 | Method | Behavior |
 | --- | --- |
 | `Create(ctx, password)` | From locked/idle state, generate a key, encrypt its backup, and prepare a CSR; retain the key only on success; return encrypted backup and public enrollment material |
+| `CreateConfirmed(ctx, password, confirmation)` | Require matching bounded password bytes before calling `Create`; mismatch creates no key or backup |
 | `Unlock(ctx, password, backup, expected)` | From locked/idle state, validate a backup and require its full public key to match the supplied 32-byte expected key before preparing a CSR or retaining the key; return public enrollment material only |
 | `Request(ctx)` | Prepare the same fixed, identity-free CSR for the unlocked key; fail while locked |
-| `Lock()` | Clear the owned private buffer and cancel pending setup/restoration; safe to repeat |
+| `Backup(ctx, password)` | From unlocked/idle state, encrypt the same member key into a fresh profile-2 backup; return ciphertext only, without retaining the password or changing existing backups |
+| `BackupConfirmed(ctx, password, confirmation)` | Require matching bounded replacement passwords before calling `Backup`; mismatch leaves the unlocked key unchanged and returns no ciphertext |
+| `Lock()` | Clear the owned private buffer and cancel pending setup/restoration/export; safe to repeat |
 
 Public enrollment material contains an independently owned 32-byte Ed25519 public
 key and 129-byte CSR. Creation also returns the unchanged 108-byte member backup.
@@ -180,6 +184,29 @@ The session retains neither passwords nor encrypted backups. Inputs remain
 caller-owned and must not be mutated during calls; clear passwords after use.
 Persisting a returned backup safely remains an integration responsibility. A
 successful local setup does not mean a backup was stored or enrollment completed.
+
+Backup export supports future browser local-passphrase changes without exporting
+private bytes or opening an old backup again. It returns a caller-owned 108-byte
+encrypted backup. The confirmed methods below support matching local passwords;
+safe persistence and a user interface remain host responsibilities. This is not
+an account-password change, key rotation, recovery, or revocation. Existing backups
+and passwords remain valid for their copies. No server update or deletion occurs.
+
+The confirmed methods accept two independently supplied 1–1024-byte passwords.
+They validate both bounds and compare exact opaque bytes through Go's
+`crypto/subtle.ConstantTimeCompare` before key generation, private-key snapshot,
+or derivation. There is no trimming, normalization, text encoding, or password-strength
+check. Invalid sizes return `keystore.ErrInvalidInput`; a mismatch returns
+`ErrPasswordMismatch`, without reflecting inputs or changing session state.
+Both buffers remain caller-owned and must not change until return; clear both
+after use. Matching inputs can alias. Existing single-password methods remain
+available for callers that already provide confirmation separately.
+
+Confirmation prevents accidental mismatched setup/export, not a hostile host,
+weak passwords, loss of backup, account takeover, or old-backup use. Hosts must
+obtain both entries independently; passing the same entry twice supplies no user
+confirmation. The worker's [opt-in text interface](#browser-passphrase-text-interface)
+fixes an encoding; accessible prompts and independent entry remain host responsibilities.
 
 Unlock requires an independently trusted expected key. Copying that key from the
 backup's server metadata alone does not establish substitution protection against
@@ -190,13 +217,17 @@ not reach the anonymous submission origin.
 
 Methods are concurrency-safe, but a session must not be copied after use. Setup
 and restoration reject an unlocked or busy session without replacing its key.
-Only one such operation is admitted per session; cancelled work holds admission
-until cleanup finishes. Lock need not wait for Argon2id, but an active derivation
+Only one setup, restoration, or backup export is admitted per session; cancelled
+work holds admission until cleanup finishes. Lock need not wait for Argon2id, but an active derivation
 must finish before owned pending buffers can be cleared. Lock and final key
 installation are serialized, preventing cancelled pending work from unlocking the
 session later. A lock after installation may race a successful return; it does
 not invalidate public material or encrypted backups already prepared. Request
 signing is serialized with lock, which can briefly wait for that bounded call.
+Export snapshots the retained key under the session lock, then releases that lock
+for derivation. Lock cancels export and clears the retained key without waiting
+for derivation; the owned temporary key copy is cleared before export releases admission. Cancellation
+of export alone leaves the session unlocked. Requests can proceed during export.
 
 Callers must limit session counts and unlocked lifetimes and explicitly lock on
 logout, account switch, or disposal. Operation contexts cancel individual calls,
@@ -624,8 +655,11 @@ After a trusted host starts this module with the matching `Go.run`,
 | Method | Contract |
 | --- | --- |
 | `create(password)` | One `Uint8Array` of 1–1024 opaque password bytes; automatically generate a member key and return a Promise of `{publicKey, csr, backup}` |
+| `createConfirmed(password, confirmation)` | Two `Uint8Array` passwords with the same independent bounds; use shared Go confirmation before setup; same result as `create`, or `null` on mismatch |
 | `unlock(password, backup, expected)` | Three `Uint8Array` inputs: password as above, exactly 108 backup bytes, and an independently trusted 32-byte expected public key; return a Promise of `{publicKey, csr}` only after typed validation and matching |
 | `request()` | No arguments; Promise of `{publicKey, csr}` for the unlocked session |
+| `backup(password)` | One password `Uint8Array` with the same bounds as creation; from an unlocked session, Promise of `{backup}` containing only a fresh 108-byte encrypted backup of the retained key |
+| `backupConfirmed(password, confirmation)` | Two bounded `Uint8Array` passwords; use shared Go confirmation before encrypted export; same result as `backup`, or `null` on mismatch |
 | `lock()` | No arguments; clear the owned key and cancel pending work; return `null`; safe to repeat |
 | `close()` | No arguments; lock, cancel, wait for pending input cleanup and Promise settlement, remove the namespace, release callbacks, and let `Go.run` finish; return `null` |
 
@@ -633,8 +667,8 @@ Data methods resolve to `null` for invalid types/arity/sizes, unavailable state,
 cancellation, or validation failure. They do not expose internal errors or fall
 back to key creation. Extra arguments to `lock`/`close` return `null` without acting.
 Results contain fresh `Uint8Array` buffers: 32 public-key bytes, 129 CSR bytes,
-and, on creation only, 108 encrypted backup bytes. No raw-private-key or arbitrary
-message-signing interface exists. Existing cryptographic profiles are unchanged.
+and 108 encrypted backup bytes on creation or backup export. No raw-private-key
+or arbitrary message-signing interface exists. Existing cryptographic profiles are unchanged.
 
 All inputs are branded and bounded before copying any bytes. Proxies, strings,
 other views, detached/empty arrays, and shared backing memory fail without coercion.
@@ -642,6 +676,10 @@ Intrinsic typed-array getters ignore shadowed caller properties. Accepted bytes
 are snapshotted synchronously before returning the Promise. Clear caller password
 buffers after invocation; the adapter clears its owned copies before settlement.
 It does not modify caller inputs or retain passwords/backups after completion.
+The confirmed methods bound both inputs before copying either, snapshot both in
+the invoking event turn, and clear both owned Go buffers before settlement. They
+do not compare password contents in JavaScript. Mismatch returns only `null`,
+leaves the session state unchanged, and never falls back to a single-password call.
 
 Only one data operation is admitted at a time, before input copying or goroutine
 creation. Setup/restoration also reject an unlocked session without replacing its
@@ -673,35 +711,76 @@ measurement, UI responsiveness, or browser custody evidence. See
 
 `make member-wasm` also packages `member-client.mjs`, `member-worker.mjs`, and
 `protocol.mjs` with the manifest and notices. These are development-only assets,
-not served by the HTTP shell. Use synthetic inputs only pending independent review.
+not served by the HTTP shell. A separate [browser-test host](testing.md#member-worker-browser-checks)
+serves them only while the opt-in synthetic checks run, not on a product origin.
+Use synthetic inputs only pending independent review.
 The dedicated module worker wraps the existing member bridge. Its contract uses the
 [WHATWG HTML worker and messaging model](https://html.spec.whatwg.org/multipage/workers.html)
 (Living Standard consulted 2026-10-27) and the ECMAScript 2025 byte-array semantics
 linked above. No new cryptographic construction or backup format is introduced.
 
 Import `MemberWorkerSession` from `member-client.mjs` in a trusted identity-side
-host. Construction starts one worker with fixed relative assets and omitted
+host. Construction accepts no arguments, `undefined`, or one platform `AbortSignal`.
+Invalid signals or extra arguments close the new instance without starting a worker.
+Construction starts one worker with fixed relative assets and omitted
 credentials. At most one live instance is admitted per module realm; a second
 instance resolves `ready` to `false` without starting another worker. This is not
-a cross-tab or cross-realm limit. BroadcastChannel and global page event APIs are
-required before starting a worker; missing or failing facilities reject startup
-without an uncoordinated fallback. The runtime is never loaded into the owner realm.
+a cross-tab or cross-realm limit. BroadcastChannel, global page event APIs, and a
+visible owner document with visibility events are required before starting a worker;
+missing or failing facilities reject startup without an uncoordinated fallback.
+The runtime is never loaded into the owner realm.
 
 | Interface | Behavior |
 | --- | --- |
 | `ready` | Promise of `true` after runtime startup, otherwise `false`; data calls before readiness return `null`, never queue |
+| `closed` | Stable Promise resolving once to `undefined` after terminal local cleanup, including failed construction; never rejects or exposes a reason |
 | `create(password)`, `unlock(password, backup, expected)`, `request()` | Same byte sizes, arity, public/encrypted results, and Promise/null failures as the direct bridge; one operation admitted before copying/posting |
+| `backup(password)` | Same bounded password and ciphertext-only result as the direct bridge; existing operation/lifetime deadlines and terminal cancellation apply without extending unlocked lifetime |
+| `createConfirmed(password, confirmation)`, `backupConfirmed(password, confirmation)` | Same two-input bounds, shared Go confirmation, and public/encrypted results as the direct bridge; both inputs snapshotted/transferred only after admission; mismatch is a nonterminal `null` |
+| `createWithPassphrase(text, confirmation)`, `backupWithPassphrase(text, confirmation)`, `unlockWithPassphrase(text, backup, expected)` | Opt-in [UTF-8 text interface](#browser-passphrase-text-interface) over existing confirmed setup/export and expected-key restoration; no new worker commands |
 | `lock()` | No arguments; notify participating peers, then synchronously terminate locally and resolve pending work to `null`, even if posting fails; repeated calls are safe; extra arguments do nothing |
 | `close()` | No arguments; synchronously detach listeners, terminate locally, and resolve pending work to `null`, without notifying peers; repeated calls are safe; extra arguments do nothing |
 | `lockMemberWorkers()` | Separate module export, no arguments; post a lock even without a live local owner, close any local owner and the temporary channel; return `true` if posting succeeded, otherwise `false`; extra arguments return `false` without acting |
 
-Inputs are checked with intrinsic getters before copying any bytes. Nonshared
+`new MemberWorkerSession(controller.signal)` ties the whole owner's lifetime to a
+host cancellation scope. An already-aborted signal starts no worker or channel.
+Aborting during startup, idle custody, or pending work performs the same terminal
+local cleanup as `close()`, without notifying peers. Pending operations resolve to
+`null`; `closed` resolves without exposing the abort reason. Previously settled
+results stay unchanged. Cancellation never aborts the supplied controller or
+automatically restores a session. Use an explicit new owner with a fresh signal
+after cancellation; this is not per-operation cancellation that retains a key.
+
+The abort listener is removed on every terminal path. Platform accessors ignore
+shadowed signal properties, and admission/readiness/reply checks recheck the
+aborted state even if another event listener suppressed delivery. The host and
+platform remain trusted; a blocked owner cannot handle cancellation until it
+resumes. This follows the [DOM abort interfaces](https://dom.spec.whatwg.org/#aborting-ongoing-activities)
+(Living Standard consulted 2026-10-28), with the existing Promise/null failure
+contract rather than exposing host-provided abort reasons.
+
+Byte inputs are checked with intrinsic getters before copying any bytes. Nonshared
 `Uint8Array` views are snapshotted and transferred without detaching or modifying
 caller inputs. Clear caller passwords after invocation. Worker snapshots are cleared
 before posting results on normal completion. Lock/disposal terminates from the owner
 instead of waiting for a lock queued behind CPU-bound derivation. It permanently
 closes that instance; a caller must explicitly construct a new locked instance.
 There is no automatic restart, fallback, or replacement key on failed restoration.
+
+Hosts can subscribe to `closed` immediately after construction, without polling or
+opening another notification channel. It settles after listener/channel/timer cleanup,
+worker termination has been requested, pending work has been resolved to `null`, and
+local owner admission has been released. Already-settled `ready` and operation results
+are unchanged. Invalid inputs, busy calls, and ordinary `null` operation results do
+not close a live owner. Late subscribers observe the same settled Promise.
+
+Use this local notification to clear a future UI's unlocked state. Promise handlers
+run asynchronously on the owner event loop; they cannot run while it is suspended
+or after its realm is destroyed. Settlement is not proof of worker exit, memory
+erasure, peer termination, account logout, or revocation. It carries no secrets,
+identifiers, error details, or timestamps and adds no persistence or new messages.
+Handlers follow [ECMAScript 2025 Promise semantics](https://262.ecma-international.org/16.0/#sec-promise.prototype.then)
+(consulted 2026-10-28).
 
 The local version-1 transport uses `{version, id, method, inputs}` commands and
 `{version, id, result}` replies, with strictly increasing positive safe-integer IDs.
@@ -713,13 +792,64 @@ directly or attach other message listeners to a session's worker.
 
 Startup is limited to 30 seconds, an operation to 120 seconds, and the instance's
 total lifetime to five minutes from construction. These are fixed development
-limits, not measured browser support budgets. Owner timers can be delayed by a
-blocked/suspended owner event loop, so they do not establish hard wall-clock expiry.
-Timeouts, load errors, and message decoding errors close the instance without
-output. WASM fetches use a fixed relative URL, omitted credentials, no referrer,
+limits, not measured browser support budgets. In addition to timeout callbacks,
+the owner checks elapsed monotonic and wall time before data admission, readiness,
+reply publication, and on visibility events. Reaching either clock's deadline
+terminates locally, even if the timeout callback has not run. An overdue busy call
+also cancels pending work instead of leaving it available for later publication.
+
+Both `performance.now()` and `Date.now()` are required and captured per owner.
+Missing, throwing, invalid, or backward clock readings fail closed. A wall-clock
+correction can therefore require explicit restoration; it never extends a session.
+Clock readings remain local and are not included in messages or persisted. The
+clock reference is [High Resolution Time Level 3, Working Draft 2026-09-01](https://www.w3.org/TR/2026/WD-hr-time-3-20260901/),
+not a final Recommendation, and [ECMAScript 2025 `Date.now`](https://262.ecma-international.org/16.0/#sec-date.now)
+(consulted 2026-10-28).
+
+A blocked/suspended owner cannot run these checks or terminate a worker until it
+resumes. These guards reject observed overdue work; they do not establish hard
+wall-clock expiry, reliable suspension handling, or a defense against a hostile
+host/clock.
+Timeouts, load errors, and message decoding errors close the instance without output.
+WASM fetches use a fixed relative URL, omitted credentials, no referrer,
 no redirects/cache, and a bounded 8 MiB stream. Imports still need a trusted host
 and reviewed browser delivery policy; local manifest hashes do not authenticate a
 malicious distributor.
+
+### Browser passphrase text interface
+
+The development worker owner accepts primitive strings through
+`createWithPassphrase(text, confirmation)`, `backupWithPassphrase(text, confirmation)`,
+and `unlockWithPassphrase(text, backup, expected)`. These use the existing confirmed
+setup/export and expected-key restoration commands, with unchanged public/encrypted
+results and Promise/`null` failures. Existing byte methods remain available for
+opaque passwords that cannot be represented as text.
+
+The [encoding contract](cryptography.md#browser-passphrase-text-encoding) preserves
+exact UTF-8 bytes and rejects malformed UTF-16 or passwords outside 1–1024 encoded
+bytes without truncation. Canonically equivalent spellings are not interchangeable.
+Setup/export require two independent entries; comparison occurs in shared Go.
+Missing `TextEncoder.encodeInto` or `String.prototype.isWellFormed` rejects text
+operations without falling back to another encoding or an unconfirmed call.
+The latter follows [ECMAScript 2025](https://262.ecma-international.org/16.0/#sec-string.prototype.iswellformed)
+(consulted 2026-10-28).
+
+Unavailable/busy owners reject before encoding. String type, arity, UTF-16 length,
+well-formedness, and backup/expected-key byte metadata are checked before allocating
+password buffers. Each encoding uses at most 1024 mutable bytes; setup/export use
+at most two such buffers. Partial encodings fail without posting. Encoded buffers
+are cleared synchronously after the existing owner snapshots/transfers them, including
+failure paths, before the call returns its Promise. Existing deadlines and terminal
+lock, disposal, visibility, and abort behavior still apply.
+
+JavaScript strings are immutable and cannot be cleared. This adapter retains no
+text in session state, but caller strings, DOM fields, browser/runtime copies, and
+password-manager state remain outside buffer cleanup. A future host must clear
+entry controls promptly and avoid retaining strings across asynchronous work.
+Do not interpret this interface as complete erasure, a password-strength check,
+or independent human confirmation. No input form, product delivery, storage, account
+authentication, enrollment, PRF, or recovery is added. The read-only shell still
+accepts no secrets. See [test evidence](testing.md#wasm-member-session-checks).
 
 ### Lock notifications and page disposal
 
@@ -739,11 +869,22 @@ is closed immediately after posting, and no lock state is persisted.
 
 Global `pagehide` terminates locally, including when the page enters the back/forward
 cache. Returning to that page does not restart or unlock the old instance. This
-does not detect every freeze, background transition, process kill, or mobile
-shutdown; page events and owner timers can be delayed or absent.
+also applies when the owner document's `visibilityState` stops being `"visible"`.
+The owner listens for `visibilitychange`, rechecks visibility before admitting data
+calls or publishing worker replies, and rejects construction on hidden pages.
+Missing, unknown, or failed visibility reads terminate without fallback. Listeners
+are removed from the same document on every termination path.
+
+Background locking is local, not a peer notification or account logout. Returning
+to the foreground requires a new explicit owner and local restoration. Pending
+operations resolve to `null`; previously returned public material and encrypted
+backups are not retracted. This intentionally interrupts setup/restoration on a tab
+switch or minimization. Future product UX must explain that interruption and request
+local unlock again, not silently resume or generate a replacement key.
 
 This follows the [WHATWG BroadcastChannel model](https://html.spec.whatwg.org/multipage/web-messaging.html#broadcasting-to-other-browsing-contexts)
-and [pagehide event](https://html.spec.whatwg.org/multipage/indices.html#event-pagehide)
+and [pagehide event](https://html.spec.whatwg.org/multipage/indices.html#event-pagehide),
+with [HTML page visibility](https://html.spec.whatwg.org/multipage/interaction.html#page-visibility)
 (Living Standard consulted 2026-10-28). Notifications reach eligible participants
 on the same origin and storage partition, not other origins, profiles, or devices.
 They are asynchronous and not durable or acknowledged: newly opened, suspended,
@@ -751,12 +892,17 @@ or nonparticipating contexts may miss them. A blocked event loop can delay locki
 and another owner can be explicitly constructed afterwards. Same-origin code can
 observe lock timing or cause denial of service by posting; this is not an
 authorization boundary, a cross-tab singleton, or reliable global revocation.
+Visibility is browser-reported, not proof of user presence or focus. Page events
+and timers may be delayed or absent; a hide/show transition not observed before
+suspension can be missed. These controls do not detect every freeze, process kill,
+or mobile shutdown and do not establish hard wall-clock expiry.
 
 Termination discards the worker without waiting for Go cleanup and cannot promise
 buffer clearing or complete erasure. The owner page sees unlock inputs and public
 results; a worker is not a boundary against hostile same-origin code. No UI, HTTP
 delivery/CSP changes, account binding, persistence, account logout integration, or
-supported-browser matrix is supplied. See [checks](testing.md#wasm-member-session-checks)
+supported-browser matrix is supplied. The isolated browser checks do not add these
+product capabilities. See [checks](testing.md#wasm-member-session-checks)
 and [compatibility](versioning.md#wasm-member-session-compatibility).
 
 ## Retention and destruction

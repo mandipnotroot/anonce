@@ -63,6 +63,22 @@ func TestHelp(t *testing.T) {
 	}
 }
 
+func TestContainerNetworkFlag(t *testing.T) {
+	t.Parallel()
+	for _, role := range []service.Role{service.CA, service.Issuer, service.Submission} {
+		for _, enabled := range []string{"true", "false"} {
+			cfg, err := parse(role, []string{"-source-url", sourceArg, "-listen", "0.0.0.0:8080", "-container-network=" + enabled}, io.Discard)
+			if enabled == "true" {
+				if err != nil || !cfg.ContainerNetwork || cfg.Listen != "0.0.0.0:8080" {
+					t.Fatalf("container opt-in rejected: %v", err)
+				}
+			} else if err == nil {
+				t.Fatal("explicit false permitted wildcard")
+			}
+		}
+	}
+}
+
 func TestDevelopmentStyleGuideFlag(t *testing.T) {
 	t.Parallel()
 	for _, role := range []service.Role{service.CA, service.Issuer, service.Submission} {

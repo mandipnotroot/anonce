@@ -39,21 +39,33 @@ Distinguish implemented from planned behavior.
 - `internal/client/membercsr`: local Ed25519 certificate requests and bounded
   profile validation; no identity claims, certificate issuance, or transport.
 - `internal/client/membersession`: in-memory member setup, required expected-key
-  restoration, fixed CSR requests, and explicit lock/cancellation; public-only
-  results and encrypted backups, no account binding or persistence.
+  restoration, fixed CSR requests, unlocked encrypted-backup export, and explicit
+  lock/cancellation, with opt-in confirmed setup/export passwords;
+  public-only results and encrypted backups, no account binding
+  or persistence.
 - `cmd/wasm`, `internal/clientwasm`: public-only member request verification using
   the shared parser, with opt-in expected-public-key matching; local WASM artifacts
   and Node compatibility checks, no page integration, device-key access, or enrollment.
 - `cmd/memberwasm`, `internal/memberwasm`: separate development-only WASM member
-  setup/restoration, fixed requests, and lock/shutdown using shared sessions;
+  setup/restoration, fixed requests, encrypted-backup export, and lock/shutdown
+  using shared sessions, including two-input confirmed setup/export;
   bounded byte inputs, public/encrypted outputs, native/Node backup checks;
   no page integration, account binding, storage, passkeys, or enrollment.
 - `internal/memberworker`: development-only dedicated-worker owner for that bridge,
   bounded/correlated transferred messages, single active owner per module realm,
-  fixed startup/operation/lifetime limits, terminal lock/disposal, secret-free
-  same-partition lock notifications, and local pagehide termination;
-  native/Node checks, no HTTP delivery, browser evidence, or account logout integration.
+  fixed startup/operation/lifetime limits with dual-clock deadline checks, terminal
+  lock/disposal with public closure observation and optional host-signal cancellation,
+  secret-free same-partition lock notifications, and local pagehide/hidden-page
+  termination, plus opt-in bounded UTF-8 text passphrases over confirmed setup/export
+  and expected-key restoration with synchronous encoding-buffer cleanup;
+  native/Node checks and an isolated synthetic browser-test harness; no product HTTP
+  delivery, supported-browser matrix, or account logout integration.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
+- `Dockerfile`, `compose.yaml`, `deploy/postgres/`, `scripts/containers.py`: local
+  non-root HTTP containers and separate PostgreSQL instances/volumes/credentials;
+  empty-volume role/schema bootstrap, loopback host publication, liveness probes,
+  secret preparation, and opt-in real-container checks; no application database
+  integration, migrations, encrypted database restoration, image scan, or product readiness.
 - Planned runtime layout also includes `migrations/`.
 
 ## Product direction
@@ -130,11 +142,20 @@ make wasm             # public-only Go WASM verifier, matching loader, hashes, s
 make wasm-test        # native/WASM public-request compatibility and bridge checks
 make member-wasm      # separate local member-session WASM and matching notices
 make member-wasm-test # native/Node backup compatibility, member bridge/worker checks
+make member-browser-test # opt-in synthetic Chromium checks; requires MEMBER_BROWSER
+make container-secrets # generate/validate local database secret files, no replacement
+make container-config # validate normalized Compose settings, no daemon required
+make up              # build/start/wait and verify the local demo stack
+make smoke           # inspect a running stack and its HTTP/database boundaries
+make down            # stop the demo stack without deleting database volumes
+make container-test  # isolated real-container/PostgreSQL checks; disposable test data
 ```
 
-See [testing](docs/testing.md) for required database, container, browser, and
-protocol targets, none available yet. WASM evidence covers request verification
-and local member sessions in Node, not browser custody. Add real Make targets with implementation.
+See [testing](docs/testing.md) for required full database, browser, container-scan,
+inventory, and protocol targets that remain unavailable. The opt-in container target
+checks infrastructure/bootstrap only. The separate opt-in browser target checks
+synthetic member workers, not product custody or the account/vault journey.
+Add real Make targets with implementation.
 No successful no-op checks or claims that unavailable commands passed.
 
 ## Engineering boundaries
@@ -171,6 +192,7 @@ No successful no-op checks or claims that unavailable commands passed.
 - Consult the official [Conventional Commits 1.0.0 specification](https://www.conventionalcommits.org/en/v1.0.0/)
   and follow it strictly for every commit and PR title.
 - Repository-specific types, scopes, and subject limits are defined in `scripts/commits.toml`.
+- Follow the maintainer [squash-merge title rule](CONTRIBUTING.md#squash-merge-commit-titles).
 - Keep commits atomic; commit lint and hooks must pass without bypass.
 - Follow the official [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html) and
   [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) guidance, with
@@ -178,8 +200,17 @@ No successful no-op checks or claims that unavailable commands passed.
 - Every PR needs a [SemVer impact label](docs/versioning.md#commit-and-pr-mapping)
   and Unreleased entry unless the documented
   exception label applies.
-- Use the [PR template](https://github.com/mandipnotroot/anonce/blob/main/.github/pull_request_template.md)
-  and request owner review.
+- Follow the [PR template](https://github.com/mandipnotroot/anonce/blob/main/.github/pull_request_template.md) strictly when creating
+  a PR. Preserve every section, section order, and checklist item. Replace guidance
+  with concise, change-specific details; do not omit the checklist or substitute a
+  custom structure. Check items only after verification or explicit contributor
+  confirmation. Request owner review only when the owner is not the PR author.
+- Use neutral, completed-change wording in PR descriptions, such as "Added" or
+  "Updated", rather than first-person "I/we" or task instructions such as "Add"
+  or "Update". Explain what changed, why, and what was tested in natural language,
+  not a progress report or exhaustive inventory. Keep evidence and limitations
+  concise, and link to canonical docs for detail. Preserve the required template,
+  including its checklist text. Do not invent test results, review, or approval.
 
 ## Licensing, tests, and documentation
 

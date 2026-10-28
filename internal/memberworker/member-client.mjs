@@ -5,6 +5,11 @@ import { inputViews, record, result, version, wipe } from "./protocol.mjs";
 
 let active = null;
 const lockChannel = "anonce.member-lock.v1";
+const startupLimit = 30_000, operationLimit = 120_000, lifetimeLimit = 300_000;
+const wellFormed = Function.call.bind(String.prototype.isWellFormed);
+const encodeInto = typeof globalThis.TextEncoder === "function" &&
+  TextEncoder.prototype.encodeInto?.bind(new TextEncoder());
+const passwordPlaceholder = new Uint8Array(1);
 
 // Hosts can notify peers on logout/account switch even after their local owner
 // expired. Success means posting succeeded, not that other contexts acknowledged.
@@ -33,48 +38,95 @@ export class MemberWorkerSession {
   #closed = false;
   #ready;
   #resolveReady;
+  #closure;
+  #resolveClosed;
   #startup;
   #operation;
   #lifetime;
   #channel = null;
   #pagehide = () => this.#stop();
   #listening = false;
+  #document = null;
+  #visibilitychange = () => this.#checkState();
+  #visibilityListening = false;
+  #clock = null;
+  #born = null;
+  #lastTime = null;
+  #signal = null;
+  #aborted = null;
+  #removeAbort = null;
+  #abort = () => this.#stop();
 
-  constructor() {
+  constructor(...args) {
     this.#ready = new Promise((resolve) => { this.#resolveReady = resolve; });
+    this.#closure = new Promise((resolve) => { this.#resolveClosed = resolve; });
     if (active !== null) {
       this.#stop();
       return;
     }
     active = this;
     try {
+      if (args.length > 1) { this.#stop(); return; }
+      const signal = args[0];
+      if (signal !== undefined) {
+        // Use platform accessors/methods, not caller-shadowed signal properties.
+        // Never read the reason: it can contain host-supplied sensitive data.
+        this.#aborted = Object.getOwnPropertyDescriptor(AbortSignal.prototype, "aborted").get.bind(signal);
+        if (this.#aborted() !== false) { this.#stop(); return; }
+        const add = EventTarget.prototype.addEventListener.bind(signal);
+        this.#removeAbort = EventTarget.prototype.removeEventListener.bind(signal);
+        this.#signal = signal;
+        add("abort", this.#abort, { once: true });
+        if (!this.#checkAbort()) return;
+      }
       // Required lifecycle facilities have no uncoordinated fallback. The fixed
       // channel deliberately contains no account, key, or session identifier.
       if (typeof globalThis.addEventListener !== "function" || typeof globalThis.removeEventListener !== "function") {
         this.#stop();
         return;
       }
+      this.#document = globalThis.document;
+      if (typeof this.#document?.addEventListener !== "function" || typeof this.#document?.removeEventListener !== "function" ||
+          !this.#checkVisibility()) {
+        this.#stop();
+        return;
+      }
+      const performance = globalThis.performance;
+      const monotonic = performance.now.bind(performance), wall = Date.now.bind(Date);
+      this.#clock = () => ({ monotonic: monotonic(), wall: wall() });
+      if (this.#checkState() === null) return;
       this.#channel = new BroadcastChannel(lockChannel);
       // Any traffic, including unknown versions or malformed data, locks locally.
       // Never inspect payloads or echo notifications back to other contexts.
       this.#channel.onmessage = this.#channel.onmessageerror = () => this.#stop();
       this.#listening = true;
       globalThis.addEventListener("pagehide", this.#pagehide);
+      this.#visibilityListening = true;
+      this.#document.addEventListener("visibilitychange", this.#visibilitychange);
+      if (this.#checkState() === null) return;
       this.#worker = new Worker(new URL("./member-worker.mjs", import.meta.url), { type: "module", credentials: "omit" });
       this.#worker.onmessage = (event) => this.#message(event.data);
       this.#worker.onerror = (event) => { event.preventDefault(); this.#stop(); };
       this.#worker.onmessageerror = () => this.#stop();
-      this.#startup = setTimeout(() => this.#stop(), 30_000);
-      this.#lifetime = setTimeout(() => this.#stop(), 300_000);
+      this.#startup = setTimeout(() => this.#stop(), startupLimit);
+      this.#lifetime = setTimeout(() => this.#stop(), lifetimeLimit);
     } catch {
       this.#stop();
     }
   }
 
   get ready() { return this.#ready; }
+  // Local terminal cleanup only, not worker exit, peer acknowledgement, or erasure.
+  get closed() { return this.#closure; }
 
   create(...inputs) { return this.#call("create", inputs); }
+  createConfirmed(...inputs) { return this.#call("createConfirmed", inputs); }
   unlock(...inputs) { return this.#call("unlock", inputs); }
+  backup(...inputs) { return this.#call("backup", inputs); }
+  backupConfirmed(...inputs) { return this.#call("backupConfirmed", inputs); }
+  createWithPassphrase(...inputs) { return this.#callWithPassphrase("createConfirmed", inputs, 2); }
+  unlockWithPassphrase(...inputs) { return this.#callWithPassphrase("unlock", inputs, 1); }
+  backupWithPassphrase(...inputs) { return this.#callWithPassphrase("backupConfirmed", inputs, 2); }
   request(...inputs) { return this.#call("request", inputs); }
   lock(...args) {
     if (args.length !== 0 || this.#closed) return null;
@@ -89,17 +141,49 @@ export class MemberWorkerSession {
   }
   close(...args) { if (args.length === 0) this.#stop(); return null; }
 
+  #callWithPassphrase(method, inputs, count) {
+    // Reject unavailable work before encoding secrets. The byte path rechecks
+    // lifecycle/deadlines after encoding and remains the only transport owner.
+    if (this.#checkState() === null || !this.#started || this.#pending !== null) return Promise.resolve(null);
+    const buffers = [];
+    try {
+      if (inputs.length !== (count === 1 ? 3 : 2) || !encodeInto) return Promise.resolve(null);
+      for (let i = 0; i < count; i++) {
+        const text = inputs[i];
+        if (typeof text !== "string" || text.length < 1 || text.length > 1024 || !wellFormed(text)) return Promise.resolve(null);
+      }
+      const candidate = inputs.slice();
+      for (let i = 0; i < count; i++) candidate[i] = passwordPlaceholder;
+      // Check backup/expected-key types and bounds before encoding any password.
+      if (inputViews(method, candidate) === null) return Promise.resolve(null);
+      for (let i = 0; i < count; i++) {
+        const buffer = new Uint8Array(1024);
+        buffers.push(buffer);
+        const { read, written } = encodeInto(inputs[i], buffer);
+        if (read !== inputs[i].length) return Promise.resolve(null); // Never truncate UTF-8.
+        candidate[i] = buffer.subarray(0, written);
+      }
+      // Snapshot/transfer synchronously; shared Go owns exact-byte confirmation.
+      return this.#call(method, candidate);
+    } catch {
+      return Promise.resolve(null);
+    } finally {
+      wipe(buffers); // Before return, not after the worker Promise settles.
+    }
+  }
+
   #call(method, inputs) {
     // Busy/not-ready/closed calls retain and post nothing, even transiently.
-    if (this.#closed || !this.#started || this.#pending !== null) return Promise.resolve(null);
+    const time = this.#checkState();
+    if (time === null || !this.#started || this.#pending !== null) return Promise.resolve(null);
     const views = inputViews(method, inputs);
     if (views === null) return Promise.resolve(null);
     if (this.#next === Number.MAX_SAFE_INTEGER) { this.#stop(); return Promise.resolve(null); }
     const snapshots = [];
-    const promise = new Promise((resolve) => { this.#pending = { id: ++this.#next, method, resolve }; });
+    const promise = new Promise((resolve) => { this.#pending = { id: ++this.#next, method, resolve, time }; });
     try {
       for (const view of views) snapshots.push(new Uint8Array(view));
-      this.#operation = setTimeout(() => this.#stop(), 120_000);
+      this.#operation = setTimeout(() => this.#stop(), operationLimit);
       this.#worker.postMessage({ version, id: this.#next, method, inputs: snapshots }, snapshots.map((view) => view.buffer));
     } catch {
       wipe(snapshots);
@@ -109,7 +193,7 @@ export class MemberWorkerSession {
   }
 
   #message(message) {
-    if (this.#closed) return;
+    if (this.#checkState() === null) return;
     if (!this.#started && record(message, ["version", "type"]) && message.version === version && message.type === "ready") {
       this.#started = true;
       clearTimeout(this.#startup);
@@ -127,9 +211,57 @@ export class MemberWorkerSession {
     pending.resolve(message.result);
   }
 
+  #checkState() {
+    if (!this.#checkAbort() || !this.#checkVisibility()) return null;
+    try {
+      const time = this.#clock();
+      // Never coerce a clock result or replace a failed clock with the other one.
+      // Wall time also catches elapsed time on platforms whose monotonic clock
+      // pauses during sleep. Neither clock can preempt a suspended owner.
+      const expired = (start, limit) => time.monotonic - start.monotonic >= limit || time.wall - start.wall >= limit;
+      if (Number.isFinite(time.monotonic) && time.monotonic >= 0 && time.monotonic <= Number.MAX_SAFE_INTEGER &&
+          Number.isSafeInteger(time.wall) &&
+          (this.#lastTime === null || (time.monotonic >= this.#lastTime.monotonic && time.wall >= this.#lastTime.wall)) &&
+          (this.#born === null || (!expired(this.#born, lifetimeLimit) && (this.#started || !expired(this.#born, startupLimit)))) &&
+          (this.#pending === null || !expired(this.#pending.time, operationLimit))) {
+        this.#born ??= time;
+        this.#lastTime = time;
+        return time;
+      }
+    } catch {
+      // Missing/failed clocks must not leave an owner with timer-only custody.
+    }
+    this.#stop();
+    return null;
+  }
+
+  #checkVisibility() {
+    if (this.#closed) return false;
+    try {
+      if (this.#document?.visibilityState === "visible") return true;
+    } catch {
+      // Missing/failed visibility reads must not allow background key custody.
+    }
+    this.#stop();
+    return false;
+  }
+
+  #checkAbort() {
+    if (this.#closed) return false;
+    try {
+      if (this.#signal === null || this.#aborted() === false) return true;
+    } catch {
+      // Failed signal reads must not permit further work or output.
+    }
+    this.#stop();
+    return false;
+  }
+
   #stop() {
     if (this.#closed) return;
     this.#closed = true;
+    if (this.#signal !== null) this.#removeAbort("abort", this.#abort);
+    this.#signal = this.#aborted = this.#removeAbort = null;
     clearTimeout(this.#startup);
     clearTimeout(this.#operation);
     clearTimeout(this.#lifetime);
@@ -137,6 +269,13 @@ export class MemberWorkerSession {
       globalThis.removeEventListener("pagehide", this.#pagehide);
       this.#listening = false;
     }
+    if (this.#visibilityListening) {
+      this.#document.removeEventListener("visibilitychange", this.#visibilitychange);
+      this.#visibilityListening = false;
+    }
+    this.#document = null;
+    this.#clock = null;
+    this.#born = this.#lastTime = null;
     if (this.#channel !== null) {
       this.#channel.onmessage = this.#channel.onmessageerror = null;
       this.#channel.close();
@@ -151,5 +290,6 @@ export class MemberWorkerSession {
     this.#pending?.resolve(null);
     this.#pending = null;
     if (active === this) active = null;
+    this.#resolveClosed();
   }
 }

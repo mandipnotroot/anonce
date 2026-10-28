@@ -36,10 +36,14 @@ func Run() {
 	// Invalid and busy calls resolve to null without starting work or retaining
 	// inputs. All data-operation methods consistently return promises.
 	rejected := func() any { return promise.Call("resolve", js.Null()) }
-	work := func(args []js.Value, unlock bool) any {
+	work := func(args []js.Value, method string) any {
+		unlock := method == "unlock"
+		confirmed := method == "createConfirmed" || method == "backupConfirmed"
 		count := 1
 		if unlock {
 			count = 3
+		} else if confirmed {
+			count = 2
 		}
 		if len(args) != count {
 			return rejected()
@@ -53,7 +57,11 @@ func Run() {
 			}
 			views[i], sizes[i] = view, size
 		}
-		if !validSizes(sizes[0], sizes[1], sizes[2], unlock) {
+		valid := validSizes(sizes[0], sizes[1], sizes[2], unlock)
+		if confirmed {
+			valid = validConfirmationSizes(sizes[0], sizes[1])
+		}
+		if !valid {
 			return rejected()
 		}
 		op := h.begin()
@@ -72,11 +80,20 @@ func Run() {
 				var enrollment *membersession.Enrollment
 				var backup []byte
 				var err error
-				if unlock {
+				switch method {
+				case "backup":
+					backup, err = h.session.Backup(op.ctx, inputs[0])
+				case "backupConfirmed":
+					backup, err = h.session.BackupConfirmed(op.ctx, inputs[0], inputs[1])
+				case "unlock":
 					enrollment, err = h.session.Unlock(op.ctx, inputs[0], inputs[1], inputs[2])
-				} else {
+				case "create", "createConfirmed":
 					var setup *membersession.Setup
-					setup, err = h.session.Create(op.ctx, inputs[0])
+					if confirmed {
+						setup, err = h.session.CreateConfirmed(op.ctx, inputs[0], inputs[1])
+					} else {
+						setup, err = h.session.Create(op.ctx, inputs[0])
+					}
 					if err == nil {
 						enrollment, backup = &setup.Enrollment, setup.Backup
 					}
@@ -91,7 +108,10 @@ func Run() {
 					resolve.Invoke(js.Null())
 					return
 				}
-				result := arrays.enrollment(enrollment)
+				result := make(map[string]any)
+				if enrollment != nil {
+					result = arrays.enrollment(enrollment)
+				}
 				if backup != nil {
 					result["backup"] = arrays.output(backup)
 					clear(backup)
@@ -103,8 +123,11 @@ func Run() {
 		defer executor.Release() // Promise invokes its executor synchronously.
 		return promise.New(executor)
 	}
-	create := bind(func(args []js.Value) any { return work(args, false) })
-	unlock := bind(func(args []js.Value) any { return work(args, true) })
+	create := bind(func(args []js.Value) any { return work(args, "create") })
+	createConfirmed := bind(func(args []js.Value) any { return work(args, "createConfirmed") })
+	unlock := bind(func(args []js.Value) any { return work(args, "unlock") })
+	backup := bind(func(args []js.Value) any { return work(args, "backup") })
+	backupConfirmed := bind(func(args []js.Value) any { return work(args, "backupConfirmed") })
 	request := bind(func(args []js.Value) any {
 		if len(args) != 0 {
 			return rejected()
@@ -133,7 +156,8 @@ func Run() {
 		return nil
 	})
 	global.Set("anonceMember", map[string]any{
-		"create": create, "unlock": unlock, "request": request, "lock": lock, "close": closeBridge,
+		"create": create, "unlock": unlock, "backup": backup, "request": request, "lock": lock, "close": closeBridge,
+		"createConfirmed": createConfirmed, "backupConfirmed": backupConfirmed,
 	})
 	defer global.Delete("anonceMember")
 	<-h.done

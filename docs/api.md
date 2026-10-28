@@ -18,11 +18,28 @@ HTTP routes and OpenAPI schemas are unchanged.
 The separate [local member-session bridge](key-management.md#local-wasm-member-sessions)
 also uses only an in-process interface. It adds no HTTP endpoint or OpenAPI schema;
 the services still handle no passwords, private keys, or encrypted member backups.
+Its unlocked `backup(password)` method returns only local encrypted bytes; it is
+not a vault upload or password-change HTTP operation.
+Local `createConfirmed` and `backupConfirmed` add password confirmation in shared
+Go only; neither introduces a request, server password handling, or OpenAPI change.
 Its [worker lock notifications](key-management.md#lock-notifications-and-page-disposal)
 are local browser messages, not a logout endpoint or server revocation API. HTTP
 behavior and OpenAPI schemas remain unchanged.
 
+The worker owner's local [`closed` Promise](key-management.md#local-member-worker-host)
+observes terminal cleanup without a server request or new worker message. It is not
+a logout acknowledgement; HTTP and OpenAPI contracts are unchanged.
+
+Its [text passphrase methods](key-management.md#browser-passphrase-text-interface)
+encode only locally into existing worker commands. No text passwords enter HTTP,
+and no OpenAPI schema or product route is added.
+
 ## Implemented infrastructure
+
+The [local container stack](deployment.md#container-stack) changes deployment only.
+Its explicit `-container-network` flag permits container-local IPv4 wildcard binding
+while Compose publishes only host loopback ports. `/healthz` still reports liveness,
+`/readyz` remains unavailable, and no HTTP route or OpenAPI schema is added.
 
 All three commands expose:
 
