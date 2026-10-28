@@ -205,7 +205,8 @@ available for callers that already provide confirmation separately.
 Confirmation prevents accidental mismatched setup/export, not a hostile host,
 weak passwords, loss of backup, account takeover, or old-backup use. Hosts must
 obtain both entries independently; passing the same entry twice supplies no user
-confirmation. Browser text-entry encoding and accessible prompts still need review.
+confirmation. The worker's [opt-in text interface](#browser-passphrase-text-interface)
+fixes an encoding; accessible prompts and independent entry remain host responsibilities.
 
 Unlock requires an independently trusted expected key. Copying that key from the
 backup's server metadata alone does not establish substitution protection against
@@ -736,6 +737,7 @@ The runtime is never loaded into the owner realm.
 | `create(password)`, `unlock(password, backup, expected)`, `request()` | Same byte sizes, arity, public/encrypted results, and Promise/null failures as the direct bridge; one operation admitted before copying/posting |
 | `backup(password)` | Same bounded password and ciphertext-only result as the direct bridge; existing operation/lifetime deadlines and terminal cancellation apply without extending unlocked lifetime |
 | `createConfirmed(password, confirmation)`, `backupConfirmed(password, confirmation)` | Same two-input bounds, shared Go confirmation, and public/encrypted results as the direct bridge; both inputs snapshotted/transferred only after admission; mismatch is a nonterminal `null` |
+| `createWithPassphrase(text, confirmation)`, `backupWithPassphrase(text, confirmation)`, `unlockWithPassphrase(text, backup, expected)` | Opt-in [UTF-8 text interface](#browser-passphrase-text-interface) over existing confirmed setup/export and expected-key restoration; no new worker commands |
 | `lock()` | No arguments; notify participating peers, then synchronously terminate locally and resolve pending work to `null`, even if posting fails; repeated calls are safe; extra arguments do nothing |
 | `close()` | No arguments; synchronously detach listeners, terminate locally, and resolve pending work to `null`, without notifying peers; repeated calls are safe; extra arguments do nothing |
 | `lockMemberWorkers()` | Separate module export, no arguments; post a lock even without a live local owner, close any local owner and the temporary channel; return `true` if posting succeeded, otherwise `false`; extra arguments return `false` without acting |
@@ -757,7 +759,7 @@ resumes. This follows the [DOM abort interfaces](https://dom.spec.whatwg.org/#ab
 (Living Standard consulted 2026-10-28), with the existing Promise/null failure
 contract rather than exposing host-provided abort reasons.
 
-Inputs are checked with intrinsic getters before copying any bytes. Nonshared
+Byte inputs are checked with intrinsic getters before copying any bytes. Nonshared
 `Uint8Array` views are snapshotted and transferred without detaching or modifying
 caller inputs. Clear caller passwords after invocation. Worker snapshots are cleared
 before posting results on normal completion. Lock/disposal terminates from the owner
@@ -813,6 +815,41 @@ WASM fetches use a fixed relative URL, omitted credentials, no referrer,
 no redirects/cache, and a bounded 8 MiB stream. Imports still need a trusted host
 and reviewed browser delivery policy; local manifest hashes do not authenticate a
 malicious distributor.
+
+### Browser passphrase text interface
+
+The development worker owner accepts primitive strings through
+`createWithPassphrase(text, confirmation)`, `backupWithPassphrase(text, confirmation)`,
+and `unlockWithPassphrase(text, backup, expected)`. These use the existing confirmed
+setup/export and expected-key restoration commands, with unchanged public/encrypted
+results and Promise/`null` failures. Existing byte methods remain available for
+opaque passwords that cannot be represented as text.
+
+The [encoding contract](cryptography.md#browser-passphrase-text-encoding) preserves
+exact UTF-8 bytes and rejects malformed UTF-16 or passwords outside 1–1024 encoded
+bytes without truncation. Canonically equivalent spellings are not interchangeable.
+Setup/export require two independent entries; comparison occurs in shared Go.
+Missing `TextEncoder.encodeInto` or `String.prototype.isWellFormed` rejects text
+operations without falling back to another encoding or an unconfirmed call.
+The latter follows [ECMAScript 2025](https://262.ecma-international.org/16.0/#sec-string.prototype.iswellformed)
+(consulted 2026-10-28).
+
+Unavailable/busy owners reject before encoding. String type, arity, UTF-16 length,
+well-formedness, and backup/expected-key byte metadata are checked before allocating
+password buffers. Each encoding uses at most 1024 mutable bytes; setup/export use
+at most two such buffers. Partial encodings fail without posting. Encoded buffers
+are cleared synchronously after the existing owner snapshots/transfers them, including
+failure paths, before the call returns its Promise. Existing deadlines and terminal
+lock, disposal, visibility, and abort behavior still apply.
+
+JavaScript strings are immutable and cannot be cleared. This adapter retains no
+text in session state, but caller strings, DOM fields, browser/runtime copies, and
+password-manager state remain outside buffer cleanup. A future host must clear
+entry controls promptly and avoid retaining strings across asynchronous work.
+Do not interpret this interface as complete erasure, a password-strength check,
+or independent human confirmation. No input form, product delivery, storage, account
+authentication, enrollment, PRF, or recovery is added. The read-only shell still
+accepts no secrets. See [test evidence](testing.md#wasm-member-session-checks).
 
 ### Lock notifications and page disposal
 

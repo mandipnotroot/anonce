@@ -155,6 +155,13 @@ properties described below.
 
 ### Local WASM member bridge
 
+- The worker's opt-in [text passphrase interface](key-management.md#browser-passphrase-text-interface)
+  bounds UTF-8 output, rejects unpaired surrogates instead of replacing them, and
+  preserves exact spelling without normalization. Setup/export still require shared
+  Go byte confirmation. Owned encoding buffers are cleared before invocation returns;
+  immutable strings, caller fields, autofill state, and runtime copies cannot be
+  cleared by this component. It supplies no prompt, password-strength policy, storage,
+  authentication, or protection from hostile host code.
 - Optional [confirmed setup/export](key-management.md#in-memory-member-sessions)
   rejects mismatched bounded password bytes in shared Go before key generation,
   private-key snapshot, or derivation. Both bridge/worker input copies are bounded;

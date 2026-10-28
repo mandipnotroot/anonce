@@ -127,6 +127,185 @@ function harness(t) {
   };
 }
 
+test("member worker text passphrases preserve exact UTF-8 and confirmed transport", async (t) => {
+  const h = harness(t), session = h.open(), worker = h.workers[0];
+  assert.equal(await session.createWithPassphrase("synthetic", "synthetic"), null);
+  worker.ready();
+  assert.equal(await session.ready, true);
+  const vectors = ["a", " ", "\0\r\n ", "é", "e\u0301", "\uFEFFx", "\uFFFD", "😀",
+    "a".repeat(1024), "é".repeat(512), "€".repeat(341) + "a", "😀".repeat(256)];
+  for (const text of vectors) {
+    for (const [method, transport, inputs, value] of [
+      ["createWithPassphrase", "createConfirmed", [text, text], setup()],
+      ["backupWithPassphrase", "backupConfirmed", [text, text], encrypted()],
+      ["unlockWithPassphrase", "unlock", [text, new Uint8Array(108), new Uint8Array(32)], enrollment()],
+    ]) {
+      const pending = session[method](...inputs);
+      const post = worker.posts.at(-1);
+      assert.equal(post.method, transport);
+      assert.deepEqual(post.inputs[0], new Uint8Array(Buffer.from(text, "utf8")));
+      if (transport !== "unlock") assert.deepEqual(post.inputs[1], post.inputs[0]);
+      assert.equal(await session.backupWithPassphrase(text, text), null, "busy text operation admitted");
+      worker.answer(value);
+      assert.deepEqual(await pending, value);
+    }
+  }
+  // Comparison belongs to shared Go, including canonically equivalent text.
+  const mismatch = session.createWithPassphrase("é", "e\u0301");
+  const post = worker.posts.at(-1);
+  assert.notDeepEqual(post.inputs[0], post.inputs[1]);
+  worker.answer(null);
+  assert.equal(await mismatch, null);
+  const pending = session.backupWithPassphrase("synthetic", "synthetic");
+  session.lock();
+  assert.equal(await pending, null);
+  assert.equal(await session.closed, undefined);
+  const count = worker.posts.length;
+  assert.equal(await session.createWithPassphrase("a", "a"), null);
+  assert.equal(worker.posts.length, count);
+});
+
+test("member worker text passphrases reject bounds, malformed Unicode, and coercion", async (t) => {
+  const h = harness(t), session = h.open(), worker = h.workers[0];
+  worker.ready();
+  assert.equal(await session.ready, true);
+  const hostile = new Proxy({}, { get() { assert.fail("inspected passphrase object"); } });
+  const invalid = [undefined, null, false, 7, {}, hostile, new String("synthetic"), Uint8Array.of(7),
+    "", "a".repeat(1025), "é".repeat(513), "€".repeat(342), "😀".repeat(257),
+    "\uD800", "\uDC00", "a\uD800b", "\uD800\uD800", "\uDC00\uD800"];
+  for (const text of invalid) {
+    assert.equal(await session.createWithPassphrase(text, "a"), null);
+    assert.equal(await session.createWithPassphrase("a", text), null);
+    assert.equal(await session.backupWithPassphrase(text, "a"), null);
+    assert.equal(await session.backupWithPassphrase("a", text), null);
+    assert.equal(await session.unlockWithPassphrase(text, new Uint8Array(108), new Uint8Array(32)), null);
+  }
+  for (const method of ["createWithPassphrase", "backupWithPassphrase", "unlockWithPassphrase"]) {
+    assert.equal(await session[method](), null);
+    assert.equal(await session[method]("a"), null);
+    assert.equal(await session[method]("a", "a", "extra", "extra"), null);
+  }
+  for (const [backup, expected] of [[new Uint8Array(107), new Uint8Array(32)],
+    [new Uint8Array(108), new Uint8Array(33)], [hostile, new Uint8Array(32)],
+    [new Uint8Array(new SharedArrayBuffer(108)), new Uint8Array(32)]]) {
+    assert.equal(await session.unlockWithPassphrase("a", backup, expected), null);
+  }
+  assert.equal(worker.posts.length, 0, "invalid text inputs reached worker");
+  const pending = session.request();
+  worker.answer(enrollment());
+  assert.deepEqual(await pending, enrollment(), "invalid text closed owner");
+});
+
+test("member worker text buffers clear before return on success and partial encoding failure", async (t) => {
+  const h = harness(t), buffers = [];
+  const original = TextEncoder.prototype.encodeInto;
+  let fail = false, afterEncode = null;
+  TextEncoder.prototype.encodeInto = function (text, buffer) {
+    buffers.push(buffer);
+    const result = Reflect.apply(original, this, [text, buffer]);
+    if (fail) throw new Error("synthetic encoder failure");
+    afterEncode?.();
+    return result;
+  };
+  let Owner;
+  try { ({ MemberWorkerSession: Owner } = await import("../internal/memberworker/member-client.mjs?text-cleanup")); }
+  finally { TextEncoder.prototype.encodeInto = original; }
+  const session = h.open(Owner), worker = h.workers[0];
+  worker.ready();
+  assert.equal(await session.ready, true);
+  for (const [text, confirmation, valid] of [["synthetic", "synthetic", true],
+    ["synthetic", "é".repeat(513), false], ["é".repeat(513), "a", false]]) {
+    const pending = session.createWithPassphrase(text, confirmation);
+    assert.ok(buffers.length > 0);
+    assert.ok(buffers.every((buffer) => buffer.every((byte) => byte === 0)), "text buffer retained before return");
+    if (valid) worker.answer(setup());
+    assert.deepEqual(await pending, valid ? setup() : null);
+    buffers.length = 0;
+  }
+  fail = true;
+  assert.equal(await session.createWithPassphrase("synthetic", "synthetic"), null);
+  assert.ok(buffers.every((buffer) => buffer.every((byte) => byte === 0)));
+  fail = false;
+  buffers.length = 0;
+  assert.equal(await session.unlockWithPassphrase("synthetic", new Uint8Array(1), new Uint8Array(32)), null);
+  assert.equal(buffers.length, 0, "encoded before binary input validation");
+  const pending = session.createWithPassphrase("a", "a");
+  buffers.length = 0;
+  assert.equal(await session.createWithPassphrase("a", "a"), null);
+  assert.equal(buffers.length, 0, "encoded while busy");
+  session.close();
+  assert.equal(await pending, null);
+  assert.equal(await session.createWithPassphrase("a", "a"), null);
+  assert.equal(buffers.length, 0, "encoded after closure");
+  const failed = h.open(Owner), failedWorker = h.workers.at(-1);
+  failedWorker.ready();
+  assert.equal(await failed.ready, true);
+  failedWorker.throwing = true;
+  assert.equal(await failed.createWithPassphrase("synthetic", "synthetic"), null);
+  assert.equal(buffers.length, 2);
+  assert.ok(buffers.every((buffer) => buffer.every((byte) => byte === 0)), "text buffer retained after transport failure");
+  assert.ok(failedWorker.failedInputs.every((input) => input.every((byte) => byte === 0)));
+  assert.equal(await failed.closed, undefined);
+  const expired = h.open(Owner), expiredWorker = h.workers.at(-1);
+  expiredWorker.ready();
+  assert.equal(await expired.ready, true);
+  buffers.length = 0;
+  afterEncode = () => { h.time.wall += 300_000; };
+  assert.equal(await expired.createWithPassphrase("a", "a"), null);
+  assert.equal(expiredWorker.posts.length, 0, "lifecycle not rechecked after encoding");
+  assert.ok(buffers.every((buffer) => buffer.every((byte) => byte === 0)));
+  assert.equal(await expired.closed, undefined);
+});
+
+test("member worker text passphrases have bounded generated Unicode admission checks", async (t) => {
+  const h = harness(t), session = h.open(), worker = h.workers[0];
+  worker.ready();
+  assert.equal(await session.ready, true);
+  const units = ["a", "é", "€", "😀", "\uD800", "\uDC00", "\0", " ", "e\u0301"];
+  for (let i = 0; i < 2048; i++) {
+    const text = (units[randomInt(units.length)].repeat(randomInt(1026)) + units[randomInt(units.length)]).slice(0, 1025);
+    const bytes = Buffer.from(text, "utf8");
+    const admitted = bytes.length > 0 && bytes.length <= 1024 && bytes.toString("utf8") === text;
+    const before = worker.posts.length;
+    const pending = session.createWithPassphrase(text, text);
+    assert.equal(worker.posts.length, before + Number(admitted));
+    if (admitted) {
+      assert.deepEqual(worker.posts.at(-1).inputs[0], new Uint8Array(bytes));
+      worker.answer(null);
+    }
+    assert.equal(await pending, null);
+  }
+});
+
+test("member worker missing text APIs fail without a byte or unconfirmed fallback", async (t) => {
+  const h = harness(t);
+  for (const missing of ["encoder", "encodeInto", "isWellFormed"]) {
+    const Encoder = globalThis.TextEncoder, encode = Encoder.prototype.encodeInto, well = String.prototype.isWellFormed;
+    let Owner;
+    try {
+      if (missing === "encoder") globalThis.TextEncoder = undefined;
+      if (missing === "encodeInto") Encoder.prototype.encodeInto = undefined;
+      if (missing === "isWellFormed") String.prototype.isWellFormed = undefined;
+      ({ MemberWorkerSession: Owner } = await import(`../internal/memberworker/member-client.mjs?missing-${missing}`));
+    } finally {
+      globalThis.TextEncoder = Encoder;
+      Encoder.prototype.encodeInto = encode;
+      String.prototype.isWellFormed = well;
+    }
+    const session = h.open(Owner), worker = h.workers.at(-1);
+    worker.ready();
+    assert.equal(await session.ready, true);
+    assert.equal(await session.createWithPassphrase("a", "a"), null);
+    assert.equal(await session.backupWithPassphrase("a", "a"), null);
+    assert.equal(await session.unlockWithPassphrase("a", new Uint8Array(108), new Uint8Array(32)), null);
+    assert.equal(worker.posts.length, 0);
+    const pending = session.createConfirmed(Uint8Array.of(7), Uint8Array.of(7));
+    worker.answer(setup());
+    assert.deepEqual(await pending, setup(), "existing byte interface changed");
+    session.close();
+  }
+});
+
 test("member worker owner admission, snapshots, public results, and terminal lock", async (t) => {
   const h = harness(t);
   const session = h.open();
@@ -575,7 +754,8 @@ test("member worker rejects delayed startup at either clock deadline without wai
 test("member worker enforces delayed operation deadlines before replies and busy calls", async (t) => {
   const h = harness(t);
   for (const clock of ["monotonic", "wall"]) {
-    for (const method of ["create", "createConfirmed", "unlock", "backup", "backupConfirmed", "request"]) {
+    for (const method of ["create", "createConfirmed", "unlock", "backup", "backupConfirmed", "request",
+      "createWithPassphrase", "unlockWithPassphrase", "backupWithPassphrase"]) {
       for (const elapsed of [119_999, 120_000, 120_001]) {
         for (const boundary of ["reply", "busy", "visibility"]) {
           const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
@@ -584,7 +764,9 @@ test("member worker enforces delayed operation deadlines before replies and busy
           h.time[clock] += 15_000;
           const inputs = { create: [Uint8Array.of(7)], createConfirmed: [Uint8Array.of(7), Uint8Array.of(7)],
             unlock: [Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32)], backup: [Uint8Array.of(7)],
-            backupConfirmed: [Uint8Array.of(7), Uint8Array.of(7)], request: [] };
+            backupConfirmed: [Uint8Array.of(7), Uint8Array.of(7)], request: [],
+            createWithPassphrase: ["a", "a"], backupWithPassphrase: ["a", "a"],
+            unlockWithPassphrase: ["a", new Uint8Array(108), new Uint8Array(32)] };
           const pending = session[method](...inputs[method]);
           const late = worker.onmessage, id = worker.posts.at(-1).id;
           h.time[clock] += elapsed;

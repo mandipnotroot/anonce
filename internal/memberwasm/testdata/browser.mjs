@@ -57,6 +57,31 @@ export async function run(native) {
     check(await session.closed === undefined);
     check(await session.request() === null);
 
+    const text = " é😀\0".repeat(128); // Synthetic 1024-byte UTF-8 input, not user entry.
+    const textSetup = await open();
+    check(await textSetup.createWithPassphrase("é", "e\u0301") === null);
+    check(await textSetup.request() === null);
+    const textCreated = await textSetup.createWithPassphrase(text, text);
+    check(textCreated !== null);
+    textSetup.close();
+    const byteRestore = await open(), textBytes = new TextEncoder().encode(text);
+    try {
+      check(encode((await byteRestore.unlock(textBytes, textCreated.backup, textCreated.publicKey)).csr) === encode(textCreated.csr));
+    } finally { textBytes.fill(0); byteRestore.close(); }
+    const textExport = await open();
+    check(await textExport.unlock(password, backup, key) !== null);
+    check(await textExport.backupWithPassphrase(text, text.slice(0, -1) + "x") === null);
+    check(encode((await textExport.request()).csr) === native.csr);
+    const textBackup = (await textExport.backupWithPassphrase(text, text)).backup;
+    textExport.close();
+    const textRestore = await open();
+    check(await textRestore.unlockWithPassphrase("wrong synthetic input", textBackup, key) === null);
+    check(await textRestore.request() === null);
+    check(encode((await textRestore.unlockWithPassphrase(text, textBackup, key)).csr) === native.csr);
+    const textPending = textRestore.backupWithPassphrase(text, text);
+    textRestore.close();
+    check(await textPending === null);
+
     const fresh = await open();
     const wrong = password.slice(); wrong[0] ^= 1;
     const mismatch = key.slice(); mismatch[31] ^= 1;
@@ -76,7 +101,8 @@ export async function run(native) {
     const setup = await creating;
     check(setup !== null && encode(setup.publicKey) !== native.publicKey);
     check(heartbeat > before); // UI event loop progressed during full-cost WASM work.
-    const exported = { backup: encode(setup.backup), publicKey: encode(setup.publicKey), csr: encode(setup.csr), backupExport };
+    const exported = { backup: encode(setup.backup), publicKey: encode(setup.publicKey), csr: encode(setup.csr), backupExport,
+      textBackup: encode(textBackup) };
     fresh.lock();
     check(await fresh.closed === undefined);
     check(await fresh.request() === null);

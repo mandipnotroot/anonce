@@ -101,6 +101,40 @@ try {
   assert.equal(await changed.request(), null);
   replacement.fill(0);
 
+  // A maximum-size, mixed Unicode text input must match independent UTF-8 bytes.
+  const text = " é😀\0".repeat(128);
+  const textBytes = new Uint8Array(Buffer.from(text, "utf8"));
+  const textSetup = open();
+  assert.equal(await textSetup.ready, true);
+  assert.equal(await textSetup.createWithPassphrase("é", "e\u0301"), null);
+  assert.equal(await textSetup.request(), null, "text mismatch generated a key");
+  const textCreated = await textSetup.createWithPassphrase(text, text);
+  assert.ok(textCreated);
+  textSetup.close();
+  const byteRestore = open();
+  assert.equal(await byteRestore.ready, true);
+  assert.equal(encode((await byteRestore.unlock(textBytes, textCreated.backup, textCreated.publicKey)).csr), encode(textCreated.csr));
+  textBytes.fill(0);
+  byteRestore.close();
+
+  const textExport = open();
+  assert.equal(await textExport.ready, true);
+  assert.ok(await textExport.unlock(password, backup, key));
+  assert.equal(await textExport.backupWithPassphrase(text, text.slice(0, -1) + "x"), null);
+  assert.equal(encode((await textExport.request()).csr), native.csr);
+  const textBackup = (await textExport.backupWithPassphrase(text, text)).backup;
+  textExport.close();
+  const textRestore = open();
+  assert.equal(await textRestore.ready, true);
+  assert.equal(await textRestore.unlockWithPassphrase("wrong synthetic input", textBackup, key), null);
+  const wrongTextKey = key.slice(); wrongTextKey[0] ^= 1;
+  assert.equal(await textRestore.unlockWithPassphrase(text, textBackup, wrongTextKey), null);
+  assert.equal(await textRestore.request(), null, "failed text unlock generated a replacement");
+  assert.equal(encode((await textRestore.unlockWithPassphrase(text, textBackup, key)).csr), native.csr);
+  const textPending = textRestore.backupWithPassphrase(text, text);
+  textRestore.close();
+  assert.equal(await textPending, null);
+
   const fresh = open();
   assert.equal(await fresh.ready, true);
   const wrong = password.slice(); wrong[0] ^= 1;
@@ -119,7 +153,8 @@ try {
   createInput.fill(0); createConfirmation.fill(0);
   const setup = await creating;
   assert.notEqual(encode(setup.publicKey), native.publicKey);
-  exported = { backup: encode(setup.backup), csr: encode(setup.csr), publicKey: encode(setup.publicKey), backupExport };
+  exported = { backup: encode(setup.backup), csr: encode(setup.csr), publicKey: encode(setup.publicKey), backupExport,
+    textBackup: encode(textBackup) };
   fresh.close();
   assert.equal(await fresh.closed, undefined);
   const again = open();

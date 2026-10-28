@@ -72,6 +72,10 @@ Available foundations:
   native/Node checks cover bounds, snapshots, failure state, and cancellation.
   Independent user-entry prompts, server replacement, and product UI remain
   integration work.
+  Opt-in worker text methods now provide bounded, exact UTF-8 passphrases for
+  confirmed setup/export and expected-key restoration, clearing owned encoding
+  buffers before return. Immutable strings cannot be erased. This is a development
+  interface, not an input form or a configured account unlock method.
   A public, secret-free `closed` Promise observes terminal local cleanup, including
   idle peer locks, without polling; it does not acknowledge worker exit or logout.
   An optional `AbortSignal` lets a future host cancel startup or restoration through

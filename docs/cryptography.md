@@ -140,6 +140,19 @@ does not bound the number of sessions a caller creates. See the
 [session lifecycle](key-management.md#in-memory-member-sessions) for ownership and
 integration limits. PRF wrapping and account recovery remain unspecified.
 
+### Browser passphrase text encoding
+
+The development worker's opt-in [text passphrase interface](key-management.md#browser-passphrase-text-interface)
+uses UTF-8 through the [WHATWG Encoding Standard](https://encoding.spec.whatwg.org/#interface-textencoder)
+(Living Standard consulted 2026-10-28). Only primitive, well-formed JavaScript
+strings are accepted, with 1–1024 encoded bytes. Unpaired UTF-16 surrogates fail
+before encoding, rather than being silently replaced with U+FFFD. No trimming,
+normalization, case folding, BOM insertion, or password-strength claim is added.
+Whitespace, NUL, and explicitly supplied U+FEFF remain part of the password.
+Setup/export confirmation still compares encoded bytes in shared Go, not JavaScript.
+This is an explicit text-to-byte adapter over profile 2, not a new backup format;
+the existing opaque-byte methods remain unchanged.
+
 ## Encryption and public proofs
 
 - HPKE base mode avoids identifying sender keys; token verification authorizes submission.

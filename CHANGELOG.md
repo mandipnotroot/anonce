@@ -10,6 +10,14 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Development member-worker `createWithPassphrase`, `backupWithPassphrase`, and
+  `unlockWithPassphrase` for strict, bounded UTF-8 text over existing confirmed
+  setup/export and expected-key restoration. Owned encoding buffers clear before
+  return; malformed Unicode and oversized encodings fail without truncation or
+  fallback. Immutable strings cannot be erased. Node bounds/cleanup/Unicode checks
+  and native/worker backup checks cover the interface; synthetic browser cases are
+  added but unverified. Byte methods, worker transport, HTTP, CLI, and cryptographic
+  formats are unchanged. No UI, storage, authentication, PRF, or recovery is added.
 - Opt-in confirmed member setup and encrypted-backup export through shared Go
   `CreateConfirmed`/`BackupConfirmed` and development WASM/worker
   `createConfirmed`/`backupConfirmed`. Bounded exact password matching precedes key

@@ -227,6 +227,14 @@ deploy every member artifact together. Older workers reject the new commands;
 there is no fallback to an unconfirmed operation. Version-1 envelopes, existing
 methods, HTTP, CLI, and cryptographic formats are unchanged.
 
+The worker owner's [text passphrase methods](key-management.md#browser-passphrase-text-interface)
+are additive opt-in interfaces requiring `semver:minor` review. They use the existing
+confirmed setup/export and expected-key restoration commands. Their strict UTF-8,
+well-formed-string, and encoded-size rules apply only to these methods; byte inputs,
+worker command allowlists, direct bridge, CLI, HTTP, and backup formats are unchanged.
+Changing this text encoding later requires breaking-impact review. There is no
+normalization, lossy conversion, or fallback to an unconfirmed operation.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

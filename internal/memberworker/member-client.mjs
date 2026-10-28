@@ -6,6 +6,10 @@ import { inputViews, record, result, version, wipe } from "./protocol.mjs";
 let active = null;
 const lockChannel = "anonce.member-lock.v1";
 const startupLimit = 30_000, operationLimit = 120_000, lifetimeLimit = 300_000;
+const wellFormed = Function.call.bind(String.prototype.isWellFormed);
+const encodeInto = typeof globalThis.TextEncoder === "function" &&
+  TextEncoder.prototype.encodeInto?.bind(new TextEncoder());
+const passwordPlaceholder = new Uint8Array(1);
 
 // Hosts can notify peers on logout/account switch even after their local owner
 // expired. Success means posting succeeded, not that other contexts acknowledged.
@@ -120,6 +124,9 @@ export class MemberWorkerSession {
   unlock(...inputs) { return this.#call("unlock", inputs); }
   backup(...inputs) { return this.#call("backup", inputs); }
   backupConfirmed(...inputs) { return this.#call("backupConfirmed", inputs); }
+  createWithPassphrase(...inputs) { return this.#callWithPassphrase("createConfirmed", inputs, 2); }
+  unlockWithPassphrase(...inputs) { return this.#callWithPassphrase("unlock", inputs, 1); }
+  backupWithPassphrase(...inputs) { return this.#callWithPassphrase("backupConfirmed", inputs, 2); }
   request(...inputs) { return this.#call("request", inputs); }
   lock(...args) {
     if (args.length !== 0 || this.#closed) return null;
@@ -133,6 +140,37 @@ export class MemberWorkerSession {
     return null;
   }
   close(...args) { if (args.length === 0) this.#stop(); return null; }
+
+  #callWithPassphrase(method, inputs, count) {
+    // Reject unavailable work before encoding secrets. The byte path rechecks
+    // lifecycle/deadlines after encoding and remains the only transport owner.
+    if (this.#checkState() === null || !this.#started || this.#pending !== null) return Promise.resolve(null);
+    const buffers = [];
+    try {
+      if (inputs.length !== (count === 1 ? 3 : 2) || !encodeInto) return Promise.resolve(null);
+      for (let i = 0; i < count; i++) {
+        const text = inputs[i];
+        if (typeof text !== "string" || text.length < 1 || text.length > 1024 || !wellFormed(text)) return Promise.resolve(null);
+      }
+      const candidate = inputs.slice();
+      for (let i = 0; i < count; i++) candidate[i] = passwordPlaceholder;
+      // Check backup/expected-key types and bounds before encoding any password.
+      if (inputViews(method, candidate) === null) return Promise.resolve(null);
+      for (let i = 0; i < count; i++) {
+        const buffer = new Uint8Array(1024);
+        buffers.push(buffer);
+        const { read, written } = encodeInto(inputs[i], buffer);
+        if (read !== inputs[i].length) return Promise.resolve(null); // Never truncate UTF-8.
+        candidate[i] = buffer.subarray(0, written);
+      }
+      // Snapshot/transfer synchronously; shared Go owns exact-byte confirmation.
+      return this.#call(method, candidate);
+    } catch {
+      return Promise.resolve(null);
+    } finally {
+      wipe(buffers); // Before return, not after the worker Promise settles.
+    }
+  }
 
   #call(method, inputs) {
     // Busy/not-ready/closed calls retain and post nothing, even transiently.

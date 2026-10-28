@@ -67,6 +67,7 @@ func testMemberCompatibility(t *testing.T, script string, args ...string) {
 		PublicKey    string `json:"publicKey"`
 		CSR          string `json:"csr"`
 		BackupExport string `json:"backupExport"`
+		TextBackup   string `json:"textBackup"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatal("invalid WASM result encoding")
@@ -111,5 +112,21 @@ func testMemberCompatibility(t *testing.T, script string, args ...string) {
 	if !bytes.Equal(restored, original) || bytes.Equal(exported[12:28], setup.Backup[12:28]) ||
 		bytes.Equal(exported[32:44], setup.Backup[32:44]) {
 		t.Fatal("WASM backup export changed the key or reused randomness")
+	}
+	if script != "member_wasm_test.mjs" {
+		textBackup, err := hex.DecodeString(result.TextBackup)
+		if err != nil || len(textBackup) != 108 {
+			t.Fatal("invalid text-passphrase backup encoding")
+		}
+		textPassword := bytes.Repeat([]byte(" é😀\x00"), 128) // Synthetic 1024-byte UTF-8 input.
+		defer clear(textPassword)
+		textKey, err := memberkey.Open(t.Context(), textPassword, textBackup)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer clear(textKey)
+		if !bytes.Equal(textKey, original) {
+			t.Fatal("text-passphrase export changed the member key")
+		}
 	}
 }

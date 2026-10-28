@@ -41,6 +41,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Member WASM admission sizes | Fixed-width integer fuzz inputs for password/backup/key lengths and operation kind; exact member bounds, no allocations or KDF work; byte parsing reuses shared backup/payload validation |
 | Browser-test asset manifest | `FuzzMemberBrowserManifest`: 4097-byte cap, exact fixed filename set, bounded synthetic assets, no KDF or network work |
 | Member worker transport | `member_worker_test.mjs`: exhaustive byte-size boundary sweep and 2048 generated commands per run, each with at most four views of 1025 elements; independent metadata admission oracle, no KDF or I/O |
+| Worker text passphrases | `member_worker_test.mjs`: 2048 generated Unicode strings per run, capped at 1025 UTF-16 units, checked against independent UTF-8 round-trip/byte-size admission; no KDF or I/O |
 | WASM request adapter | 259-byte request fuzz input cap, exact 258-byte ASCII hex representation before bounded shared CSR parsing; expected-key fuzzing also caps the key input at 65 bytes for an exact 64-byte ASCII hex representation; no KDF work |
 | CLI arguments | 8193-byte fuzz input cap; no file, network, or KDF work |
 | CLI expected-key record | 75-byte data and 9-byte kind fuzz caps; exact 72/74-byte lowercase kind-tagged lines, no file, network, or KDF work |
@@ -131,6 +132,7 @@ profile-2 nonce prefix and library composition.
 | Worker owner single-instance/operation admission, snapshots/transfers, input types/arity/bounds, hostile properties, timeout/termination, late replies, protocol/transport failures, and bounded command fuzzing | Named `node:test` cases in `scripts/member_worker_test.mjs`, through `make member-wasm-test` |
 | Ciphertext-only backup export, changed-password restoration, native exact-key/randomness compatibility, input snapshots, locked/invalid rejection, pending disposal/lock, unchanged deadlines, malformed reply rejection, and bounded command fuzzing | `TestMemberNativeWASMCompatibility`, `TestMemberNativeWorkerCompatibility`, named backup/protocol/deadline cases in `scripts/member_worker_test.mjs`; synthetic browser export cases are added but unverified |
 | Actual confirmed bridge/worker setup/export, native key/backup compatibility, mismatch without state change or fallback, dual input snapshots, hostile confirmation getters, invalid types/arity/bounds, terminal cancellation, unchanged deadlines, and bounded transport fuzzing | `TestMemberNativeWASMCompatibility`, `TestMemberNativeWorkerCompatibility`, named confirmed-operation/input/deadline/protocol cases in `scripts/member_worker_test.mjs`; synthetic browser confirmation cases are added but unverified |
+| Worker text UTF-8 preservation, Unicode/byte boundaries, malformed surrogate rejection, no coercion or normalization, shared confirmation, synchronous buffer clearing including partial/failed encoding, missing APIs without fallback, busy/closed rejection, unchanged deadlines, and bounded Unicode generation | Named text passphrase/buffer/API cases in `scripts/member_worker_test.mjs`; actual setup, byte/text restoration, native exact-key export, mismatch state, and cancellation in `TestMemberNativeWorkerCompatibility`; synthetic browser text cases are added but unverified |
 | Stable secret-free closure Promise, every terminal path during startup/idle/pending work, failed/denied construction, cleanup before observers, late subscribers, unchanged readiness, no nonterminal settlement, and explicit replacement | Named `node:test` closed Promise cases in `scripts/member_worker_test.mjs`; actual Node worker lock/disposal/failure/expiry observations in `TestMemberNativeWorkerCompatibility` |
 | Optional owner abort signal, pre-aborted/invalid admission without resources, startup/idle/pending cancellation, unchanged settled results, ignored reasons/shadowed properties, suppressed-event state checks, listener cleanup, no peer notification, and explicit replacement | Named `node:test` abort cases in `scripts/member_worker_test.mjs`; actual startup/idle/pending cancellation in `TestMemberNativeWorkerCompatibility` and `TestMemberNativeBrowserCompatibility` |
 | Delayed startup/operation/lifetime deadline checks on each clock, exact boundaries, pre-admission/busy/reply/visibility rejection, unchanged lifetime after successful work, invalid/missing/failed/backward readings, captured clocks, local cleanup and explicit replacement | Named `node:test` deadline, lifetime, and clock cases in `scripts/member_worker_test.mjs`; valid actual-worker replies discarded after synthetic clock advances in `TestMemberNativeWorkerCompatibility` |
@@ -230,6 +232,13 @@ Confirmed setup/export checks use separately copied synthetic password inputs,
 mutate both caller buffers after invocation, and reject mismatches without public
 or encrypted output. They test the byte interface, not independent human entry,
 text encoding, password-manager behavior, or a browser prompt.
+Separate worker text checks exercise strict UTF-8 encoding, immutable-string input
+bounds, and synchronous mutable-buffer cleanup. Actual Node workers compare text
+setup with independent byte restoration and export a native member key under a
+synthetic 1024-byte Unicode passphrase, opened and compared natively. These checks
+do not establish independent human entry, DOM cleanup, autofill behavior, or erasure
+of JavaScript strings. The synthetic browser harness includes equivalent text cases;
+they remain unverified until the opt-in browser target runs successfully.
 Bounded transport fuzzing runs with `member-wasm-test`, not `make fuzz`; retain
 failures as synthetic cases in `scripts/member_worker_test.mjs`, never key fixtures.
 

@@ -30,6 +30,10 @@ The worker owner's local [`closed` Promise](key-management.md#local-member-worke
 observes terminal cleanup without a server request or new worker message. It is not
 a logout acknowledgement; HTTP and OpenAPI contracts are unchanged.
 
+Its [text passphrase methods](key-management.md#browser-passphrase-text-interface)
+encode only locally into existing worker commands. No text passwords enter HTTP,
+and no OpenAPI schema or product route is added.
+
 ## Implemented infrastructure
 
 All three commands expose:

@@ -56,7 +56,8 @@ Distinguish implemented from planned behavior.
   fixed startup/operation/lifetime limits with dual-clock deadline checks, terminal
   lock/disposal with public closure observation and optional host-signal cancellation,
   secret-free same-partition lock notifications, and local pagehide/hidden-page
-  termination;
+  termination, plus opt-in bounded UTF-8 text passphrases over confirmed setup/export
+  and expected-key restoration with synchronous encoding-buffer cleanup;
   native/Node checks and an isolated synthetic browser-test harness; no product HTTP
   delivery, supported-browser matrix, or account logout integration.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
