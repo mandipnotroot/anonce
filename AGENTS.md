@@ -178,8 +178,11 @@ No successful no-op checks or claims that unavailable commands passed.
 - Every PR needs a [SemVer impact label](docs/versioning.md#commit-and-pr-mapping)
   and Unreleased entry unless the documented
   exception label applies.
-- Use the [PR template](https://github.com/mandipnotroot/anonce/blob/main/.github/pull_request_template.md)
-  and request owner review.
+- Follow the [PR template](.github/pull_request_template.md) strictly when creating
+  a PR. Preserve every section, section order, and checklist item. Replace guidance
+  with concise, change-specific details; do not omit the checklist or substitute a
+  custom structure. Check items only after verification or explicit contributor
+  confirmation. Request owner review only when the owner is not the PR author.
 
 ## Licensing, tests, and documentation
 
