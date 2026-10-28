@@ -50,8 +50,9 @@ Distinguish implemented from planned behavior.
   no page integration, account binding, storage, passkeys, or enrollment.
 - `internal/memberworker`: development-only dedicated-worker owner for that bridge,
   bounded/correlated transferred messages, single active owner per module realm,
-  fixed startup/operation/lifetime limits, and terminal lock/disposal;
-  native/Node checks, no HTTP delivery, browser evidence, or cross-tab coordination.
+  fixed startup/operation/lifetime limits, terminal lock/disposal, secret-free
+  same-partition lock notifications, and local pagehide termination;
+  native/Node checks, no HTTP delivery, browser evidence, or account logout integration.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
 

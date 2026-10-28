@@ -163,6 +163,16 @@ permanently terminates its instance; restoration requires a new explicit instanc
 Direct WASM bridge methods, cryptographic formats, CLI, and HTTP are unchanged.
 No page delivery, account API, or supported-browser claim is added.
 
+Requiring BroadcastChannel and global page event APIs and notifying peers on explicit
+owner lock is a breaking development lifecycle change requiring `semver:major`
+review under the current pre-1.0 policy. Hosts must provide those browser facilities
+or startup fails closed. Use the new `lockMemberWorkers()` export for future logout
+or account-switch notifications even after local disposal; use `close()` for local
+disposal only. Hosts must handle terminal pagehide without reusing the old instance.
+The [fixed notification contract and delivery limits](key-management.md#lock-notifications-and-page-disposal)
+are separate from the unchanged version-1 worker command transport. Direct bridge
+methods, cryptographic profiles, CLI, and HTTP behavior are unchanged.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

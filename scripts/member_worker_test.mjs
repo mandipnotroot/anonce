@@ -5,15 +5,39 @@ import assert from "node:assert/strict";
 import { randomInt } from "node:crypto";
 import { test } from "node:test";
 import { byteView, command, inputViews, result } from "../internal/memberworker/protocol.mjs";
-import { MemberWorkerSession } from "../internal/memberworker/member-client.mjs";
+import { lockMemberWorkers, MemberWorkerSession } from "../internal/memberworker/member-client.mjs";
 
 const enrollment = () => ({ publicKey: new Uint8Array(32), csr: new Uint8Array(129) });
 const setup = () => ({ ...enrollment(), backup: new Uint8Array(108) });
 
 function harness(t) {
-  const original = { Worker: globalThis.Worker, setTimeout, clearTimeout };
+  const original = { Worker: globalThis.Worker, BroadcastChannel: globalThis.BroadcastChannel,
+    addEventListener: globalThis.addEventListener, removeEventListener: globalThis.removeEventListener, setTimeout, clearTimeout };
   const timers = new Map();
   const workers = [];
+  const channels = [];
+  const notifications = [];
+  const listeners = new Set();
+  class BroadcastChannel {
+    closed = false;
+    posts = [];
+    throwing = false;
+    constructor(name) {
+      assert.equal(name, "anonce.member-lock.v1");
+      channels.push(this);
+    }
+    postMessage(data) {
+      assert.equal(this.closed, false);
+      if (this.throwing) throw new Error("synthetic notification failure");
+      this.posts.push(structuredClone(data));
+      for (const channel of channels) {
+        if (channel !== this && !channel.closed) notifications.push(() => {
+          if (!channel.closed) channel.onmessage?.({ data: structuredClone(data) });
+        });
+      }
+    }
+    close() { this.closed = true; }
+  }
   class Worker {
     terminated = false;
     posts = [];
@@ -36,6 +60,15 @@ function harness(t) {
     answer(value) { this.send({ version: 1, id: this.posts.at(-1).id, result: value }); }
   }
   globalThis.Worker = Worker;
+  globalThis.BroadcastChannel = BroadcastChannel;
+  globalThis.addEventListener = (type, listener) => {
+    assert.equal(type, "pagehide");
+    listeners.add(listener);
+  };
+  globalThis.removeEventListener = (type, listener) => {
+    assert.equal(type, "pagehide");
+    listeners.delete(listener);
+  };
   globalThis.setTimeout = (fn, delay) => {
     const id = {};
     timers.set(id, { fn, delay });
@@ -47,10 +80,15 @@ function harness(t) {
     for (const session of sessions) session.close();
     Object.assign(globalThis, original);
     assert.equal(timers.size, 0, "timer leaked");
+    assert.equal(listeners.size, 0, "page listener leaked");
+    assert.ok(channels.every((channel) => channel.closed), "lock channel leaked");
   });
   return {
     workers,
-    open() { const session = new MemberWorkerSession(); sessions.push(session); return session; },
+    channels,
+    open(Owner = MemberWorkerSession) { const session = new Owner(); sessions.push(session); return session; },
+    deliver() { for (const notify of notifications.splice(0)) notify(); },
+    pagehide(persisted) { for (const listener of [...listeners]) listener({ persisted }); },
     fire(delay) {
       const found = [...timers].find(([, timer]) => timer.delay === delay);
       assert.ok(found, "missing timeout");
@@ -150,6 +188,158 @@ test("member worker timeouts terminate startup, operations, and total lifetime",
     if (pending) assert.equal(await pending, null);
     else assert.equal(await session.ready, false);
     assert.equal(await session.request(), null);
+  }
+});
+
+test("member worker lock notifies other owners without secrets, echo, or replacement", async (t) => {
+  const h = harness(t);
+  // Separate module instances model independent owner admission in other realms.
+  // Actual browser origin/partition behavior is not established by this harness.
+  const { MemberWorkerSession: Peer } = await import("../internal/memberworker/member-client.mjs?lock-peer");
+  for (const state of ["startup", "idle", "pending"]) {
+    const sender = h.open(), receiver = h.open(Peer);
+    const [local, remote] = h.workers.slice(-2);
+    const [source, destination] = h.channels.slice(-2);
+    local.ready();
+    let pending;
+    if (state !== "startup") remote.ready();
+    if (state === "pending") pending = receiver.unlock(Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32));
+    const late = remote.onmessage;
+    sender.lock("extra");
+    assert.deepEqual(source.posts, []);
+    sender.lock(); sender.lock(); sender.close();
+    assert.equal(local.terminated, true, "local lock waited for peer delivery");
+    assert.deepEqual(source.posts, ["lock"], "notification contained additional data or repeated");
+    h.deliver();
+    assert.equal(remote.terminated, true);
+    assert.equal(await receiver.ready, state !== "startup");
+    if (pending) assert.equal(await pending, null);
+    assert.equal(await receiver.request(), null);
+    assert.deepEqual(destination.posts, [], "received lock echoed");
+    late({ data: { version: 1, type: "ready" } });
+    assert.equal(await receiver.request(), null);
+    const replacement = h.open(Peer);
+    h.workers.at(-1).ready();
+    h.deliver();
+    assert.equal(await replacement.ready, true, "old notification locked a new owner");
+    replacement.close();
+  }
+});
+
+test("member worker local disposal and pagehide close resources without broadcasting", async (t) => {
+  const h = harness(t);
+  for (const action of ["close", "pagehide", "cached-pagehide"]) {
+    const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+    worker.ready();
+    const pending = session.create(Uint8Array.of(1));
+    if (action === "close") session.close();
+    else h.pagehide(action === "cached-pagehide");
+    assert.equal(worker.terminated, true);
+    assert.equal(await pending, null);
+    assert.equal(await session.request(), null, "page lifecycle resurrected session");
+    assert.equal(channel.closed, true);
+    assert.equal(channel.onmessage, null);
+    assert.equal(channel.onmessageerror, null);
+    session.lock();
+    assert.deepEqual(channel.posts, [], "local disposal broadcast or closed session reused");
+  }
+});
+
+test("member worker local close isolates peers and queued locks cannot target later owners", async (t) => {
+  const h = harness(t);
+  const { MemberWorkerSession: Peer } = await import("../internal/memberworker/member-client.mjs?queued-peer");
+  const sender = h.open(), remote = h.open(Peer);
+  const [localWorker, remoteWorker] = h.workers;
+  localWorker.ready(); remoteWorker.ready();
+  sender.close();
+  h.deliver();
+  assert.equal(remoteWorker.terminated, false, "local close locked another owner");
+  const nextSender = h.open();
+  h.workers.at(-1).ready();
+  nextSender.lock(); // Queued specifically for the old remote channel.
+  const late = h.channels[1].onmessage;
+  remote.close();
+  const replacement = h.open(Peer), replacementWorker = h.workers.at(-1);
+  replacementWorker.ready();
+  h.deliver();
+  late({ data: "lock" });
+  assert.equal(replacementWorker.terminated, false, "stale lock affected a replacement");
+  assert.equal(await replacement.ready, true);
+});
+
+test("member worker lock channel failures terminate locally with no fallback", async (t) => {
+  const h = harness(t);
+  for (const failure of ["post", "decode", "unknown", "malformed"]) {
+    const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+    worker.ready();
+    const pending = session.create(Uint8Array.of(1));
+    if (failure === "post") { channel.throwing = true; session.lock(); }
+    if (failure === "decode") channel.onmessageerror();
+    if (failure === "unknown") channel.onmessage({ data: "unknown-version" });
+    if (failure === "malformed") channel.onmessage({ get data() { assert.fail("notification data inspected"); } });
+    assert.equal(worker.terminated, true);
+    assert.equal(await pending, null);
+    assert.equal(await session.request(), null);
+    assert.equal(channel.closed, true);
+    assert.deepEqual(channel.posts, []);
+  }
+  const facilities = { BroadcastChannel: globalThis.BroadcastChannel,
+    addEventListener: globalThis.addEventListener, removeEventListener: globalThis.removeEventListener };
+  for (const missing of Object.keys(facilities)) {
+    globalThis[missing] = undefined;
+    const before = h.workers.length;
+    const session = h.open();
+    assert.equal(await session.ready, false);
+    assert.equal(await session.create(Uint8Array.of(1)), null);
+    assert.equal(h.workers.length, before, "started without required coordination");
+    Object.assign(globalThis, facilities);
+  }
+  globalThis.BroadcastChannel = class { constructor() { throw new Error("synthetic channel failure"); } };
+  const before = h.workers.length;
+  assert.equal(await h.open().ready, false);
+  assert.equal(h.workers.length, before);
+  Object.assign(globalThis, facilities);
+  globalThis.addEventListener = (type, listener) => {
+    facilities.addEventListener(type, listener);
+    throw new Error("synthetic lifecycle registration failure");
+  };
+  assert.equal(await h.open().ready, false);
+  assert.equal(h.workers.length, before, "worker started after lifecycle registration failed");
+});
+
+test("member worker global lock works without a live local owner and reports posting failures", async (t) => {
+  const h = harness(t);
+  const { MemberWorkerSession: Peer } = await import("../internal/memberworker/member-client.mjs?global-peer");
+  const remote = h.open(Peer), worker = h.workers.at(-1);
+  worker.ready();
+  assert.equal(lockMemberWorkers("extra"), false);
+  assert.equal(h.channels.length, 1);
+  assert.equal(lockMemberWorkers(), true);
+  assert.deepEqual(h.channels.at(-1).posts, ["lock"]);
+  assert.equal(h.channels.at(-1).closed, true);
+  h.deliver();
+  assert.equal(worker.terminated, true);
+  assert.equal(await remote.request(), null);
+  const successful = h.open(), successfulWorker = h.workers.at(-1);
+  successfulWorker.ready();
+  const cancelling = successful.request();
+  assert.equal(lockMemberWorkers(), true);
+  assert.equal(await cancelling, null);
+  assert.equal(successfulWorker.terminated, true);
+  h.deliver();
+  const Channel = globalThis.BroadcastChannel;
+  for (const failure of ["construction", "post"]) {
+    globalThis.BroadcastChannel = Channel;
+    const local = h.open(), localWorker = h.workers.at(-1);
+    localWorker.ready();
+    const pending = local.create(Uint8Array.of(1));
+    globalThis.BroadcastChannel = failure === "construction"
+      ? class { constructor() { throw new Error("synthetic notification failure"); } }
+      : class extends Channel { constructor(name) { super(name); this.throwing = true; } };
+    assert.equal(lockMemberWorkers(), false);
+    assert.equal(localWorker.terminated, true, "posting failure prevented local lock");
+    assert.equal(await pending, null);
+    assert.equal(h.channels.at(-1).closed, true);
   }
 });
 

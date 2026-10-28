@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Development-only member-worker lock coordination using a fixed, secret-free
+  BroadcastChannel notification and local pagehide termination. Explicit lock
+  notifies peers; disposal remains local. A host helper can lock peers without a
+  live local owner. Missing coordination facilities reject startup without fallback.
+  Node lifecycle/failure checks cover the implementation, not browser delivery,
+  partition behavior, account logout, reliable global revocation, or memory erasure.
 - Development-only dedicated-worker host for member WASM sessions, with bounded
   input snapshots, transferred buffers, correlated responses, one active owner per
   module realm, and startup/operation/lifetime limits. Lock/disposal terminates the
@@ -17,7 +23,7 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
   Node worker/native backup compatibility, transport failure, and lifecycle checks
   are included. Existing direct bridge, CLI, HTTP, and cryptographic profiles are
   unchanged. No browser page, delivery/CSP integration, account storage, passkeys,
-  recovery, multi-tab coordination, or complete-erasure guarantee is provided.
+  recovery, account logout integration, or complete-erasure guarantee is provided.
 - Separate development-only WASM member-session bridge for automatic key/backup/CSR
   setup, required expected-key restoration, fixed requests, and lock/shutdown.
   Bounded nonshared byte inputs are snapshotted before work; owned passwords are
@@ -122,6 +128,10 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking development worker-owner lifecycle change: BroadcastChannel and page
+  event APIs are now required, and explicit lock also notifies participating peers.
+  Direct bridge methods, worker commands, CLI, HTTP, and cryptographic profiles
+  are unchanged. See [compatibility](docs/versioning.md#wasm-member-session-compatibility).
 - Document only the supported ChaCha20-Poly1305 device-backup profile, remove repeated
   custody guidance, and consolidate parser-rejection tests across both key purposes.
   Backup formats and runtime behavior are unchanged.

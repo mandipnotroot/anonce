@@ -123,6 +123,7 @@ profile-2 nonce prefix and library composition.
 | Member bridge admission, cancellation before shared-session entry, cleanup-before-shutdown, repeated lock/close, concurrent lock/admission, and size fuzzing | `TestMemberWASMSizes`, `TestMemberWASMLifecycle`, `TestMemberWASMConcurrent`, `FuzzMemberWASMSizes` |
 | Actual member WASM bridge, opaque passwords, native backup restore, WASM backup opened natively, public CSR validation, wrong password/purpose, corruption/key mismatch, byte types/arity/bounds, hostile objects/shadowed getters, shared/detached arrays, input snapshots, public-output ownership, lock/close and namespace collision | `TestMemberNativeWASMCompatibility` with `scripts/member_wasm_test.mjs`, through `make member-wasm-test` |
 | Worker owner single-instance/operation admission, snapshots/transfers, input types/arity/bounds, hostile properties, timeout/termination, late replies, protocol/transport failures, and bounded command fuzzing | Named `node:test` cases in `scripts/member_worker_test.mjs`, through `make member-wasm-test` |
+| Secret-free peer/global lock, startup/pending cancellation, no echo/restart, required coordination APIs, notification failures, local disposal, and cached-pagehide cleanup | Named `node:test` lock, channel failure, global lock, and pagehide cases in `scripts/member_worker_test.mjs`; controlled channels and lifecycle events, not actual browser tabs |
 | Actual dedicated worker and owner, native restore, generated backup opened natively, wrong password/corruption/mismatch without replacement, public-output ownership, pending disposal, replay/malformed commands, failed/malformed/oversized runtime loads | `TestMemberNativeWorkerCompatibility` with `scripts/member_worker_integration.mjs` and test-only Node API adapter `scripts/member_worker_node.mjs` |
 | Reviewed loader/notice digest rejection, invalid artifact headers and size bounds | `scripts/test_build_wasm.py` |
 
@@ -187,11 +188,17 @@ maps fixed WASM fetching to a local file and rejects other fetches. Backups and 
 are checked natively, just as for the direct bridge. Owner tests use controlled
 timers for the fixed startup/operation/lifetime limits and verify synchronous
 termination and pending settlement. These are not browser timing or erasure claims.
+Lock checks additionally model independent owner modules, inspect the exact
+secret-free notification, reject missing/failed channel facilities, and exercise
+local pagehide cleanup, including a synthetic back/forward cache event. The real
+Node worker runner receives native BroadcastChannel notifications and handles a
+synthetic pagehide with pending WASM work. Node does not model browser origin or
+storage partition rules, navigation caching, suspension, or real logout.
 Bounded transport fuzzing runs with `member-wasm-test`, not `make fuzz`; retain
 failures as synthetic cases in `scripts/member_worker_test.mjs`, never key fixtures.
 
 No page host, actual browser tests, mobile memory/latency measurements, CSP delivery,
-passkeys, account/vault authorization, recovery, multi-tab coordination, or
+passkeys, account/vault authorization, recovery, browser multi-tab evidence, or
 independent cryptographic review is supplied. These checks do not satisfy the
 [browser acceptance cases](#browser-account-and-vault-acceptance).
 

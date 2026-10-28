@@ -148,8 +148,8 @@ properties described below.
   enrollment material and encrypted backups. Invalid or busy calls start no operation;
   owned passwords are cleared before Promise settlement. Lock cancels pending work
   even before the shared session begins. Close waits for pending cleanup/settlement.
-- Expected-key trust, account binding, backup persistence, expiry, cross-tab lock,
-  and browser delivery remain integration responsibilities, not implemented controls.
+- Expected-key trust, account binding, backup persistence, expiry, integrated account
+  logout, and browser delivery remain integration responsibilities, not bridge controls.
   Failed restoration never generates a key. Public keys and requests are linkable
   and must stay off the anonymous submission origin.
 - Go WASM computation can block its host event loop despite a Promise interface.
@@ -164,7 +164,17 @@ properties described below.
   establish limited format/lifecycle evidence, not browser custody or security review.
   The worker's fixed local imports and bounded credential-free WASM fetch still
   require trusted delivery. One active owner per module realm does not constrain
-  other realms/tabs, authenticate an account, or coordinate logout across contexts.
+  other realms/tabs or authenticate an account.
+- The worker owner's [lock notifications](key-management.md#lock-notifications-and-page-disposal)
+  contain no secrets or account/key identifiers. Explicit lock can notify eligible
+  same-origin, same-partition peers; all incoming traffic terminates locally without
+  echo. Missing coordination facilities fail startup closed. Pagehide also terminates
+  locally, including back/forward caching. These are development-only controls, not
+  integrated account logout. Notifications are asynchronous, unacknowledged, and
+  nondurable; suspended, new, or nonparticipating contexts may miss them. Page events
+  are not guaranteed, and same-origin code can observe timing or force locking.
+  Neither mechanism supplies a global singleton, durable revocation, hard expiry,
+  or protection from hostile code in the owner realm. Browser evidence is outstanding.
 
 ## Browser account and vault risks
 

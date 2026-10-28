@@ -18,6 +18,9 @@ HTTP routes and OpenAPI schemas are unchanged.
 The separate [local member-session bridge](key-management.md#local-wasm-member-sessions)
 also uses only an in-process interface. It adds no HTTP endpoint or OpenAPI schema;
 the services still handle no passwords, private keys, or encrypted member backups.
+Its [worker lock notifications](key-management.md#lock-notifications-and-page-disposal)
+are local browser messages, not a logout endpoint or server revocation API. HTTP
+behavior and OpenAPI schemas remain unchanged.
 
 ## Implemented infrastructure
 

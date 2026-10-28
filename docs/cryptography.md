@@ -304,9 +304,9 @@ or encoding changes. Passwords are opaque bytes, never PRF outputs or server log
 credentials. The bridge exposes only encrypted backups and public enrollment
 material, requires expected-key restoration, and adds no wrapping/recovery profile.
 The [local dedicated-worker host](key-management.md#local-member-worker-host) changes
-execution and disposal only. It runs this same Go bridge without JavaScript
-cryptography, new profiles, or lower KDF costs. Termination discards runtime state
-without guaranteeing cleanup or complete memory erasure.
+execution, lock notification, and disposal only. It runs this same Go bridge without
+JavaScript cryptography, new profiles, or lower KDF costs. Termination discards
+runtime state without guaranteeing cleanup or complete memory erasure.
 
 The [browser account vault](key-management.md#browser-account-vault) is planned.
 WebAuthn Level 3 is the selected authentication design reference; its PRF extension

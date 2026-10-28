@@ -657,7 +657,7 @@ on a browser UI thread. A future page integration must use a dedicated worker,
 bound its lifetime, terminate it on disposal, and coordinate lock/logout across
 tabs. The separate [local worker host](#local-member-worker-host) supplies bounded
 worker ownership, not browser delivery/CSP changes, account binding, trusted-key
-discovery, storage, enrollment, passkey/PRF, recovery, or cross-tab coordination.
+discovery, storage, enrollment, passkey/PRF, recovery, or account logout integration.
 Never load member keys or requests on the anonymous submission origin. Server
 metadata alone is not an independent expected-key trust anchor. Runtime/library
 copies still prevent a complete-erasure guarantee.
@@ -683,13 +683,17 @@ Import `MemberWorkerSession` from `member-client.mjs` in a trusted identity-side
 host. Construction starts one worker with fixed relative assets and omitted
 credentials. At most one live instance is admitted per module realm; a second
 instance resolves `ready` to `false` without starting another worker. This is not
-a cross-tab or cross-realm limit. The runtime is never loaded into the owner realm.
+a cross-tab or cross-realm limit. BroadcastChannel and global page event APIs are
+required before starting a worker; missing or failing facilities reject startup
+without an uncoordinated fallback. The runtime is never loaded into the owner realm.
 
 | Interface | Behavior |
 | --- | --- |
 | `ready` | Promise of `true` after runtime startup, otherwise `false`; data calls before readiness return `null`, never queue |
 | `create(password)`, `unlock(password, backup, expected)`, `request()` | Same byte sizes, arity, public/encrypted results, and Promise/null failures as the direct bridge; one operation admitted before copying/posting |
-| `lock()`, `close()` | No arguments; synchronously detach listeners, terminate the worker, and resolve pending work to `null`; repeated calls are safe; extra arguments do nothing |
+| `lock()` | No arguments; notify participating peers, then synchronously terminate locally and resolve pending work to `null`, even if posting fails; repeated calls are safe; extra arguments do nothing |
+| `close()` | No arguments; synchronously detach listeners, terminate locally, and resolve pending work to `null`, without notifying peers; repeated calls are safe; extra arguments do nothing |
+| `lockMemberWorkers()` | Separate module export, no arguments; post a lock even without a live local owner, close any local owner and the temporary channel; return `true` if posting succeeded, otherwise `false`; extra arguments return `false` without acting |
 
 Inputs are checked with intrinsic getters before copying any bytes. Nonshared
 `Uint8Array` views are snapshotted and transferred without detaching or modifying
@@ -717,10 +721,41 @@ no redirects/cache, and a bounded 8 MiB stream. Imports still need a trusted hos
 and reviewed browser delivery policy; local manifest hashes do not authenticate a
 malicious distributor.
 
+### Lock notifications and page disposal
+
+The fixed channel `anonce.member-lock.v1` carries only the primitive string `"lock"`.
+It contains no account, public key, session identifier, password, backup, CSR, or
+submission state. Explicit instance lock posts at most once; any received message
+or decoding error terminates locally without inspecting data or rebroadcasting.
+Unknown or malformed traffic therefore also fails closed. Closing an instance,
+timeouts, worker failures, and page disposal stay local. Every termination path
+detaches listeners and closes the channel; late events cannot revive the instance.
+
+Hosts should call `lockMemberWorkers()` for a future logout or account switch,
+including when their local owner has already expired. A successful post is not an
+acknowledgement or proof of remote termination. The helper performs no server
+logout, account authentication, or credential revocation. Its temporary channel
+is closed immediately after posting, and no lock state is persisted.
+
+Global `pagehide` terminates locally, including when the page enters the back/forward
+cache. Returning to that page does not restart or unlock the old instance. This
+does not detect every freeze, background transition, process kill, or mobile
+shutdown; page events and owner timers can be delayed or absent.
+
+This follows the [WHATWG BroadcastChannel model](https://html.spec.whatwg.org/multipage/web-messaging.html#broadcasting-to-other-browsing-contexts)
+and [pagehide event](https://html.spec.whatwg.org/multipage/indices.html#event-pagehide)
+(Living Standard consulted 2026-10-28). Notifications reach eligible participants
+on the same origin and storage partition, not other origins, profiles, or devices.
+They are asynchronous and not durable or acknowledged: newly opened, suspended,
+or nonparticipating contexts may miss them. A blocked event loop can delay locking,
+and another owner can be explicitly constructed afterwards. Same-origin code can
+observe lock timing or cause denial of service by posting; this is not an
+authorization boundary, a cross-tab singleton, or reliable global revocation.
+
 Termination discards the worker without waiting for Go cleanup and cannot promise
 buffer clearing or complete erasure. The owner page sees unlock inputs and public
 results; a worker is not a boundary against hostile same-origin code. No UI, HTTP
-delivery/CSP changes, account binding, persistence, multi-tab coordination, or
+delivery/CSP changes, account binding, persistence, account logout integration, or
 supported-browser matrix is supplied. See [checks](testing.md#wasm-member-session-checks)
 and [compatibility](versioning.md#wasm-member-session-compatibility).
 

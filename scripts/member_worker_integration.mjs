@@ -32,6 +32,10 @@ const password = decode(native.password), backup = decode(native.backup), key = 
 const exits = [];
 const workers = [];
 let mode;
+// Node supplies BroadcastChannel, but not a Window lifecycle event target.
+const lifecycle = new EventTarget();
+globalThis.addEventListener = lifecycle.addEventListener.bind(lifecycle);
+globalThis.removeEventListener = lifecycle.removeEventListener.bind(lifecycle);
 globalThis.Worker = class {
   constructor(url, options) {
     assert.equal(url.href, pathToFileURL(join(directory, "member-worker.mjs")).href);
@@ -96,6 +100,35 @@ try {
   assert.equal(await pending, null);
   assert.equal(workers.at(-1).terminated, true);
   assert.equal(await cancelled.request(), null);
+
+  // Exercise the actual BroadcastChannel API with a live WASM worker, not only
+  // the controlled channel harness. Node does not model browser partitioning.
+  const notifier = new BroadcastChannel("anonce.member-lock.v1");
+  try {
+    for (const state of ["startup", "pending"]) {
+      const remote = open(), worker = workers.at(-1);
+      let pending;
+      if (state === "pending") {
+        assert.equal(await remote.ready, true);
+        pending = remote.create(password);
+      }
+      const exited = new Promise((resolve) => worker.thread.once("exit", resolve));
+      notifier.postMessage("lock");
+      if (pending) assert.equal(await pending, null);
+      else await remote.ready; // Startup may win the race with notification delivery.
+      await exited;
+      assert.equal(worker.terminated, true);
+      assert.equal(await remote.request(), null);
+    }
+  } finally {
+    notifier.close();
+  }
+  const hidden = open();
+  assert.equal(await hidden.ready, true);
+  const hiding = hidden.create(password);
+  lifecycle.dispatchEvent(new Event("pagehide"));
+  assert.equal(await hiding, null);
+  assert.equal(workers.at(-1).terminated, true);
 
   for (const failure of ["fetch-error", "http-error", "bad-wasm", "oversized"]) {
     mode = failure;
