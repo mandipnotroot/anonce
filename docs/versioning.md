@@ -208,6 +208,17 @@ and uses existing `ready`, `closed`, and Promise/null results. Invalid arguments
 fail before worker startup. Direct bridge, worker transport, HTTP, CLI, and
 cryptographic profiles are unchanged.
 
+The shared session's `Backup` and direct bridge/worker-owner `backup(password)`
+add ciphertext-only export under the existing password-backup profile. Treat the
+expanded fixed bridge method set and worker command allowlist as a breaking
+development interface change requiring `semver:major` review. Rebuild and deploy
+the WASM, matching runtime, client, worker, and protocol as one artifact set;
+mixed builds are unsupported. Strict bridge-shape checks reject incompatible
+method sets. The correlated version-1 message
+envelope and existing commands are unchanged, but older workers reject `backup`
+without fallback. HTTP, CLI, and cryptographic formats are unchanged. Export does
+not invalidate old backups or change server vault state.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

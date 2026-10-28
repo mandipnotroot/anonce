@@ -26,6 +26,7 @@ export async function run(native) {
     check(globalThis.Go === undefined && globalThis.anonceMember === undefined);
     const session = await open();
     check(await session.request() === null);
+    check(await session.backup(password) === null);
     const denied = new MemberWorkerSession();
     check(await denied.ready === false);
     check(await denied.closed === undefined);
@@ -37,6 +38,17 @@ export async function run(native) {
     check(restored !== null && encode(restored.publicKey) === native.publicKey && encode(restored.csr) === native.csr);
     restored.csr.fill(0);
     check(encode((await session.request()).csr) === native.csr);
+    const replacement = password.slice(); replacement[0] ^= 1;
+    let rebackup;
+    try {
+      const snapshot = replacement.slice();
+      const exporting = session.backup(snapshot);
+      snapshot.fill(0);
+      check(await session.backup(password) === null);
+      rebackup = await exporting;
+      check(rebackup !== null && Object.keys(rebackup).join() === "backup" && rebackup.backup.length === 108);
+    } finally { replacement.fill(0); }
+    const backupExport = encode(rebackup.backup);
     session.close();
     check(await session.closed === undefined);
     check(await session.request() === null);
@@ -55,7 +67,7 @@ export async function run(native) {
     const setup = await fresh.create(password);
     check(setup !== null && encode(setup.publicKey) !== native.publicKey);
     check(heartbeat > before); // UI event loop progressed during full-cost WASM work.
-    const exported = { backup: encode(setup.backup), publicKey: encode(setup.publicKey), csr: encode(setup.csr) };
+    const exported = { backup: encode(setup.backup), publicKey: encode(setup.publicKey), csr: encode(setup.csr), backupExport };
     fresh.lock();
     check(await fresh.closed === undefined);
     check(await fresh.request() === null);

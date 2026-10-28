@@ -36,7 +36,8 @@ func Run() {
 	// Invalid and busy calls resolve to null without starting work or retaining
 	// inputs. All data-operation methods consistently return promises.
 	rejected := func() any { return promise.Call("resolve", js.Null()) }
-	work := func(args []js.Value, unlock bool) any {
+	work := func(args []js.Value, method string) any {
+		unlock := method == "unlock"
 		count := 1
 		if unlock {
 			count = 3
@@ -72,9 +73,12 @@ func Run() {
 				var enrollment *membersession.Enrollment
 				var backup []byte
 				var err error
-				if unlock {
+				switch method {
+				case "backup":
+					backup, err = h.session.Backup(op.ctx, inputs[0])
+				case "unlock":
 					enrollment, err = h.session.Unlock(op.ctx, inputs[0], inputs[1], inputs[2])
-				} else {
+				case "create":
 					var setup *membersession.Setup
 					setup, err = h.session.Create(op.ctx, inputs[0])
 					if err == nil {
@@ -91,7 +95,10 @@ func Run() {
 					resolve.Invoke(js.Null())
 					return
 				}
-				result := arrays.enrollment(enrollment)
+				result := make(map[string]any)
+				if enrollment != nil {
+					result = arrays.enrollment(enrollment)
+				}
 				if backup != nil {
 					result["backup"] = arrays.output(backup)
 					clear(backup)
@@ -103,8 +110,9 @@ func Run() {
 		defer executor.Release() // Promise invokes its executor synchronously.
 		return promise.New(executor)
 	}
-	create := bind(func(args []js.Value) any { return work(args, false) })
-	unlock := bind(func(args []js.Value) any { return work(args, true) })
+	create := bind(func(args []js.Value) any { return work(args, "create") })
+	unlock := bind(func(args []js.Value) any { return work(args, "unlock") })
+	backup := bind(func(args []js.Value) any { return work(args, "backup") })
 	request := bind(func(args []js.Value) any {
 		if len(args) != 0 {
 			return rejected()
@@ -133,7 +141,7 @@ func Run() {
 		return nil
 	})
 	global.Set("anonceMember", map[string]any{
-		"create": create, "unlock": unlock, "request": request, "lock": lock, "close": closeBridge,
+		"create": create, "unlock": unlock, "backup": backup, "request": request, "lock": lock, "close": closeBridge,
 	})
 	defer global.Delete("anonceMember")
 	<-h.done

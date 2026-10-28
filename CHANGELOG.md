@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Unlocked member-session encrypted-backup export through shared Go `Backup` and
+  development WASM/worker `backup(password)`, preserving the key with fresh profile-2
+  encryption and ciphertext-only output. Native race/cancellation, Node compatibility,
+  and worker bounds/fuzz checks cover export; synthetic browser cases are added but
+  unverified. Old backups remain valid. No persistence, account-password change,
+  key rotation, revocation, recovery, product UI, or new cryptographic profile is added.
 - Optional development member-worker `AbortSignal` ownership for immediate local
   cancellation of startup, unlocked custody, or pending restoration. Cancellation
   terminates the instance without notifying peers or exposing the abort reason;
@@ -145,6 +151,10 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking development bridge/worker method-set expansion for encrypted-backup
+  export. Rebuild and deploy all member WASM/worker assets together; incompatible
+  bridge method sets fail closed. Existing command envelopes, HTTP, CLI, and backup
+  formats are unchanged.
 - Breaking development member-worker lifecycle change: require valid monotonic and
   wall clocks and enforce existing startup, operation, and lifetime deadlines before
   admission or publishing readiness/results, even when timeout callbacks are delayed.

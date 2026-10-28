@@ -65,6 +65,10 @@ Available foundations:
   its owner's thread, bounds transport/lifetime, rejects overdue work using local
   monotonic/wall-clock checks even before delayed timeout callbacks, and terminates
   on disposal.
+  Unlocked sessions can export a fresh encrypted member backup under a new local
+  password, without exporting private bytes or rotating the key. Native/Node checks
+  cover key preservation and cancellation; password confirmation, server replacement,
+  and product UI remain integration work.
   A public, secret-free `closed` Promise observes terminal local cleanup, including
   idle peer locks, without polling; it does not acknowledge worker exit or logout.
   An optional `AbortSignal` lets a future host cancel startup or restoration through

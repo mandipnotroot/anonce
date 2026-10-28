@@ -40,9 +40,10 @@ const backup = decode(native.backup);
 const publicKey = decode(native.publicKey);
 const first = await start();
 const api = globalThis.anonceMember;
-assert.deepEqual(Object.keys(api).sort(), ["close", "create", "lock", "request", "unlock"]);
+assert.deepEqual(Object.keys(api).sort(), ["backup", "close", "create", "lock", "request", "unlock"]);
 assert.equal(globalThis.anonce, undefined, "member module must not install the public verifier");
 assert.equal(await api.request(), null, "initial session must be locked");
+assert.equal(await api.backup(password), null, "locked export admitted");
 const hostile = new Proxy({}, { get() { assert.fail("object input inspected"); }, getPrototypeOf() { assert.fail("object prototype inspected"); } });
 const revoked = Proxy.revocable({}, {});
 revoked.revoke();
@@ -58,11 +59,13 @@ structuredClone(detached.buffer, { transfer: [detached.buffer] });
 invalid.push(detached);
 for (const value of invalid) {
   assert.equal(await api.create(value), null, "invalid password type/size accepted");
+  assert.equal(await api.backup(value), null, "invalid export password accepted");
   assert.equal(await api.unlock(value, backup, publicKey), null);
   assert.equal(await api.unlock(password, value, publicKey), null);
   assert.equal(await api.unlock(password, backup, value), null);
 }
 for (const args of [[], [password, "extra"]]) assert.equal(await api.create(...args), null);
+for (const args of [[], [password, "extra"]]) assert.equal(await api.backup(...args), null);
 for (const args of [[], [password], [password, backup], [password, backup, publicKey, "extra"]]) assert.equal(await api.unlock(...args), null);
 for (const size of [0, 107, 109, 1024, 1025]) assert.equal(await api.unlock(password, new Uint8Array(size), publicKey), null);
 for (const size of [0, 31, 33, 1024, 1025]) assert.equal(await api.unlock(password, backup, new Uint8Array(size)), null);
@@ -92,6 +95,29 @@ assert.equal(await api.unlock(password, backup, publicKey), null, "unlocked rest
 restored.publicKey.fill(0);
 restored.csr.fill(0);
 assert.equal(encode((await api.request()).csr), native.csr, "public output aliased session state");
+// Re-export the restored key under a different synthetic password. This is not
+// key rotation or deletion of the original backup.
+const replacement = password.slice(); replacement[0] ^= 1;
+const exportInput = replacement.slice();
+const exporting = api.backup(exportInput);
+exportInput.fill(0);
+// The direct WASM call may finish before returning its Promise. Deterministic
+// pending admission is checked natively and through the dedicated worker owner.
+const rebackup = await exporting;
+assert.deepEqual(Object.keys(rebackup), ["backup"]);
+assert.equal(rebackup.backup.length, 108);
+assert.notEqual(encode(rebackup.backup.subarray(12, 28)), native.backup.slice(24, 56), "export reused salt");
+assert.notEqual(encode(rebackup.backup.subarray(32, 44)), native.backup.slice(64, 88), "export reused nonce");
+const backupExport = encode(rebackup.backup);
+api.lock();
+assert.equal(await api.unlock(password, rebackup.backup, publicKey), null, "old password opened new backup");
+assert.equal(encode((await api.unlock(replacement, rebackup.backup, publicKey)).csr), native.csr);
+rebackup.backup.fill(0);
+const cancelledExport = api.backup(replacement);
+api.lock();
+await cancelledExport; // Direct bridge work can finish before the lock event turn.
+assert.equal(await api.request(), null, "export revived locked session");
+replacement.fill(0);
 api.lock();
 api.lock();
 assert.equal(await api.request(), null);
@@ -117,7 +143,7 @@ assert.ok(setup.backup instanceof Uint8Array && setup.backup.length === 108);
 assert.ok(setup.csr instanceof Uint8Array && setup.csr.length === 129);
 assert.ok(setup.publicKey instanceof Uint8Array && setup.publicKey.length === 32);
 assert.notEqual(encode(setup.publicKey), native.publicKey, "setup reused existing member key");
-const result = { backup: encode(setup.backup), csr: encode(setup.csr), publicKey: encode(setup.publicKey) };
+const result = { backup: encode(setup.backup), csr: encode(setup.csr), publicKey: encode(setup.publicKey), backupExport };
 api.lock();
 assert.equal(encode((await api.unlock(password, setup.backup, setup.publicKey)).csr), result.csr);
 api.lock();

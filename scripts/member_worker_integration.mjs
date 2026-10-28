@@ -61,6 +61,7 @@ try {
   assert.equal(globalThis.Go, undefined, "runtime loaded into owner realm");
   assert.equal(globalThis.anonceMember, undefined, "private session loaded into owner realm");
   assert.equal(await session.request(), null);
+  assert.equal(await session.backup(password), null, "locked export admitted");
   const snapshot = password.slice();
   const restoring = session.unlock(snapshot, backup, key);
   snapshot.fill(0);
@@ -71,10 +72,30 @@ try {
   assert.equal(encode(backup), native.backup);
   restored.csr.fill(0); restored.publicKey.fill(0);
   assert.equal(encode((await session.request()).csr), native.csr);
+  const replacement = password.slice(); replacement[0] ^= 1;
+  const exportInput = replacement.slice();
+  const exporting = session.backup(exportInput);
+  exportInput.fill(0);
+  assert.equal(await session.backup(password), null, "concurrent export admitted");
+  const rebackup = await exporting;
+  assert.deepEqual(Object.keys(rebackup), ["backup"]);
+  const backupExport = encode(rebackup.backup);
   session.lock();
   assert.equal(await session.closed, undefined);
   assert.equal(workers.at(-1).terminated, true);
   assert.equal(await session.request(), null);
+
+  const changed = open();
+  assert.equal(await changed.ready, true);
+  assert.equal(await changed.unlock(password, rebackup.backup, key), null);
+  assert.equal(encode((await changed.unlock(replacement, rebackup.backup, key)).csr), native.csr);
+  rebackup.backup.fill(0);
+  const cancelledExport = changed.backup(replacement);
+  changed.close();
+  assert.equal(await cancelledExport, null, "disposed export published output");
+  assert.equal(await changed.closed, undefined);
+  assert.equal(await changed.request(), null);
+  replacement.fill(0);
 
   const fresh = open();
   assert.equal(await fresh.ready, true);
@@ -88,7 +109,7 @@ try {
   wrong.fill(0);
   const setup = await fresh.create(password);
   assert.notEqual(encode(setup.publicKey), native.publicKey);
-  exported = { backup: encode(setup.backup), csr: encode(setup.csr), publicKey: encode(setup.publicKey) };
+  exported = { backup: encode(setup.backup), csr: encode(setup.csr), publicKey: encode(setup.publicKey), backupExport };
   fresh.close();
   assert.equal(await fresh.closed, undefined);
   const again = open();

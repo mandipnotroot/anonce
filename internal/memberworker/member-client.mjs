@@ -117,6 +117,7 @@ export class MemberWorkerSession {
 
   create(...inputs) { return this.#call("create", inputs); }
   unlock(...inputs) { return this.#call("unlock", inputs); }
+  backup(...inputs) { return this.#call("backup", inputs); }
   request(...inputs) { return this.#call("request", inputs); }
   lock(...args) {
     if (args.length !== 0 || this.#closed) return null;

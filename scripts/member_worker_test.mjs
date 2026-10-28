@@ -10,6 +10,7 @@ import { lockMemberWorkers, MemberWorkerSession } from "../internal/memberworker
 
 const enrollment = () => ({ publicKey: new Uint8Array(32), csr: new Uint8Array(129) });
 const setup = () => ({ ...enrollment(), backup: new Uint8Array(108) });
+const encrypted = () => ({ backup: new Uint8Array(108) });
 
 function harness(t) {
   const original = { Worker: globalThis.Worker, BroadcastChannel: globalThis.BroadcastChannel,
@@ -232,6 +233,54 @@ test("member worker closed Promise observes every terminal path after local clea
   }
 });
 
+test("member worker backup snapshots, ciphertext-only results, failures, and terminal cancellation", async (t) => {
+  const h = harness(t);
+  for (const terminal of ["close", "lock", "abort", "peer", "visibility", "deadline", "timeout"]) {
+    const controller = new AbortController();
+    const session = h.open(MemberWorkerSession, controller.signal), worker = h.workers.at(-1);
+    assert.equal(await session.backup(Uint8Array.of(7)), null, "export queued before startup");
+    worker.ready();
+    assert.equal(await session.ready, true);
+    const password = Uint8Array.of(7, 0, 255);
+    const pending = session.backup(password);
+    password.fill(0);
+    assert.deepEqual([...worker.posts.at(-1).inputs[0]], [7, 0, 255]);
+    assert.equal(worker.posts.at(-1).method, "backup");
+    assert.equal(await session.request(), null, "busy request admitted");
+    assert.equal(await session.backup(password), null, "busy export admitted");
+    worker.answer(null); // Locked shared session or failed encryption, not terminal.
+    assert.equal(await pending, null);
+    const success = session.backup(password);
+    worker.answer(encrypted());
+    assert.deepEqual(await success, encrypted());
+    const cancelled = session.backup(password);
+    const late = worker.onmessage, id = worker.posts.at(-1).id;
+    if (terminal === "close") session.close();
+    if (terminal === "lock") session.lock();
+    if (terminal === "abort") controller.abort();
+    if (terminal === "peer") h.channels.at(-1).onmessage({ data: "lock" });
+    if (terminal === "visibility") h.visibility("hidden");
+    if (terminal === "deadline") { h.time.wall += 120_000; worker.answer(encrypted()); }
+    if (terminal === "timeout") h.fire(120_000);
+    assert.equal(await cancelled, null, "cancelled backup published ciphertext");
+    assert.equal(await session.closed, undefined);
+    assert.equal(worker.terminated, true);
+    late({ data: { version: 1, id, result: encrypted() } });
+    assert.equal(await session.backup(password), null, "late export reopened owner");
+    h.visibility("visible");
+  }
+  for (const output of [enrollment(), setup(), {}, { backup: new Uint8Array(107) },
+    { backup: new Uint8Array(109) }, { backup: new Uint8Array(new SharedArrayBuffer(108)) },
+    { ...encrypted(), privateKey: new Uint8Array(64) }]) {
+    const session = h.open(), worker = h.workers.at(-1);
+    worker.ready();
+    const pending = session.backup(Uint8Array.of(7));
+    worker.answer(output);
+    assert.equal(await pending, null, "malformed backup reply admitted");
+    assert.equal(await session.closed, undefined);
+  }
+});
+
 test("member worker abort admission rejects invalid and already-aborted signals before resources", async (t) => {
   const h = harness(t);
   const aborted = new AbortController();
@@ -397,11 +446,13 @@ test("member worker rejects input types, arity, bounds, and hostile properties b
   const password = Uint8Array.of(1), backup = new Uint8Array(108), key = new Uint8Array(32);
   for (const value of invalid) {
     assert.equal(await session.create(value), null);
+    assert.equal(await session.backup(value), null);
     assert.equal(await session.unlock(value, backup, key), null);
     assert.equal(await session.unlock(password, value, key), null);
     assert.equal(await session.unlock(password, backup, value), null);
   }
   for (const args of [[], [password, password]]) assert.equal(await session.create(...args), null);
+  for (const args of [[], [password, password]]) assert.equal(await session.backup(...args), null);
   for (const args of [[], [password], [password, backup], [password, backup, key, key]]) assert.equal(await session.unlock(...args), null);
   assert.equal(await session.request(1), null);
   for (const size of [1, 107, 109, 1024]) assert.equal(await session.unlock(password, new Uint8Array(size), key), null);
@@ -465,20 +516,20 @@ test("member worker rejects delayed startup at either clock deadline without wai
 test("member worker enforces delayed operation deadlines before replies and busy calls", async (t) => {
   const h = harness(t);
   for (const clock of ["monotonic", "wall"]) {
-    for (const method of ["create", "unlock", "request"]) {
+    for (const method of ["create", "unlock", "backup", "request"]) {
       for (const elapsed of [119_999, 120_000, 120_001]) {
         for (const boundary of ["reply", "busy", "visibility"]) {
           const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
           worker.ready();
           // Operation budgets start on admission, not at owner construction.
           h.time[clock] += 15_000;
-          const inputs = { create: [Uint8Array.of(7)], unlock: [Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32)], request: [] };
+          const inputs = { create: [Uint8Array.of(7)], unlock: [Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32)], backup: [Uint8Array.of(7)], request: [] };
           const pending = session[method](...inputs[method]);
           const late = worker.onmessage, id = worker.posts.at(-1).id;
           h.time[clock] += elapsed;
           if (boundary === "busy") assert.equal(await session.create(Uint8Array.of(7)), null);
           if (boundary === "visibility") h.visibility("visible");
-          const value = method === "create" ? setup() : enrollment();
+          const value = method === "create" ? setup() : method === "backup" ? encrypted() : enrollment();
           worker.answer(value);
           const expired = elapsed >= 120_000;
           assert.deepEqual(await pending, expired ? null : value, `${clock}/${method}/${elapsed}/${boundary}`);
@@ -963,6 +1014,7 @@ test("member worker bounded protocol parser regression corpus", () => {
   for (let size = 0; size <= 1025; size++) {
     const bytes = new Uint8Array(size);
     assert.equal(inputViews("create", [bytes]) !== null, size >= 1 && size <= 1024);
+    assert.equal(inputViews("backup", [bytes]) !== null, size >= 1 && size <= 1024);
     assert.equal(command({ ...valid, inputs: [password, bytes, key] }), size === 108);
     assert.equal(command({ ...valid, inputs: [password, backup, bytes] }), size === 32);
     assert.equal(byteView(bytes, 32) !== null, size === 32);
@@ -970,6 +1022,10 @@ test("member worker bounded protocol parser regression corpus", () => {
   assert.equal(result(null, "create"), true);
   assert.equal(result(setup(), "create"), true);
   assert.equal(result(enrollment(), "unlock"), true);
+  assert.equal(result(encrypted(), "backup"), true);
+  assert.equal(result(null, "backup"), true);
+  assert.equal(result(setup(), "backup"), false);
+  assert.equal(result(encrypted(), "request"), false);
   assert.equal(result(setup(), "request"), false);
   for (const value of [undefined, false, [], {}, { ...enrollment(), csr: new Uint8Array(130) },
     { ...enrollment(), publicKey: new Uint8Array(new SharedArrayBuffer(32)) }]) assert.equal(result(value, "request"), false);
@@ -980,7 +1036,7 @@ test("member worker bounded command fuzzing", () => {
   // has at most four views of at most 1025 elements; no KDF or I/O occurs.
   const choose = (values) => values[randomInt(values.length)];
   for (let iteration = 0; iteration < 2048; iteration++) {
-    const method = choose(["create", "unlock", "request", "close", "__proto__", "", null]);
+    const method = choose(["create", "unlock", "backup", "request", "close", "__proto__", "", null]);
     const version = randomInt(3), id = choose([-1, 0, 1, 2, 1.5, Number.MAX_SAFE_INTEGER + 1]);
     const metadata = Array.from({ length: randomInt(5) }, () => ({
       size: choose([0, 1, 31, 32, 33, 107, 108, 109, 1024, 1025]), type: randomInt(3),
@@ -992,7 +1048,7 @@ test("member worker bounded command fuzzing", () => {
     let expected = false;
     if (!extra && version === 1 && (id === 1 || id === 2)) {
       if (method === "request") expected = metadata.length === 0;
-      if (method === "create") expected = metadata.length === 1 && metadata[0].type === 0 && metadata[0].size >= 1 && metadata[0].size <= 1024;
+      if (method === "create" || method === "backup") expected = metadata.length === 1 && metadata[0].type === 0 && metadata[0].size >= 1 && metadata[0].size <= 1024;
       if (method === "unlock") expected = metadata.length === 3 && metadata.every(({ type }) => type === 0) &&
         metadata[0].size >= 1 && metadata[0].size <= 1024 && metadata[1].size === 108 && metadata[2].size === 32;
     }

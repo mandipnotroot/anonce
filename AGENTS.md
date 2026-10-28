@@ -39,13 +39,15 @@ Distinguish implemented from planned behavior.
 - `internal/client/membercsr`: local Ed25519 certificate requests and bounded
   profile validation; no identity claims, certificate issuance, or transport.
 - `internal/client/membersession`: in-memory member setup, required expected-key
-  restoration, fixed CSR requests, and explicit lock/cancellation; public-only
-  results and encrypted backups, no account binding or persistence.
+  restoration, fixed CSR requests, unlocked encrypted-backup export, and explicit
+  lock/cancellation; public-only results and encrypted backups, no account binding
+  or persistence.
 - `cmd/wasm`, `internal/clientwasm`: public-only member request verification using
   the shared parser, with opt-in expected-public-key matching; local WASM artifacts
   and Node compatibility checks, no page integration, device-key access, or enrollment.
 - `cmd/memberwasm`, `internal/memberwasm`: separate development-only WASM member
-  setup/restoration, fixed requests, and lock/shutdown using shared sessions;
+  setup/restoration, fixed requests, encrypted-backup export, and lock/shutdown
+  using shared sessions;
   bounded byte inputs, public/encrypted outputs, native/Node backup checks;
   no page integration, account binding, storage, passkeys, or enrollment.
 - `internal/memberworker`: development-only dedicated-worker owner for that bridge,

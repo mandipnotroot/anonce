@@ -59,7 +59,14 @@ properties described below.
   material. Restoring a different key fails before request signing or installation;
   the expected key must be independently trusted. Failed unlock never creates a
   replacement key.
-- Lock clears the owned key and cancels pending setup/restoration. Cancelled work
+- Unlocked backup export encrypts the retained key without reopening an old backup
+  or returning private bytes. The temporary key copy remains owned until bounded
+  work finishes; lock cancels output and clears the retained key without waiting
+  for that copy's cleanup. The host supplies password confirmation and safe
+  ciphertext persistence. An unlocked hostile host can request a backup under its
+  own password. Export adds no reauthentication, rotation, revocation, deletion,
+  rollback detection, or recovery.
+- Lock clears the owned key and cancels pending setup/restoration/export. Cancelled work
   cannot later install a key, and each session admits only one pending operation.
   This does not limit hostile callers creating many sessions, erase runtime copies,
   or revoke already returned public material/backups.

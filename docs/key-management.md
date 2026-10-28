@@ -173,7 +173,8 @@ I/O. It uses the existing [profiles](cryptography.md#in-memory-member-session-co
 | `Create(ctx, password)` | From locked/idle state, generate a key, encrypt its backup, and prepare a CSR; retain the key only on success; return encrypted backup and public enrollment material |
 | `Unlock(ctx, password, backup, expected)` | From locked/idle state, validate a backup and require its full public key to match the supplied 32-byte expected key before preparing a CSR or retaining the key; return public enrollment material only |
 | `Request(ctx)` | Prepare the same fixed, identity-free CSR for the unlocked key; fail while locked |
-| `Lock()` | Clear the owned private buffer and cancel pending setup/restoration; safe to repeat |
+| `Backup(ctx, password)` | From unlocked/idle state, encrypt the same member key into a fresh profile-2 backup; return ciphertext only, without retaining the password or changing existing backups |
+| `Lock()` | Clear the owned private buffer and cancel pending setup/restoration/export; safe to repeat |
 
 Public enrollment material contains an independently owned 32-byte Ed25519 public
 key and 129-byte CSR. Creation also returns the unchanged 108-byte member backup.
@@ -181,6 +182,13 @@ The session retains neither passwords nor encrypted backups. Inputs remain
 caller-owned and must not be mutated during calls; clear passwords after use.
 Persisting a returned backup safely remains an integration responsibility. A
 successful local setup does not mean a backup was stored or enrollment completed.
+
+Backup export supports future browser local-passphrase changes without exporting
+private bytes or opening an old backup again. It returns a caller-owned 108-byte
+encrypted backup. Confirm the local password and arrange safe persistence in the
+future host interface; neither is supplied here. This is not an account-password
+change, key rotation, recovery, or revocation. Existing backups and passwords remain
+valid for their copies. No server update or deletion occurs.
 
 Unlock requires an independently trusted expected key. Copying that key from the
 backup's server metadata alone does not establish substitution protection against
@@ -191,13 +199,17 @@ not reach the anonymous submission origin.
 
 Methods are concurrency-safe, but a session must not be copied after use. Setup
 and restoration reject an unlocked or busy session without replacing its key.
-Only one such operation is admitted per session; cancelled work holds admission
-until cleanup finishes. Lock need not wait for Argon2id, but an active derivation
+Only one setup, restoration, or backup export is admitted per session; cancelled
+work holds admission until cleanup finishes. Lock need not wait for Argon2id, but an active derivation
 must finish before owned pending buffers can be cleared. Lock and final key
 installation are serialized, preventing cancelled pending work from unlocking the
 session later. A lock after installation may race a successful return; it does
 not invalidate public material or encrypted backups already prepared. Request
 signing is serialized with lock, which can briefly wait for that bounded call.
+Export snapshots the retained key under the session lock, then releases that lock
+for derivation. Lock cancels export and clears the retained key without waiting
+for derivation; the owned temporary key copy is cleared before export releases admission. Cancellation
+of export alone leaves the session unlocked. Requests can proceed during export.
 
 Callers must limit session counts and unlocked lifetimes and explicitly lock on
 logout, account switch, or disposal. Operation contexts cancel individual calls,
@@ -627,6 +639,7 @@ After a trusted host starts this module with the matching `Go.run`,
 | `create(password)` | One `Uint8Array` of 1–1024 opaque password bytes; automatically generate a member key and return a Promise of `{publicKey, csr, backup}` |
 | `unlock(password, backup, expected)` | Three `Uint8Array` inputs: password as above, exactly 108 backup bytes, and an independently trusted 32-byte expected public key; return a Promise of `{publicKey, csr}` only after typed validation and matching |
 | `request()` | No arguments; Promise of `{publicKey, csr}` for the unlocked session |
+| `backup(password)` | One password `Uint8Array` with the same bounds as creation; from an unlocked session, Promise of `{backup}` containing only a fresh 108-byte encrypted backup of the retained key |
 | `lock()` | No arguments; clear the owned key and cancel pending work; return `null`; safe to repeat |
 | `close()` | No arguments; lock, cancel, wait for pending input cleanup and Promise settlement, remove the namespace, release callbacks, and let `Go.run` finish; return `null` |
 
@@ -634,8 +647,8 @@ Data methods resolve to `null` for invalid types/arity/sizes, unavailable state,
 cancellation, or validation failure. They do not expose internal errors or fall
 back to key creation. Extra arguments to `lock`/`close` return `null` without acting.
 Results contain fresh `Uint8Array` buffers: 32 public-key bytes, 129 CSR bytes,
-and, on creation only, 108 encrypted backup bytes. No raw-private-key or arbitrary
-message-signing interface exists. Existing cryptographic profiles are unchanged.
+and 108 encrypted backup bytes on creation or backup export. No raw-private-key
+or arbitrary message-signing interface exists. Existing cryptographic profiles are unchanged.
 
 All inputs are branded and bounded before copying any bytes. Proxies, strings,
 other views, detached/empty arrays, and shared backing memory fail without coercion.
@@ -698,6 +711,7 @@ The runtime is never loaded into the owner realm.
 | `ready` | Promise of `true` after runtime startup, otherwise `false`; data calls before readiness return `null`, never queue |
 | `closed` | Stable Promise resolving once to `undefined` after terminal local cleanup, including failed construction; never rejects or exposes a reason |
 | `create(password)`, `unlock(password, backup, expected)`, `request()` | Same byte sizes, arity, public/encrypted results, and Promise/null failures as the direct bridge; one operation admitted before copying/posting |
+| `backup(password)` | Same bounded password and ciphertext-only result as the direct bridge; existing operation/lifetime deadlines and terminal cancellation apply without extending unlocked lifetime |
 | `lock()` | No arguments; notify participating peers, then synchronously terminate locally and resolve pending work to `null`, even if posting fails; repeated calls are safe; extra arguments do nothing |
 | `close()` | No arguments; synchronously detach listeners, terminate locally, and resolve pending work to `null`, without notifying peers; repeated calls are safe; extra arguments do nothing |
 | `lockMemberWorkers()` | Separate module export, no arguments; post a lock even without a live local owner, close any local owner and the temporary channel; return `true` if posting succeeded, otherwise `false`; extra arguments return `false` without acting |

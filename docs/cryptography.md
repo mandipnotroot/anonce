@@ -117,10 +117,17 @@ before retaining the key. Restoration authenticates and validates the backup,
 then compares the complete public key with a required independently trusted
 expected key before preparing a request or installing the key in the session.
 
+An unlocked session can export a fresh encrypted backup under a supplied local
+password through the same `memberkey.Seal` composition. Each export uses full
+profile-2 costs and fresh salt/nonce, preserves the member key, and returns only
+ciphertext. It neither changes the session's key nor revokes existing backups.
+Lock cancels pending export without waiting for Argon2id; owned temporary key
+copies and discarded ciphertext are cleared before admission is released.
+
 Only public enrollment material and encrypted backups leave the session API.
-Lock clears its owned private buffer and cancels pending setup/restoration; a
-cancelled operation cannot install a key. One pending setup/restoration per session
-is admitted, including while cancellation waits for bounded Argon2id work. This
+Lock clears its owned private buffer and cancels pending setup/restoration/export; a
+cancelled operation cannot install a key. One pending setup/restoration/export per
+session is admitted, including while cancellation waits for bounded Argon2id work. This
 does not bound the number of sessions a caller creates. See the
 [session lifecycle](key-management.md#in-memory-member-sessions) for ownership and
 integration limits. PRF wrapping and account recovery remain unspecified.

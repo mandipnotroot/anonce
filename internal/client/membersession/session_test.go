@@ -478,6 +478,15 @@ func FuzzMemberSessionUnlockInputs(f *testing.F) {
 		if len(password) > keystore.MaxPasswordSize+1 || len(backup) > keystore.MaxBackupSize+1 || len(expected) > ed25519.PublicKeySize+1 {
 			return
 		}
+		locked := new(Session)
+		output, err := locked.Backup(t.Context(), password)
+		want := ErrState
+		if len(password) == 0 || len(password) > keystore.MaxPasswordSize {
+			want = keystore.ErrInvalidInput
+		}
+		if output != nil || !errors.Is(err, want) || locked.pending != nil {
+			t.Fatal("locked backup admission returned output or retained work")
+		}
 		// Exercise admission bounds without derivation. Backup grammar and typed
 		// payload parsing retain their shared, separately fuzzed implementations.
 		if len(password) > 0 && len(password) <= keystore.MaxPasswordSize && len(expected) == ed25519.PublicKeySize {

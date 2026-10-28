@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Anonce Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package membersession owns a local member key for setup, restoration, and
-// fixed-profile certificate requests. It provides no browser bridge, persistence,
+// Package membersession owns a local member key for setup, restoration, encrypted
+// backups, and fixed-profile certificate requests. It provides no browser bridge, persistence,
 // account authentication, enrollment transport, or general-purpose signing.
 package membersession
 
@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	// ErrState reports a locked request or an already unlocked/busy setup target.
+	// ErrState reports a locked request/export or an unavailable operation target.
 	ErrState = errors.New("member session unavailable")
 	// ErrKeyMismatch reports a validated backup for a different expected key.
 	ErrKeyMismatch = errors.New("member session key mismatch")
@@ -137,9 +137,63 @@ func (s *Session) Request(ctx context.Context) (*Enrollment, error) {
 	return enrollment, nil
 }
 
+// Backup encrypts the unlocked member key under password using the unchanged
+// backup profile. It does not rotate the key, retain the password, persist output,
+// or invalidate old backups. The password remains caller-owned and must not change
+// during the call. Only one setup, restoration, or export may be pending.
+// Lock cancels export without waiting for derivation and clears the retained key;
+// the bounded temporary key copy is cleared before this call releases admission.
+func (s *Session) Backup(ctx context.Context, password []byte) ([]byte, error) {
+	if err := validatePassword(ctx, password); err != nil {
+		return nil, fmt.Errorf("backup member session: %w", err)
+	}
+	op, key, err := s.beginBackup(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("backup member session: %w", err)
+	}
+	defer s.end(op)
+	defer clear(key)
+	backup, err := memberkey.Seal(op.ctx, password, key)
+	if err != nil {
+		return nil, fmt.Errorf("backup member session: %w", err)
+	}
+	backup, err = s.publishBackup(op, backup)
+	if err != nil {
+		return nil, fmt.Errorf("backup member session: %w", err)
+	}
+	return backup, nil
+}
+
+func (s *Session) publishBackup(op *operation, backup []byte) ([]byte, error) {
+	// Serialize publication with Lock, just like final key installation. Lock
+	// after this boundary cannot retract ciphertext already returned to a caller.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := op.ctx.Err(); err != nil {
+		clear(backup)
+		return nil, err
+	}
+	return backup, nil
+}
+
+func (s *Session) beginBackup(ctx context.Context) (*operation, ed25519.PrivateKey, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	if s.pending != nil || len(s.key) == 0 {
+		return nil, nil, ErrState
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	op := &operation{ctx: ctx, cancel: cancel}
+	s.pending = op
+	return op, bytes.Clone(s.key), nil
+}
+
 // Lock clears the session's private buffer and cancels pending work. It is
 // idempotent and does not wait for Argon2id to finish. Until the cancelled call
-// returns, new setup/restoration attempts still fail with ErrState. Runtime and
+// returns, new setup/restoration/export attempts still fail with ErrState. Runtime and
 // library copies prevent a complete-erasure guarantee.
 func (s *Session) Lock() {
 	s.mu.Lock()

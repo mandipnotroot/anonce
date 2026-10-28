@@ -26,7 +26,7 @@ export function byteView(value, minimum, maximum = minimum) {
 
 export function inputViews(method, inputs) {
   if (!Array.isArray(inputs)) return null;
-  const sizes = { create: [[1, 1024]], unlock: [[1, 1024], [108, 108], [32, 32]], request: [] };
+  const sizes = { create: [[1, 1024]], unlock: [[1, 1024], [108, 108], [32, 32]], backup: [[1, 1024]], request: [] };
   if (!Object.hasOwn(sizes, method) || inputs.length !== sizes[method].length) return null;
   const views = sizes[method].map(([min, max], i) => byteView(inputs[i], min, max));
   return views.every((view) => view !== null) ? views : null;
@@ -47,6 +47,7 @@ export function command(value) {
 
 export function result(value, method) {
   if (value === null) return true;
+  if (method === "backup") return record(value, ["backup"]) && byteView(value.backup, 108) !== null;
   const keys = method === "create" ? ["publicKey", "csr", "backup"] : ["publicKey", "csr"];
   return record(value, keys) && byteView(value.publicKey, 32) !== null &&
     byteView(value.csr, 129) !== null && (method !== "create" || byteView(value.backup, 108) !== null);

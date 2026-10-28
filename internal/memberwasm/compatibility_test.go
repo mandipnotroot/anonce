@@ -63,9 +63,10 @@ func testMemberCompatibility(t *testing.T, script string, args ...string) {
 		t.Fatalf("member WASM compatibility: %v\n%s", err, stderr.String())
 	}
 	var result struct {
-		Backup    string `json:"backup"`
-		PublicKey string `json:"publicKey"`
-		CSR       string `json:"csr"`
+		Backup       string `json:"backup"`
+		PublicKey    string `json:"publicKey"`
+		CSR          string `json:"csr"`
+		BackupExport string `json:"backupExport"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatal("invalid WASM result encoding")
@@ -89,5 +90,26 @@ func testMemberCompatibility(t *testing.T, script string, args ...string) {
 	}
 	if hex.EncodeToString(public) != result.PublicKey || !bytes.Equal(key[32:], public) {
 		t.Fatal("native/WASM member-key or CSR mismatch")
+	}
+	exported, err := hex.DecodeString(result.BackupExport)
+	if err != nil || len(exported) != 108 {
+		t.Fatal("invalid WASM backup export encoding")
+	}
+	replacement := bytes.Clone(password)
+	defer clear(replacement)
+	replacement[0] ^= 1
+	restored, err := memberkey.Open(t.Context(), replacement, exported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(restored)
+	original, err := memberkey.Open(t.Context(), password, setup.Backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(original)
+	if !bytes.Equal(restored, original) || bytes.Equal(exported[12:28], setup.Backup[12:28]) ||
+		bytes.Equal(exported[32:44], setup.Backup[32:44]) {
+		t.Fatal("WASM backup export changed the key or reused randomness")
 	}
 }
