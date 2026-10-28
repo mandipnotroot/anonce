@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+**
+!go.mod
+!go.sum
+!LICENSES/
+!LICENSES/AGPL-3.0-only.txt
+!cmd/
+!cmd/**
+!internal/
+!internal/**
+!web/
+!web/**
+**/*_test.go
+**/testdata/
+**/.env
+**/.env.*
+**/.secrets/
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.keystore

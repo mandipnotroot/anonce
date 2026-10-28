@@ -61,6 +61,11 @@ Distinguish implemented from planned behavior.
   native/Node checks and an isolated synthetic browser-test harness; no product HTTP
   delivery, supported-browser matrix, or account logout integration.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
+- `Dockerfile`, `compose.yaml`, `deploy/postgres/`, `scripts/containers.py`: local
+  non-root HTTP containers and separate PostgreSQL instances/volumes/credentials;
+  empty-volume role/schema bootstrap, loopback host publication, liveness probes,
+  secret preparation, and opt-in real-container checks; no application database
+  integration, migrations, encrypted database restoration, image scan, or product readiness.
 - Planned runtime layout also includes `migrations/`.
 
 ## Product direction
@@ -138,10 +143,17 @@ make wasm-test        # native/WASM public-request compatibility and bridge chec
 make member-wasm      # separate local member-session WASM and matching notices
 make member-wasm-test # native/Node backup compatibility, member bridge/worker checks
 make member-browser-test # opt-in synthetic Chromium checks; requires MEMBER_BROWSER
+make container-secrets # generate/validate local database secret files, no replacement
+make container-config # validate normalized Compose settings, no daemon required
+make up              # build/start/wait and verify the local demo stack
+make smoke           # inspect a running stack and its HTTP/database boundaries
+make down            # stop the demo stack without deleting database volumes
+make container-test  # isolated real-container/PostgreSQL checks; disposable test data
 ```
 
-See [testing](docs/testing.md) for required database, container, browser, and
-protocol targets, none available yet. The separate opt-in browser target checks
+See [testing](docs/testing.md) for required full database, browser, container-scan,
+inventory, and protocol targets that remain unavailable. The opt-in container target
+checks infrastructure/bootstrap only. The separate opt-in browser target checks
 synthetic member workers, not product custody or the account/vault journey.
 Add real Make targets with implementation.
 No successful no-op checks or claims that unavailable commands passed.

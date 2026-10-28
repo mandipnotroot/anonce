@@ -14,10 +14,10 @@ properties described below.
 
 ### HTTP services and shell
 
-- [Local services](deployment.md#local-development) reject non-loopback binds,
+- [Local services](deployment.md#local-development) reject non-loopback binds by default,
   read no request bodies, and discard HTTP diagnostics that could expose peer
-  addresses or panic values. No protocol operations, signers, credentials, or
-  databases exist.
+  addresses or panic values. Protocol operations, signing, account credentials,
+  and application database integration remain unavailable.
 - The shell serves public HTML and local CSS without forms or browser execution.
   Mocks require explicit development mode. [Browser and manual checks](ui-design.md#current-local-shell)
   remain outstanding.
@@ -28,6 +28,25 @@ properties described below.
   hosts/origins and unread bodies, verifies bounded assets, and separates page and
   worker CSP. Product services remain inert. This is neither product custody nor
   a boundary against hostile local code or a malicious browser distributor.
+
+### Local container infrastructure
+
+- The [Compose stack](deployment.md#container-stack) separates database instances,
+  volumes, passwords, and internal networks. Runtime SQL roles do not own schema
+  objects and cannot assume the migration owner. Applications receive no database
+  credentials until a storage integration exists. Bootstrap is not a migration runner.
+- Explicit `-container-network` allows only the additional IPv4 wildcard; native
+  defaults stay loopback-only. Compose publishes HTTP ports only on host loopback.
+  Per-application edge bridges are needed for publication and allow outbound traffic;
+  they are not a network-anonymity or egress-control mechanism.
+- Non-root users, read-only roots, dropped capabilities, configured resource limits,
+  and disabled Docker logging reduce local exposure. SQL checks use file-based
+  credentials without reflecting passwords or database error bodies. Secret files
+  remain plaintext on the host and readable by the authorized database container.
+- Host/daemon administrators can read both instances and observe traffic. Containers
+  are not independent operators or proof of anonymity. The stack has no TLS,
+  production authentication, encrypted database backup/restore evidence, container
+  vulnerability scan, or SBOM. It must not receive real data.
 
 ### Device keys and backups
 

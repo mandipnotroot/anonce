@@ -10,6 +10,15 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Local Docker Compose stack for non-root Go HTTP services and independent
+  PostgreSQL 18.6 instances, with pinned images, separate credentials/volumes/networks,
+  owner/migration/runtime bootstrap roles, loopback host publication, bounded
+  resources, read-only roots, disabled container logging, and liveness checks.
+  Explicit `-container-network` enables container binding without changing native
+  defaults. Add no-replace secret preparation, configuration/lifecycle/smoke targets,
+  and opt-in real-container SQL privilege/isolation checks. Application persistence,
+  migrations, product readiness, encrypted database recovery, image scanning, and
+  production deployment remain unavailable.
 - Development member-worker `createWithPassphrase`, `backupWithPassphrase`, and
   `unlockWithPassphrase` for strict, bounded UTF-8 text over existing confirmed
   setup/export and expected-key restoration. Owned encoding buffers clear before

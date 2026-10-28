@@ -6,13 +6,14 @@ GO ?= go
 export GOTOOLCHAIN := go1.27.3
 FUZZTIME ?= 15s
 
-.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test member-browser-test
+.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test member-browser-test container-secrets container-config up down smoke container-test
 help:
 	@echo 'setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check'
 	@echo 'build test lint fuzz vuln web-lint'
 	@echo 'wasm wasm-test'
 	@echo 'member-wasm member-wasm-test'
 	@echo 'member-browser-test (requires MEMBER_BROWSER; see docs/testing.md)'
+	@echo 'container-secrets container-config up down smoke container-test (see docs/deployment.md)'
 
 setup:
 	git config --local core.hooksPath .githooks
@@ -71,6 +72,24 @@ member-wasm-test: member-wasm
 member-browser-test: member-wasm
 	$(GO) test -race -count=1 -tags=browserintegration -run='^TestMemberNativeBrowserCompatibility$$' ./internal/memberwasm
 
+container-secrets:
+	python3 scripts/containers.py secrets
+
+container-config:
+	python3 scripts/containers.py config
+
+up:
+	python3 scripts/containers.py up
+
+down:
+	python3 scripts/containers.py down
+
+smoke:
+	python3 scripts/containers.py smoke
+
+container-test:
+	python3 scripts/containers.py test
+
 test:
 	mkdir -p coverage
 	$(GO) test -race -coverprofile=coverage/out ./...
@@ -87,6 +106,7 @@ lint:
 
 fuzz:
 	$(GO) test ./internal/service -run='^$$' -fuzz='^FuzzConfig$$' -fuzztime=$(FUZZTIME) -parallel=2
+	$(GO) test ./internal/service -run='^$$' -fuzz='^FuzzContainerListen$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/web -run='^$$' -fuzz='^FuzzLookup$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/keystore -run='^$$' -fuzz='^FuzzBackup$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/memberkey -run='^$$' -fuzz='^FuzzMemberKeyPayload$$' -fuzztime=$(FUZZTIME) -parallel=2

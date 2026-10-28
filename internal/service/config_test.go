@@ -112,6 +112,68 @@ func TestConfigSourceURL(t *testing.T) {
 	}
 }
 
+func TestContainerNetwork(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		listen string
+		valid  bool
+	}{
+		{"0.0.0.0:8080", true},
+		{"0.0.0.0:0", true},
+		{"127.0.0.1:8080", true},
+		{"[::1]:8080", true},
+		{"[::]:8080", false},
+		{"[::ffff:0.0.0.0]:8080", false},
+		{"192.168.1.1:8080", false},
+		{"192.0.2.1:8080", false},
+		{":8080", false},
+		{"localhost:8080", false},
+		{"0.0.0.0:08080", false},
+		{"[::1%lo]:8080", false},
+	} {
+		t.Run(tc.listen, func(t *testing.T) {
+			t.Parallel()
+			for _, role := range []Role{CA, Issuer, Submission} {
+				cfg := testConfig(role)
+				cfg.Listen, cfg.ContainerNetwork = tc.listen, true
+				if err := cfg.Validate(); (err == nil) != tc.valid {
+					t.Fatalf("container bind validation: %v", err)
+				}
+				cfg.ContainerNetwork = false
+				if tc.listen == "0.0.0.0:8080" && cfg.Validate() == nil {
+					t.Fatal("wildcard accepted without explicit opt-in")
+				}
+			}
+		})
+	}
+}
+
+func FuzzContainerListen(f *testing.F) {
+	f.Add("0.0.0.0:8080", true)
+	f.Add("0.0.0.0:8080", false)
+	f.Add("[::]:8080", true)
+	f.Add("127.0.0.1:0", true)
+	f.Fuzz(func(t *testing.T, listen string, enabled bool) {
+		if len(listen) > 129 {
+			return
+		}
+		cfg := testConfig(Submission)
+		cfg.Listen, cfg.ContainerNetwork = listen, enabled
+		if cfg.Validate() != nil {
+			return
+		}
+		host, _, err := net.SplitHostPort(listen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ip, err := netip.ParseAddr(host)
+		allowed := ip.IsLoopback() || enabled && ip == netip.IPv4Unspecified()
+		if err != nil || ip.Zone() != "" || !allowed {
+			t.Fatal("container listen boundary escaped")
+		}
+	})
+}
+
 func FuzzConfig(f *testing.F) {
 	f.Add(string(Submission), "127.0.0.1:8080", testSource, false)
 	f.Add(string(Submission), "127.0.0.1:8080", testSource, true)

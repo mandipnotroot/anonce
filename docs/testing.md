@@ -15,7 +15,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make build` | All Go commands with Go 1.27.3 |
 | `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no native-package exclusions, including wrappers and signal handling. JS-only code is checked separately below |
 | `make lint` | Native and WASM entry-point vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzMemberWASMSizes`, `FuzzMemberBrowserManifest`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make fuzz` | `FuzzConfig`, `FuzzContainerListen`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzMemberWASMSizes`, `FuzzMemberBrowserManifest`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 | `make wasm` | Go `js/wasm` public-request verifier; matching reviewed loader/notices, SHA-256 manifest, 8 MiB uncompressed size gate |
@@ -23,6 +23,10 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make member-wasm` | Separate local member-session module, dedicated-worker/client assets, matching reviewed loader/module notices, manifest, and 8 MiB gate |
 | `make member-wasm-test` | Native race/lifecycle tests, actual Node direct bridge and dedicated-worker setup/restoration, rejection, termination, bidirectional encrypted-backup compatibility, owner lifecycle unit tests, and bounded command fuzzing |
 | `make member-browser-test` | Opt-in pinned headless Chromium, isolated Go test host, native/worker backup compatibility, page CSP probes, event-loop progress, synthetic-clock expiry/restoration, same-origin peer lock, background-tab lock/foreground restoration, and navigation termination; requires `MEMBER_BROWSER`, not included in `make check` or CI |
+| `make container-secrets` | Generate/validate separate database secret files without replacing existing files; no Docker daemon required |
+| `make container-config` | Validate the real Compose parser's normalized configuration, image pin, loopback publication, networks, secret scopes, volumes, resource bounds, and hardening; requires Docker Compose but not a daemon |
+| `make up`, `make smoke`, `make down` | Start/build/wait and check the demo stack, inspect the running stack, or stop without deleting database volumes; requires local Docker access |
+| `make container-test` | Opt-in fresh Compose project with actual app containers and PostgreSQL: liveness/unavailable readiness, live isolation/hardening, authenticated runtime access, denied escalation/DDL/default function access, explicit table grants, and cross-instance TCP rejection; disposable synthetic volumes only |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -34,6 +38,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Parser | Input/work bounds |
 | --- | --- |
 | Configuration | 8192 bytes before parsing; separate listen/source-URL limits |
+| Container bind opt-in | `FuzzContainerListen`: 129-byte listen input cap and one Boolean; only native loopback or explicitly opted-in IPv4 unspecified binding |
 | Backup structure | Maximum backup size plus one byte; allocation-free parser, no Argon2id |
 | Member/reviewer payload | 49-byte input cap, 48-byte ASN.1 profile; no KDF work |
 | Member CSR | 130-byte fuzz input cap, 129-byte DER profile; bounded ASN.1 and signature verification, no KDF work |
@@ -50,7 +55,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 Review and license synthetic regression inputs before committing. Retain failures
 in the relevant package's `testdata/fuzz/<target>` directory:
 
-- `internal/service`: `FuzzConfig`.
+- `internal/service`: `FuzzConfig` and `FuzzContainerListen`.
 - `internal/web`: `FuzzLookup`.
 - `internal/client/keystore`: `FuzzBackup`.
 - `internal/client/memberkey`: `FuzzMemberKeyPayload`.
@@ -89,7 +94,9 @@ profile-2 nonce prefix and library composition.
 
 | Area | Tests |
 | --- | --- |
-| Configuration | `TestConfig`, `TestConfigSourceURL`, `TestRunFailures` |
+| Configuration | `TestConfig`, `TestConfigSourceURL`, `TestRunFailures`, `TestContainerNetwork`, `TestContainerNetworkFlag`, `FuzzContainerListen` |
+| Fixed-target local liveness probe, exact bounded body/status, no redirect/credentials, response-header limit, cancellation, and unavailable targets | `TestProbe`, `TestProbeCancellationAndFailures` |
+| No-replace/distinct secret generation, existing-file preservation, directory/file permissions, malformed/missing/duplicate files, symlinks/FIFOs, engine version boundary, and unsafe normalized Compose model rejection | `scripts/test_containers.py`, included in `make policy-test` |
 | Routing and input isolation | `TestInfrastructureRoutes`, `TestInfrastructureMethods`, `TestUnavailableRoutesRespectServiceBoundary`, `TestInfrastructureDoesNotReadOrReflectRequestData`, `TestServeRejectsBodyBeforeContinue` |
 | Lifecycle and limits | `TestServeLifecycle`, `TestServePropagatesCancellationToRequests`, `TestServeClosesUnresponsiveRequests`, `TestServeListenerFailureClosesRequests`, `TestConnectionLimitAndClose`, `TestServerBounds` |
 | Shell paths, development gate, SRI, headers, methods, HEAD, no body reads/reflection | `TestSite`, `TestStylesheetIntegrity`, `TestSiteRejectsBrokenAssets`, `TestWebServiceBoundary`, `TestWebDelivery`, `TestDevelopmentStyleGuideFlag` |
@@ -159,6 +166,39 @@ Browser costs, reviewer-backup native/WASM compatibility, independent cryptograp
 independent file-custody review, certificate/enrollment integration, and end-to-end device
 confidentiality remain untested. Reviewer round binding, expiry enforcement, and
 envelope-decryption workflows are not implemented.
+
+### Container infrastructure checks
+
+The [local stack](deployment.md#container-stack) has separate opt-in checks, not a
+working product `e2e` or complete `db-test`. `make container-config` uses the real
+Compose JSON model without starting containers. Python policy/secret unit tests run
+in `make check` without a Docker dependency. Database privileges are not inferred
+from those unit tests.
+
+`make container-test` requires a local Linux Docker daemon, Engine 28 or newer,
+Compose, Python, and Make. It builds the actual scratch image and initializes both
+PostgreSQL instances under a unique test project, with fresh secrets and ephemeral
+loopback host ports. It never uses or resets the normal development stack's volumes.
+Failures or missing tools fail the target rather than skipping it. Cleanup removes
+only the test project's containers/networks/volumes; build cache/images remain.
+Forced termination or a daemon failure can leave owned test resources for explicit
+inspection and cleanup.
+
+The checks inspect running users, read-only roots, capabilities, resource settings,
+logging drivers, actual network attachments, and port publication. HTTP requests
+confirm liveness, `503` readiness, demonstration status, source discovery, and no
+cookies. Real TCP-authenticated SQL checks run as the actual runtime/migration roles:
+no ownership escalation, server-file reads, schema/public/temporary DDL, default table/function access,
+wrong-password rejection, and successful use only after an explicit owner grant. The opposite instance must
+reject a TCP connection using the first instance's runtime credential. Synthetic
+test tables/functions exist only in disposable volumes. Passwords and SQL error
+bodies are not printed.
+
+The stack was exercised on Linux x86_64 with Engine 29.9.2 and Compose 5.6.1 on
+2026-10-28. This is not evidence for malicious-host isolation, production networking,
+rootless/Podman support, application migrations, concurrent quota/spend transactions,
+encrypted backup restoration, OS-package vulnerability scanning, SBOMs, or the full
+account/vault/submission journey. Those remain required work.
 
 ### WASM verifier checks
 
@@ -335,8 +375,6 @@ JavaScript and full syntax validation.
 | --- | --- |
 | `make db-test` | Migrations, privileges, concurrency, backup/restore on real PostgreSQL |
 | `make e2e` | Headless browser checks against the Compose stack |
-| `make up` | `docker compose up --build --wait` with loopback-only demo exposure |
-| `make smoke` | Health/readiness checks and service isolation checks |
 | `make simulation` | Readable multi-user/attack coverage report with honest case status |
 | `make container-scan` | Inspect the built image and its dependency inventory |
 | `make sbom` | Produce a versioned SPDX or CycloneDX inventory |

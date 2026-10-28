@@ -116,6 +116,40 @@ status, source/notices, version/digest, and browser tests when updating it. A br
 reviewed browser suite may replace this focused runtime. No automatic installer,
 third-party driver, or browser package manager is added.
 
+### Container runtime and images
+
+The opt-in stack uses open-source Docker Engine and Compose, not a required Docker
+Desktop subscription. Both upstream projects use Apache-2.0. Local observations on
+2026-10-28 are Engine 29.9.2 and Compose 5.6.1. Engine 28 or newer is required for
+the documented loopback publication boundary. Other engines/platforms need separate
+validation before support is claimed.
+
+| Image | Admitted purpose and index SHA-256 |
+| --- | --- |
+| `golang:1.27.3-bookworm` | Build-only official image; `df4bb0305771186a85d0fd3a40f5c5da9af97ac8053d391ffce2c070817a20c6` |
+| `postgres:18.6-bookworm` | Independent development databases; `5c4783a8cc3f0074912164f94dfa1be4e043438f0f707cf968d7af9a0d31a2c8` |
+
+Digests were retrieved from the official registry on 2026-10-28. Reviewed upstream
+build definitions are [Go](https://github.com/docker-library/golang/tree/41d9b4da70324ae7b6461ac2cc401b06719ff57d/1.27/bookworm)
+and [PostgreSQL](https://github.com/docker-library/postgres/tree/e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc/18/bookworm).
+Go's BSD-3-Clause license/patent notice and the project AGPL license are copied
+unchanged into the scratch application image. Only standard-library HTTP commands
+are linked there; new module imports require reviewing their notices too. Builder
+operating-system packages do not enter that final image.
+
+PostgreSQL uses the [PostgreSQL License](https://www.postgresql.org/about/licence/).
+Its official Debian image retains original package notices and bundled licenses;
+it is not relicensed as project code. No upstream source is copied into this
+repository. Image admission is not a complete transitive license or vulnerability
+audit. `make vuln` does not scan operating-system packages; container scanning and
+SBOM generation remain unavailable. Keep this stack synthetic-only.
+
+Updating a pin requires reviewing upstream packages, licenses, security status,
+non-root IDs, volume layout, and real-container checks. Update `Dockerfile`, Compose,
+the policy check, and this reference together. Never fall back to floating tags.
+Secret preparation uses Python's standard OS-backed `secrets` module, with no new
+application module or Python package.
+
 ### Documentation theme
 
 mdBook setup verifies official release-API digests and reviewed notice hashes.

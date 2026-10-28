@@ -20,7 +20,7 @@ const (
 	shutdownTimeout = 5 * time.Second
 )
 
-// Run binds a validated loopback listener and serves until cancellation. No request
+// Run binds a validated listener and serves until cancellation. No request
 // logging, database connection, or signer is installed by this foundation.
 func Run(ctx context.Context, cfg Config) error {
 	handler, err := NewHandler(cfg)

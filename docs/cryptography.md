@@ -23,6 +23,12 @@ Submission, enrollment, and public-proof protocols remain prospective.
 
 ## Membership and authorization
 
+The development [database bootstrap](database.md#local-container-bootstrap) uses
+PostgreSQL 18's native [SCRAM-SHA-256 authentication](https://www.postgresql.org/docs/18/auth-password.html)
+for TCP connections (consulted 2026-10-28), with separate random machine credentials.
+This is not an account-password policy, vault unlock method, or device-key wrapping
+profile. Existing backup, member-key, and CSR profiles are unchanged.
+
 - Local requests use [member CSR profile 1](#member-csr-profile-1). This is not
   certificate issuance or an enrollment transport.
 - Generate keys and CSRs on the device. The CA checks proof of possession and

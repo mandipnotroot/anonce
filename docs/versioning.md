@@ -235,6 +235,17 @@ worker command allowlists, direct bridge, CLI, HTTP, and backup formats are unch
 Changing this text encoding later requires breaking-impact review. There is no
 normalization, lossy conversion, or fallback to an unconfirmed operation.
 
+### Local container compatibility
+
+The [local container stack](deployment.md#container-stack), fixed-target `probe`
+command, and explicit `-container-network` flag are additive development interfaces
+requiring `semver:minor` review. Default native binds, HTTP routes, readiness, CLI key
+operations, and cryptographic formats are unchanged. New Compose settings, bootstrap
+roles, and secret-file contracts are development-only, not a production deployment
+API or migration compatibility promise. Existing volumes are never automatically
+upgraded or discarded; changing bootstrap ownership or authentication needs explicit
+compatibility review.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

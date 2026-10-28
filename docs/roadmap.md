@@ -22,7 +22,7 @@ See the [user flow](ui-design.md#account-and-review-workflow) and
   Fix wrapping profiles and supported browser/provider evidence, not a promise of
   universal passkey decryption. Keep reviewer server backup excluded pending review.
 - Build the identity-side foundation for a complete browser workflow: separate
-  PostgreSQL instances and Compose, account authentication/sessions, owner-scoped
+  PostgreSQL application migrations/integration, account authentication/sessions, owner-scoped
   encrypted member-key backup storage, enrollment, protected CA signing, and
   revocation. Preserve [service boundaries](architecture.md#account-and-anonymous-flow).
 - Connect shared Go member-key and backup composition to reviewed browser interfaces
@@ -36,6 +36,12 @@ See the [user flow](ui-design.md#account-and-review-workflow) and
 
 Available foundations:
 
+- **Container infrastructure:** [local Compose stack](deployment.md#container-stack)
+  for non-root Go services and independent PostgreSQL 18.6 instances, with separate
+  volumes/credentials, owner/migration/runtime bootstrap roles, loopback publication,
+  liveness checks, and opt-in real-container privilege/isolation checks. Application
+  persistence, migrations, encrypted restoration, image scanning, and product readiness
+  remain unavailable.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).

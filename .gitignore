@@ -4,6 +4,7 @@
 __pycache__/
 *.pyc
 .env
+.secrets/
 bin/
 dist/
 coverage/

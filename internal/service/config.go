@@ -39,13 +39,14 @@ func (r Role) DefaultListen() string {
 
 // Config describes a local demonstration process. There are no secret settings.
 type Config struct {
-	Role          Role
-	Listen        string
-	SourceURL     string
-	DevStyleGuide bool
+	Role             Role
+	Listen           string
+	SourceURL        string
+	DevStyleGuide    bool
+	ContainerNetwork bool
 }
 
-// Validate rejects public binds and missing source locations. Errors deliberately
+// Validate requires explicit container networking for IPv4 wildcard binds. Errors
 // omit the supplied values, which might contain accidentally pasted credentials.
 func (c Config) Validate() error {
 	if c.Role.DefaultListen() == "" {
@@ -59,11 +60,12 @@ func (c Config) Validate() error {
 	}
 	host, port, err := net.SplitHostPort(c.Listen)
 	if err != nil {
-		return errors.New("listen address must contain a loopback IP literal and port")
+		return errors.New("listen address must contain an IP literal and port")
 	}
 	ip, err := netip.ParseAddr(host)
-	if err != nil || !ip.IsLoopback() || ip.Zone() != "" {
-		return errors.New("listen host must be an unzoned loopback IP literal")
+	allowed := ip.IsLoopback() || c.ContainerNetwork && ip == netip.IPv4Unspecified()
+	if err != nil || ip.Zone() != "" || !allowed {
+		return errors.New("listen host requires loopback or explicit container IPv4 wildcard binding")
 	}
 	n, err := strconv.ParseUint(port, 10, 16)
 	if err != nil || strconv.FormatUint(n, 10) != port {

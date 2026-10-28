@@ -36,6 +36,11 @@ and no OpenAPI schema or product route is added.
 
 ## Implemented infrastructure
 
+The [local container stack](deployment.md#container-stack) changes deployment only.
+Its explicit `-container-network` flag permits container-local IPv4 wildcard binding
+while Compose publishes only host loopback ports. `/healthz` still reports liveness,
+`/readyz` remains unavailable, and no HTTP route or OpenAPI schema is added.
+
 All three commands expose:
 
 | Path | `GET` response |
