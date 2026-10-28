@@ -10,6 +10,11 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional development member-worker `AbortSignal` ownership for immediate local
+  cancellation of startup, unlocked custody, or pending restoration. Cancellation
+  terminates the instance without notifying peers or exposing the abort reason;
+  an already-aborted signal starts no worker. Existing no-argument construction,
+  transport, HTTP, and cryptographic profiles are unchanged.
 - Development member-worker `closed` Promise for secret-free observation of terminal
   local cleanup, including idle peer lock and failed startup, without polling.
   Node lifecycle and actual-worker checks plus synthetic browser checks cover the

@@ -127,6 +127,7 @@ profile-2 nonce prefix and library composition.
 | Actual member WASM bridge, opaque passwords, native backup restore, WASM backup opened natively, public CSR validation, wrong password/purpose, corruption/key mismatch, byte types/arity/bounds, hostile objects/shadowed getters, shared/detached arrays, input snapshots, public-output ownership, lock/close and namespace collision | `TestMemberNativeWASMCompatibility` with `scripts/member_wasm_test.mjs`, through `make member-wasm-test` |
 | Worker owner single-instance/operation admission, snapshots/transfers, input types/arity/bounds, hostile properties, timeout/termination, late replies, protocol/transport failures, and bounded command fuzzing | Named `node:test` cases in `scripts/member_worker_test.mjs`, through `make member-wasm-test` |
 | Stable secret-free closure Promise, every terminal path during startup/idle/pending work, failed/denied construction, cleanup before observers, late subscribers, unchanged readiness, no nonterminal settlement, and explicit replacement | Named `node:test` closed Promise cases in `scripts/member_worker_test.mjs`; actual Node worker lock/disposal/failure/expiry observations in `TestMemberNativeWorkerCompatibility` |
+| Optional owner abort signal, pre-aborted/invalid admission without resources, startup/idle/pending cancellation, unchanged settled results, ignored reasons/shadowed properties, suppressed-event state checks, listener cleanup, no peer notification, and explicit replacement | Named `node:test` abort cases in `scripts/member_worker_test.mjs`; actual startup/idle/pending cancellation in `TestMemberNativeWorkerCompatibility` and `TestMemberNativeBrowserCompatibility` |
 | Delayed startup/operation/lifetime deadline checks on each clock, exact boundaries, pre-admission/busy/reply/visibility rejection, unchanged lifetime after successful work, invalid/missing/failed/backward readings, captured clocks, local cleanup and explicit replacement | Named `node:test` deadline, lifetime, and clock cases in `scripts/member_worker_test.mjs`; valid actual-worker replies discarded after synthetic clock advances in `TestMemberNativeWorkerCompatibility` |
 | Secret-free peer/global lock, startup/pending cancellation, no echo/restart, required coordination APIs, notification failures, local disposal, and cached-pagehide cleanup | Named `node:test` lock, channel failure, global lock, and pagehide cases in `scripts/member_worker_test.mjs`; controlled channels and lifecycle events, not actual browser tabs |
 | Local visibility-loss lock in startup/idle/unlocked/pending states, hidden/missing/failed visibility admission, registration cleanup, pinned owner document, pre-admission/reply checks, no peer notification, no restart, and explicit replacement | Named `node:test` visibility cases in `scripts/member_worker_test.mjs`; actual Node worker termination under synthetic visibility events in `TestMemberNativeWorkerCompatibility` |
@@ -204,6 +205,10 @@ the timeout callback. They do not model real sleep or suspension.
 The public `closed` Promise is also checked with actual Node workers, including
 idle peer locking without polling. Controlled tests check cleanup before observer
 callbacks and settlement for failed construction, without claiming worker exit.
+Optional host-signal checks exercise already-aborted admission, local cancellation
+during startup/idle/pending work, reason-free closure, cleanup of abort listeners,
+and state rechecks when another listener suppresses abort event delivery. Actual
+Node worker checks cancel startup, unlocked custody, and pending restoration.
 Lock checks additionally model independent owner modules, inspect the exact
 secret-free notification, reject missing/failed channel facilities, and exercise
 local pagehide cleanup, including a synthetic back/forward cache event. The real
@@ -276,6 +281,12 @@ visibility override is used for these browser checks.
 Peer-lock and visibility checks observe the public `closed` Promise, without an
 extra notification channel or a data call to trigger termination. Other browser
 checks cover closure after lock, disposal, startup denial, and synthetic expiry.
+Browser abort-controller checks additionally cancel startup, unlocked custody, and
+pending restoration, reject already-aborted startup, and explicitly restore the
+same native backup/key through a new owner. Worker disappearance is checked after
+the cancellation cases; this is not an erasure or hard cancellation-time guarantee.
+The new host-signal browser cases remain unverified: the 2026-10-28 development
+run could not start Chromium because required system libraries were unavailable.
 
 Navigation and tab-switch checks observe worker disappearance, not memory erasure
 or reliable global revocation. Event-loop progress is not a mobile latency/memory budget.

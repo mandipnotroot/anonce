@@ -67,6 +67,8 @@ Available foundations:
   on disposal.
   A public, secret-free `closed` Promise observes terminal local cleanup, including
   idle peer locks, without polling; it does not acknowledge worker exit or logout.
+  An optional `AbortSignal` lets a future host cancel startup or restoration through
+  terminal local disposal without notifying peers or exposing the abort reason.
   Secret-free same-partition lock notifications and local pagehide/hidden-page
   termination have Node checks. An opt-in
   [synthetic browser target](testing.md#member-worker-browser-checks) exercises

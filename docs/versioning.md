@@ -201,6 +201,13 @@ settlement supplies no reason or worker-exit guarantee. Existing readiness, meth
 results, termination rules, transport, direct bridge, HTTP, CLI, and cryptographic
 formats are unchanged. See the [owner contract](key-management.md#local-member-worker-host).
 
+The optional worker-owner `AbortSignal` constructor argument is an additive
+development interface requiring `semver:minor` review. Existing no-argument
+construction is unchanged. Cancellation terminates only that owner, never peers,
+and uses existing `ready`, `closed`, and Promise/null results. Invalid arguments
+fail before worker startup. Direct bridge, worker transport, HTTP, CLI, and
+cryptographic profiles are unchanged.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

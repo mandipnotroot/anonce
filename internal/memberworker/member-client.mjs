@@ -48,8 +48,12 @@ export class MemberWorkerSession {
   #clock = null;
   #born = null;
   #lastTime = null;
+  #signal = null;
+  #aborted = null;
+  #removeAbort = null;
+  #abort = () => this.#stop();
 
-  constructor() {
+  constructor(...args) {
     this.#ready = new Promise((resolve) => { this.#resolveReady = resolve; });
     this.#closure = new Promise((resolve) => { this.#resolveClosed = resolve; });
     if (active !== null) {
@@ -58,6 +62,19 @@ export class MemberWorkerSession {
     }
     active = this;
     try {
+      if (args.length > 1) { this.#stop(); return; }
+      const signal = args[0];
+      if (signal !== undefined) {
+        // Use platform accessors/methods, not caller-shadowed signal properties.
+        // Never read the reason: it can contain host-supplied sensitive data.
+        this.#aborted = Object.getOwnPropertyDescriptor(AbortSignal.prototype, "aborted").get.bind(signal);
+        if (this.#aborted() !== false) { this.#stop(); return; }
+        const add = EventTarget.prototype.addEventListener.bind(signal);
+        this.#removeAbort = EventTarget.prototype.removeEventListener.bind(signal);
+        this.#signal = signal;
+        add("abort", this.#abort, { once: true });
+        if (!this.#checkAbort()) return;
+      }
       // Required lifecycle facilities have no uncoordinated fallback. The fixed
       // channel deliberately contains no account, key, or session identifier.
       if (typeof globalThis.addEventListener !== "function" || typeof globalThis.removeEventListener !== "function") {
@@ -154,7 +171,7 @@ export class MemberWorkerSession {
   }
 
   #checkState() {
-    if (!this.#checkVisibility()) return null;
+    if (!this.#checkAbort() || !this.#checkVisibility()) return null;
     try {
       const time = this.#clock();
       // Never coerce a clock result or replace a failed clock with the other one.
@@ -188,9 +205,22 @@ export class MemberWorkerSession {
     return false;
   }
 
+  #checkAbort() {
+    if (this.#closed) return false;
+    try {
+      if (this.#signal === null || this.#aborted() === false) return true;
+    } catch {
+      // Failed signal reads must not permit further work or output.
+    }
+    this.#stop();
+    return false;
+  }
+
   #stop() {
     if (this.#closed) return;
     this.#closed = true;
+    if (this.#signal !== null) this.#removeAbort("abort", this.#abort);
+    this.#signal = this.#aborted = this.#removeAbort = null;
     clearTimeout(this.#startup);
     clearTimeout(this.#operation);
     clearTimeout(this.#lifetime);

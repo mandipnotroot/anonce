@@ -53,7 +53,7 @@ globalThis.Worker = class {
 };
 const { MemberWorkerSession } = await import(pathToFileURL(join(directory, "member-client.mjs")));
 const sessions = [];
-const open = () => { const session = new MemberWorkerSession(); sessions.push(session); return session; };
+const open = (...args) => { const session = new MemberWorkerSession(...args); sessions.push(session); return session; };
 let exported;
 try {
   const session = open();
@@ -104,6 +104,23 @@ try {
   assert.equal(await pending, null);
   assert.equal(workers.at(-1).terminated, true);
   assert.equal(await cancelled.request(), null);
+
+  for (const state of ["startup", "idle", "pending"]) {
+    const controller = new AbortController();
+    const aborted = open(controller.signal), worker = workers.at(-1);
+    if (state !== "startup") assert.equal(await aborted.ready, true);
+    if (state === "idle") assert.ok(await aborted.unlock(password, backup, key));
+    const pending = state === "pending" ? aborted.unlock(password, backup, key) : null;
+    controller.abort("synthetic cancellation");
+    assert.equal(worker.terminated, true);
+    assert.equal(await aborted.closed, undefined);
+    assert.equal(await aborted.ready, state !== "startup");
+    if (pending) assert.equal(await pending, null);
+    assert.equal(await aborted.request(), null);
+    const count = workers.length;
+    assert.equal(await open(controller.signal).ready, false);
+    assert.equal(workers.length, count, "already-aborted signal started a worker");
+  }
 
   // Exercise the actual BroadcastChannel API with a live WASM worker, not only
   // the controlled channel harness. Node does not model browser partitioning.

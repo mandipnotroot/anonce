@@ -8,8 +8,8 @@ const decode = (hex) => Uint8Array.from(hex.match(/../g), (pair) => Number.parse
 const encode = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 function check(condition) { if (!condition) throw new Error("browser member check failed"); }
 const sessions = new Set();
-async function open() {
-  const session = new MemberWorkerSession();
+async function open(...args) {
+  const session = new MemberWorkerSession(...args);
   sessions.add(session);
   check(await session.ready);
   return session;
@@ -152,6 +152,35 @@ export async function deadlines(native) {
     return true;
   } finally {
     Date.now = wall;
+    password.fill(0);
+    closeAll();
+  }
+}
+
+export async function cancellation(native) {
+  const password = decode(native.password), backup = decode(native.backup), key = decode(native.publicKey);
+  try {
+    for (const state of ["startup", "idle", "pending"]) {
+      const controller = new AbortController();
+      const session = new MemberWorkerSession(controller.signal);
+      sessions.add(session);
+      if (state !== "startup") check(await session.ready === true);
+      if (state === "idle") check(encode((await session.unlock(password, backup, key)).csr) === native.csr);
+      const pending = state === "pending" ? session.unlock(password, backup, key) : null;
+      controller.abort("synthetic cancellation");
+      check(await session.closed === undefined);
+      check(await session.ready === (state !== "startup"));
+      if (pending) check(await pending === null);
+      check(await session.request() === null);
+      const denied = new MemberWorkerSession(controller.signal);
+      sessions.add(denied);
+      check(await denied.ready === false && await denied.closed === undefined);
+    }
+    const restored = await open(new AbortController().signal);
+    check(encode((await restored.unlock(password, backup, key)).csr) === native.csr);
+    check(encode(backup) === native.backup && encode(key) === native.publicKey);
+    return true;
+  } finally {
     password.fill(0);
     closeAll();
   }

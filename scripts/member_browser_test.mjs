@@ -136,6 +136,7 @@ try {
   assert.equal(await evaluate(main.sessionId, moduleCall("pagePolicy()")), true, "page CSP probes failed");
   output = await evaluate(main.sessionId, moduleCall(`run(${JSON.stringify(input)})`));
   assert.equal(await evaluate(main.sessionId, moduleCall(`deadlines(${JSON.stringify(input)})`)), true, "owner deadline checks failed");
+  assert.equal(await evaluate(main.sessionId, moduleCall(`cancellation(${JSON.stringify(input)})`)), true, "owner cancellation checks failed");
   await until(async () => (await workerIDs()).length === 0);
   const peer = await page();
   assert.equal(await evaluate(peer.sessionId, moduleCall("openPeer()")), true);

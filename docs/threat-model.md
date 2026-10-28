@@ -181,6 +181,12 @@ properties described below.
   polling, including idle peer locking. It exposes no reason or identifiers and
   does not acknowledge worker exit or remote locking. Handlers require a running
   owner event loop; they add no suspension, erasure, logout, or revocation guarantee.
+  An optional host `AbortSignal` terminates only its owner, with the same local
+  cleanup and pending-output rejection as disposal. Already-aborted signals start
+  no worker; abort reasons are not read or exposed. Signal state is rechecked before
+  admission and readiness/reply publication if abort event delivery was suppressed.
+  This does not cancel peers, preserve the unlocked key, undo returned output, or
+  provide a hard cancellation deadline while the owner is blocked.
 - The worker owner's [lock notifications](key-management.md#lock-notifications-and-page-disposal)
   contain no secrets or account/key identifiers. Explicit lock can notify eligible
   same-origin, same-partition peers; all incoming traffic terminates locally without

@@ -683,7 +683,9 @@ The dedicated module worker wraps the existing member bridge. Its contract uses 
 linked above. No new cryptographic construction or backup format is introduced.
 
 Import `MemberWorkerSession` from `member-client.mjs` in a trusted identity-side
-host. Construction starts one worker with fixed relative assets and omitted
+host. Construction accepts no arguments, `undefined`, or one platform `AbortSignal`.
+Invalid signals or extra arguments close the new instance without starting a worker.
+Construction starts one worker with fixed relative assets and omitted
 credentials. At most one live instance is admitted per module realm; a second
 instance resolves `ready` to `false` without starting another worker. This is not
 a cross-tab or cross-realm limit. BroadcastChannel, global page event APIs, and a
@@ -699,6 +701,23 @@ The runtime is never loaded into the owner realm.
 | `lock()` | No arguments; notify participating peers, then synchronously terminate locally and resolve pending work to `null`, even if posting fails; repeated calls are safe; extra arguments do nothing |
 | `close()` | No arguments; synchronously detach listeners, terminate locally, and resolve pending work to `null`, without notifying peers; repeated calls are safe; extra arguments do nothing |
 | `lockMemberWorkers()` | Separate module export, no arguments; post a lock even without a live local owner, close any local owner and the temporary channel; return `true` if posting succeeded, otherwise `false`; extra arguments return `false` without acting |
+
+`new MemberWorkerSession(controller.signal)` ties the whole owner's lifetime to a
+host cancellation scope. An already-aborted signal starts no worker or channel.
+Aborting during startup, idle custody, or pending work performs the same terminal
+local cleanup as `close()`, without notifying peers. Pending operations resolve to
+`null`; `closed` resolves without exposing the abort reason. Previously settled
+results stay unchanged. Cancellation never aborts the supplied controller or
+automatically restores a session. Use an explicit new owner with a fresh signal
+after cancellation; this is not per-operation cancellation that retains a key.
+
+The abort listener is removed on every terminal path. Platform accessors ignore
+shadowed signal properties, and admission/readiness/reply checks recheck the
+aborted state even if another event listener suppressed delivery. The host and
+platform remain trusted; a blocked owner cannot handle cancellation until it
+resumes. This follows the [DOM abort interfaces](https://dom.spec.whatwg.org/#aborting-ongoing-activities)
+(Living Standard consulted 2026-10-28), with the existing Promise/null failure
+contract rather than exposing host-provided abort reasons.
 
 Inputs are checked with intrinsic getters before copying any bytes. Nonshared
 `Uint8Array` views are snapshotted and transferred without detaching or modifying

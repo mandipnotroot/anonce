@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { randomInt } from "node:crypto";
+import { getEventListeners } from "node:events";
 import { test } from "node:test";
 import { byteView, command, inputViews, result } from "../internal/memberworker/protocol.mjs";
 import { lockMemberWorkers, MemberWorkerSession } from "../internal/memberworker/member-client.mjs";
@@ -109,7 +110,7 @@ function harness(t) {
     document,
     visibilityListeners,
     time,
-    open(Owner = MemberWorkerSession) { const session = new Owner(); sessions.push(session); return session; },
+    open(Owner = MemberWorkerSession, ...args) { const session = new Owner(...args); sessions.push(session); return session; },
     deliver() { for (const notify of notifications.splice(0)) notify(); },
     pagehide(persisted) { for (const listener of [...listeners]) listener({ persisted }); },
     visibility(state) {
@@ -164,6 +165,7 @@ test("member worker owner admission, snapshots, public results, and terminal loc
 test("member worker closed Promise observes every terminal path after local cleanup", { timeout: 5000 }, async (t) => {
   const h = harness(t);
   const actions = {
+    abort: (_session, _worker, _channel, controller) => controller.abort(),
     close: (session) => session.close(),
     lock: (session) => session.lock(),
     "global lock": () => lockMemberWorkers(),
@@ -186,7 +188,8 @@ test("member worker closed Promise observes every terminal path after local clea
     for (const [name, act] of Object.entries(actions)) {
       if (name === "startup timeout" && state !== "startup") continue;
       if (name === "operation timeout" && state !== "pending") continue;
-      const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+      const controller = new AbortController();
+      const session = h.open(MemberWorkerSession, controller.signal), worker = h.workers.at(-1), channel = h.channels.at(-1);
       const closure = session.closed;
       assert.ok(closure instanceof Promise);
       assert.equal(session.closed, closure, "getter replaced the Promise");
@@ -205,10 +208,11 @@ test("member worker closed Promise observes every terminal path after local clea
         assert.equal(channel.onmessage, null);
         assert.equal(channel.onmessageerror, null);
         assert.equal(h.visibilityListeners.size, 0);
+        assert.equal(getEventListeners(controller.signal, "abort").length, 0, "abort listener leaked");
       });
       await Promise.resolve();
       assert.equal(observed, 0, `${state}/${name}: live owner reported closed`);
-      act(session, worker, channel);
+      act(session, worker, channel, controller);
       assert.equal(observed, 0, "observer ran synchronously inside termination");
       await observation;
       assert.equal(await session.ready, state !== "startup", "closure changed readiness history");
@@ -225,6 +229,103 @@ test("member worker closed Promise observes every terminal path after local clea
       assert.equal(await replacement.ready, true, "closure retained singleton admission");
       replacement.close();
     }
+  }
+});
+
+test("member worker abort admission rejects invalid and already-aborted signals before resources", async (t) => {
+  const h = harness(t);
+  const aborted = new AbortController();
+  aborted.abort(new Proxy({}, { get() { assert.fail("abort reason inspected"); } }));
+  const revoked = Proxy.revocable({}, {}); revoked.revoke();
+  for (const args of [[null], [false], [1], ["signal"], [{}], [new EventTarget()],
+    [Object.create(AbortSignal.prototype)], [revoked.proxy], [aborted.signal], [undefined, undefined]]) {
+    const session = h.open(MemberWorkerSession, ...args);
+    assert.equal(await session.ready, false);
+    assert.equal(await session.closed, undefined);
+    assert.equal(await session.request(), null);
+    assert.equal(h.workers.length, 0);
+    assert.equal(h.channels.length, 0);
+    assert.equal(getEventListeners(aborted.signal, "abort").length, 0);
+  }
+  const controller = new AbortController();
+  const live = h.open(MemberWorkerSession, controller.signal);
+  const denied = h.open(MemberWorkerSession, controller.signal);
+  assert.equal(await denied.closed, undefined);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 1, "denied owner registered a listener");
+  controller.abort();
+  assert.equal(await live.ready, false);
+  assert.equal(await live.closed, undefined);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  const replacement = h.open(MemberWorkerSession, undefined);
+  h.workers.at(-1).ready();
+  assert.equal(await replacement.ready, true);
+});
+
+test("member worker abort is local, ignores shadowed properties and reasons, and never revives", async (t) => {
+  const h = harness(t);
+  const controller = new AbortController(), signal = controller.signal;
+  for (const name of ["aborted", "reason", "addEventListener", "removeEventListener"]) {
+    Object.defineProperty(signal, name, { get() { assert.fail(`shadowed signal ${name} read`); } });
+  }
+  const session = h.open(MemberWorkerSession, signal), worker = h.workers.at(-1);
+  worker.ready();
+  assert.equal(await session.ready, true);
+  const created = session.create(Uint8Array.of(7));
+  worker.answer(setup());
+  assert.deepEqual(await created, setup());
+  const pending = session.unlock(Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32));
+  const late = worker.onmessage;
+  controller.abort(new Proxy({}, { get() { assert.fail("abort reason inspected"); } }));
+  assert.equal(worker.terminated, true, "abort did not synchronously request termination");
+  assert.equal(await pending, null);
+  assert.equal(await session.closed, undefined);
+  assert.equal(await session.ready, true, "abort rewrote settled readiness");
+  assert.equal(h.channels[0].posts.length, 0, "local cancellation notified peers");
+  late({ data: { version: 1, id: worker.posts.at(-1).id, result: enrollment() } });
+  assert.equal(await session.request(), null);
+  const replacement = h.open();
+  h.workers.at(-1).ready();
+  controller.abort();
+  assert.equal(await replacement.ready, true);
+  assert.equal(h.workers.at(-1).terminated, false, "old signal closed a replacement owner");
+});
+
+test("member worker rechecks abort state when event delivery is suppressed", async (t) => {
+  const h = harness(t);
+  for (const boundary of ["startup", "admission", "busy", "reply", "visibility"]) {
+    const controller = new AbortController(), signal = controller.signal;
+    signal.addEventListener("abort", (event) => event.stopImmediatePropagation());
+    const session = h.open(MemberWorkerSession, signal), worker = h.workers.at(-1);
+    if (boundary !== "startup") worker.ready();
+    const pending = ["busy", "reply"].includes(boundary) ? session.create(Uint8Array.of(7)) : null;
+    controller.abort();
+    assert.equal(worker.terminated, false, "test did not suppress abort delivery");
+    if (boundary === "startup") worker.ready();
+    else if (boundary === "reply") worker.answer(setup());
+    else if (boundary === "visibility") h.visibility("visible");
+    else assert.equal(await session.request(), null);
+    assert.equal(worker.terminated, true);
+    assert.equal(await session.closed, undefined);
+    assert.equal(await session.ready, boundary !== "startup");
+    if (pending) assert.equal(await pending, null);
+    assert.equal(getEventListeners(signal, "abort").length, 1, "owner abort listener leaked");
+    assert.equal(h.channels.at(-1).posts.length, 0);
+  }
+});
+
+test("member worker removes abort listeners on failed startup without cancelling the host signal", async (t) => {
+  const h = harness(t);
+  const Worker = globalThis.Worker;
+  for (const failure of ["hidden", "clock", "worker"]) {
+    const controller = new AbortController();
+    h.document.visibilityState = failure === "hidden" ? "hidden" : "visible";
+    h.time.wall = failure === "clock" ? NaN : 1_700_000_000_000;
+    globalThis.Worker = failure === "worker" ? class { constructor() { throw new Error("synthetic startup failure"); } } : Worker;
+    const session = h.open(MemberWorkerSession, controller.signal);
+    assert.equal(await session.closed, undefined);
+    assert.equal(await session.ready, false);
+    assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+    assert.equal(controller.signal.aborted, false, "local cleanup cancelled host scope");
   }
 });
 
