@@ -8,7 +8,8 @@ Audience: implementers, reviewers, and operators evaluating system boundaries.
 Status: proposed application architecture. Local HTTP services, a read-only shell,
 device-backup encryption, local member/reviewer keys, and an offline key CLI exist.
 A local public-only WASM request verifier exists without browser page integration.
-Domain policy, browser key custody, storage, and the submission protocol are unimplemented.
+Local identity account/session persistence exists without HTTP integration.
+Domain policy, browser key custody, vault storage, and the submission protocol are unimplemented.
 
 ## Components and ownership
 
@@ -98,6 +99,8 @@ the [protocol design](protocol.md#review-and-replies).
 | --- | --- |
 | `cmd/server`, `cmd/issuer`, `cmd/ca` | Process configuration and lifecycle |
 | `internal/app`, `internal/service` | Implemented command configuration, bounded local HTTP, and unavailable-operation responses |
+| `cmd/migrate`, `internal/dbmigrate` | Operator-only embedded Goose runner for separate local histories |
+| `internal/identity/accounts` | Implemented runtime-role account/session persistence; no credentials, HTTP, membership, or vault integration |
 | `cmd/client`, `internal/clientcli` | Implemented offline key CLI and file custody |
 | `cmd/wasm`, `internal/clientwasm` | Implemented public-only member-request verifier; no page integration or device-key access |
 | `cmd/memberwasm`, `internal/memberwasm` | Separate local WASM adapter for shared member sessions; no page host, accounts, or storage |
@@ -113,7 +116,7 @@ the [protocol design](protocol.md#review-and-replies).
 | `internal/submission` | Ciphertext acceptance and atomic spending |
 | `internal/transparency`, `internal/audit` | Distinct public and administrative logs |
 | `internal/web`, `web/` | Templates, self-hosted assets, and UI composition |
-| `migrations/issuer`, `migrations/submission` | Independently applied SQL histories |
+| `migrations/identity`, `migrations/submission` | Implemented independent SQL histories; identity account/session tables and separate boundary markers |
 
 - Use the standard library for HTTP, templates, embedding, and cryptography where
   it meets the reviewed profile.
@@ -125,8 +128,9 @@ the [protocol design](protocol.md#review-and-replies).
 Current implementation limits:
 
 - The [local Compose stack](deployment.md#container-stack) supplies independent
-  PostgreSQL instances and role/schema bootstrap. No application database integration,
-  migrations, or membership/issuance/submission domain packages exist.
+  PostgreSQL instances and role/schema bootstrap. Separate migrations and an internal
+  identity account/session store exist. No HTTP database integration or
+  membership/issuance/submission domain packages exist.
 - `internal/web` pre-renders fixed pages at startup using escaped templates and
   first-party CSS embedded in `web/`. Request data never enters templates.
   Only the submission service serves these pages; they load no executable browser code.

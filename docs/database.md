@@ -6,8 +6,9 @@
 Audience: storage implementers, database reviewers, and operators.
 
 Status: local PostgreSQL 18.6 bootstrap plus separate Goose migration histories and
-an operator-only pgx runner. Only a storage-boundary marker is migrated. The account,
-vault, and protocol schemas below are proposed; HTTP persistence is not implemented.
+an operator-only pgx runner. Identity version 2 adds account/session persistence;
+submission version 1 contains only its storage-boundary marker. Vault, credentials,
+membership, and protocol schemas remain proposed; HTTP persistence is not implemented.
 
 ## Storage boundary
 
@@ -53,6 +54,52 @@ Goose histories are applied explicitly as described below. Evidence and limits l
 and encrypted restoration remain unimplemented.
 
 ## Identity database
+
+### Implemented account storage
+
+`internal/identity/accounts` is an internal pgx foundation, not a sign-in service.
+Identity migration `00002_accounts.sql` adds two owner-created tables:
+
+| Relation | Implemented fields and grants |
+| --- | --- |
+| `accounts` | Random 16-byte primary key, active/disabled state, creation time, optional disable time; runtime can select/insert and update state/disable time only |
+| `account_sessions` | 32-byte SHA-256 token digest primary key, account foreign key, creation/absolute-expiry timestamps; runtime can select/insert/delete, never update or extend expiry |
+
+No identifiers, sessions, or account tables enter submission storage. There are no
+credential, vault, member, role, answer, receipt, IP, or user-agent columns. Account
+creation grants no eligibility, and disabling changes no membership quota. The
+[session storage profile](cryptography.md#account-session-storage-profile) fixes
+secret sizes and development lifetime limits without selecting a browser transport.
+
+The caller supplies a pool configured for the unprivileged identity runtime login,
+without query/parameter tracing, and retains connection ownership. Construction
+checks the database, role, boundary marker, and table presence. Each operation has
+a five-second deadline. Driver errors are discarded, retaining only operation
+context and cancellation. Failed session creation returns no token; an uncertain
+commit may leave an unreachable session until expiry, never a safe automatic retry.
+
+`StartSession` requires authentication already verified by its trusted caller.
+`Resolve` always joins the account and checks absolute expiry using PostgreSQL's
+clock; it does not refresh expiry or authorize sensitive actions. `Revoke` removes
+one digest. `RevokeAll` and `Disable` serialize with new sessions by locking the
+account row before deleting sessions in a transaction. After disable commits, a
+new lookup fails and no concurrent session creation can leave a usable session.
+Already-resolved requests are not recalled. Revoke-all does not prevent a later,
+separately authenticated session. Disabling is idempotent; no re-enable API exists.
+Lock ordering follows PostgreSQL 18 [row-lock semantics](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS)
+(consulted 2026-10-28).
+
+Revocation removes live session references immediately. Expired references remain
+until `PurgeExpired` is called, bounded to 1–1000 rows per call. No cleanup scheduler,
+account deletion, production retention policy, backup restoration, authentication
+ceremony, per-account session admission limit, or HTTP integration exists. Product
+retention and recovery must be reviewed before real data is admitted. See the
+[real PostgreSQL account checks](testing.md#account-storage-checks).
+
+### Proposed identity relations
+
+The following table describes the intended complete service, not implemented
+credentials, enrollment, vault, or protocol tables.
 
 | Relation | Intended fields and invariants |
 | --- | --- |
@@ -137,7 +184,8 @@ retention to scheduling/abuse needs. Never publish precise per-record times.
 `cmd/migrate` binary. Each starts at version 1 and creates `anonce.storage_boundary`
 with exactly one service-specific row. Runtime gets `SELECT` only. The separate
 `anonce.identity_schema_version` and `anonce.submission_schema_version` Goose tables
-and their sequences remain owner-only. No identity or submission records are added.
+and their sequences remain owner-only. Identity version 2 adds the account/session
+tables described above, initially empty. No membership or anonymous records are added.
 
 The runner accepts exactly `identity` or `submission`, connects to that fixed
 Compose hostname/database as `anonce_migrator`, checks the database name and
@@ -147,8 +195,10 @@ inspection, version-table initialization, and migration application. Reconnectio
 must reacquire the lock and repeat preflight. Each SQL migration and its version
 entry use Goose's transaction. No down/reset or out-of-order option is exposed.
 
-Supported histories are an absent ledger or an applied version 0 baseline followed
-optionally by version 1. Future, negative, duplicate, unapplied, or missing-baseline
+Supported histories are an absent ledger or a contiguous, ordered applied version
+0 baseline through at most identity version 2 or submission version 1. Existing
+version-1 identity databases upgrade additively without editing published SQL.
+Future, negative, duplicate, out-of-order, gapped, unapplied, or missing-baseline
 records fail before migration. Already-current runs also require the correct
 single marker row. When adding a migration, extend this explicit supported-history
 range and its tests. Published SQL must never be edited; the ledger records versions,
@@ -164,4 +214,4 @@ This follows [Goose 3.29.0 SQL transaction/version semantics](https://github.com
 and PostgreSQL 18 [session advisory locks](https://www.postgresql.org/docs/18/explicit-locking.html#ADVISORY-LOCKS)
 (consulted 2026-10-28). See [operator commands](deployment.md#local-database-migrations)
 and [executable evidence](testing.md#database-migration-checks). Encrypted restoration,
-application concurrency, and full `db-test` remain unavailable.
+quota/spend concurrency, and full `db-test` remain unavailable.

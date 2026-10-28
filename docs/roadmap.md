@@ -22,8 +22,8 @@ See the [user flow](ui-design.md#account-and-review-workflow) and
   Fix wrapping profiles and supported browser/provider evidence, not a promise of
   universal passkey decryption. Keep reviewer server backup excluded pending review.
 - Build the identity-side foundation for a complete browser workflow: separate
-  PostgreSQL application migrations/integration, account authentication/sessions, owner-scoped
-  encrypted member-key backup storage, enrollment, protected CA signing, and
+  PostgreSQL application integration, account authentication over the local session
+  store, owner-scoped encrypted member-key backup storage, enrollment, protected CA signing, and
   revocation. Preserve [service boundaries](architecture.md#account-and-anonymous-flow).
 - Connect shared Go member-key and backup composition to reviewed browser interfaces
   with automatic key/CSR preparation and local restoration. The existing CLI stays
@@ -39,12 +39,14 @@ Available foundations:
 - **Container infrastructure:** [local Compose stack](deployment.md#container-stack)
   for non-root Go services and independent PostgreSQL 18.6 instances, with separate
   volumes/credentials, owner/migration/runtime bootstrap roles, loopback publication,
-  liveness checks, and opt-in real-container privilege/isolation checks. Application
+  liveness checks, and opt-in real-container privilege/isolation checks. HTTP
   persistence, encrypted restoration, image scanning, and product readiness
   remain unavailable. Separate embedded Goose histories now have an explicit
   owner-scoped [local migration runner](database.md#local-migration-runner) and
-  real-PostgreSQL version/grant checks. Only boundary markers are migrated, not
-  account/vault/protocol tables or HTTP persistence.
+  real-PostgreSQL version/grant checks. Identity version 2 also adds a local
+  [account/session store](database.md#implemented-account-storage), digest-only
+  sessions, expiry, revocation, and transactional disabling with real runtime-role
+  race tests. Credentials, vault/protocol tables, and HTTP persistence remain unavailable.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).

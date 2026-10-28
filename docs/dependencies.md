@@ -7,7 +7,7 @@ Audience: maintainers, redistributors, and license reviewers.
 
 Accessed: 2026-10-26. Proposed versions below are observations, not a transitive
 license or vulnerability audit. HTTP commands use only the standard library;
-the shared device-backup and separate migration packages import the admitted modules below. No runtime
+the shared device-backup, account-store, and separate migration packages import the admitted modules below. No runtime
 dependencies or assets are vendored. Recheck artifacts, hashes, licenses, and
 advisories before further imports.
 
@@ -68,7 +68,8 @@ may reject this algorithm; there is no algorithm fallback or FIPS-validation cla
 
 ### Database migration modules
 
-Admitted on 2026-10-28 for the separate local operator runner only. HTTP services,
+Admitted on 2026-10-28 for the separate local operator runner and internal identity
+account store. The latter uses pgx/pgxpool, not Goose or the SQL adapter. HTTP services,
 device cryptography, and WASM import none of these modules. The native driver and
 Goose Provider avoid custom PostgreSQL wire handling and migration parsing. Exact
 direct/transitive pins and checksums are in `go.mod` and `go.sum`.
@@ -96,8 +97,13 @@ The runner does not load `.env`, arbitrary SQL files, or alternate drivers.
 or an independent audit. `make db-migration-test` tests actual pgx/Goose behavior and
 PostgreSQL privileges. Updates require reviewing the imported graph, upstream
 licenses/security status, Docker notice paths, and migration tests together. Remove
-these modules if the operator runner is removed; do not substitute a handwritten
+unused modules if their importing components are removed; do not substitute a handwritten
 SQL migration parser. Production TLS and HTTP storage integration need separate review.
+
+The `account-test` Docker target is development-only and retains the existing Go
+builder image, including its upstream notices, to run a compiled race-enabled
+PostgreSQL test binary. It is not the scratch application image or a release asset.
+No new module version or product dependency is introduced.
 
 ### WASM runtime support
 

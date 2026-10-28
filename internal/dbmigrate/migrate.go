@@ -100,25 +100,29 @@ func checkHistory(ctx context.Context, conn *pgx.Conn, side string) error {
 	if !exists {
 		return nil
 	}
-	rows, err := conn.Query(ctx, "SELECT version_id, is_applied FROM "+table+" ORDER BY id LIMIT 3")
+	latest := int64(1)
+	if side == "identity" {
+		latest = 2
+	}
+	rows, err := conn.Query(ctx, "SELECT version_id, is_applied FROM "+table+" ORDER BY id LIMIT $1", latest+2)
 	if err != nil {
 		return errors.New("read migration history")
 	}
 	defer rows.Close()
-	var seen [2]bool
+	var next int64
 	for rows.Next() {
 		var version int64
 		var applied bool
-		if err := rows.Scan(&version, &applied); err != nil || version < 0 || version > 1 || !applied || seen[version] {
+		if err := rows.Scan(&version, &applied); err != nil || version != next || version > latest || !applied {
 			return errors.New("unsupported migration history")
 		}
-		seen[version] = true
+		next++
 	}
-	if rows.Err() != nil || !seen[0] {
+	if rows.Err() != nil || next == 0 {
 		return errors.New("invalid migration history")
 	}
 	rows.Close()
-	if seen[1] {
+	if next > 1 {
 		var matches bool
 		if err := conn.QueryRow(ctx, "SELECT count(*) = 1 AND bool_and(singleton AND service = $1) FROM anonce.storage_boundary", side).Scan(&matches); err != nil || !matches {
 			return errors.New("invalid storage boundary")

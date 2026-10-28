@@ -10,7 +10,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from containers import EDGE_NETWORKS, INTERNAL_NETWORKS, NETWORKS, PORTS, POSTGRES_IMAGE, ROOT, SECRET_NAMES, Stack, check_engine_version, prepare_secrets, validate_config
+from containers import EDGE_NETWORKS, INTERNAL_NETWORKS, NETWORKS, PORTS, POSTGRES_IMAGE, ROOT, SECRET_NAMES, Stack, account_checks, check_engine_version, prepare_secrets, validate_config
 
 
 def model():
@@ -153,6 +153,50 @@ class MigrationOperatorTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 stack.migrate("identity", "synthetic")
             self.assertEqual(run.call_args_list[-1].args[0][:3], ["docker", "rm", "--force"])
+
+
+class AccountOperatorTests(unittest.TestCase):
+    def test_runtime_scopes_and_cleanup(self):
+        stack = Stack(env={})
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append((args, kwargs))
+            return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+        with patch.object(stack, "config", return_value=model()), patch.object(stack, "migration_image", return_value="synthetic"), \
+                patch.object(stack, "run", side_effect=run), patch.object(stack, "sql", return_value=SimpleNamespace(stdout=b"t\n")):
+            account_checks(stack)
+        self.assertEqual(len(calls), 4)
+        for index, side in enumerate(("identity", "submission")):
+            command, settings = calls[index * 2]
+            self.assertEqual(command[command.index("--network") + 1], "synthetic_" + side)
+            self.assertEqual(command[command.index("--env") + 1], f"ANONCE_TEST_SIDE={side}")
+            self.assertEqual(command[command.index("--mount") + 1],
+                             f"type=bind,src=/synthetic-secrets/{side}_runtime,dst=/run/secrets/runtime_password,readonly")
+            self.assertEqual(command.count("--mount"), 1)
+            self.assertNotIn("--publish", command)
+            for expected in ("--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
+                             "--log-driver", "none", "--user", "65532:65532", "--memory", "512m"):
+                self.assertIn(expected, command)
+            self.assertTrue(settings["stream"])
+            self.assertEqual(calls[index * 2 + 1][0], ["docker", "rm", "--force", command[command.index("--name") + 1]])
+
+    def test_failure_cleanup_and_build_admission(self):
+        stack = Stack(env={})
+        with patch.object(stack, "config", return_value=model()), patch.object(stack, "migration_image", return_value="synthetic"), \
+                patch.object(stack, "run", side_effect=[RuntimeError("synthetic failure"), SimpleNamespace(returncode=0)]) as run:
+            with self.assertRaises(RuntimeError):
+                account_checks(stack)
+            self.assertEqual(run.call_args_list[-1].args[0][:3], ["docker", "rm", "--force"])
+        with patch.object(stack, "run") as run:
+            with self.assertRaises(ValueError):
+                stack.migration_image("unrecognized")
+            run.assert_not_called()
+        patterns = (ROOT / ".dockerignore").read_text().splitlines()
+        for source in ("store_test.go", "postgres_test.go"):
+            self.assertGreater(patterns.index("!internal/identity/accounts/" + source), patterns.index("**/*_test.go"))
+        self.assertIn("test -x /out/account.test", (ROOT / "Dockerfile").read_text())
 
 
 class ContainerSecretTests(unittest.TestCase):
