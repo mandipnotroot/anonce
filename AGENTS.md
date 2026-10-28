@@ -205,6 +205,11 @@ No successful no-op checks or claims that unavailable commands passed.
   with concise, change-specific details; do not omit the checklist or substitute a
   custom structure. Check items only after verification or explicit contributor
   confirmation. Request owner review only when the owner is not the PR author.
+- Write PR descriptions in the contributor's voice: explain what changed, why,
+  and what was tested. Use direct, natural language, not task instructions,
+  a progress report, or an exhaustive inventory. Keep evidence and limitations
+  concise, and link to canonical docs for detail. Preserve the required template.
+  Do not invent personal experiences, test results, review, or approval.
 
 ## Licensing, tests, and documentation
 
