@@ -171,6 +171,7 @@ No successful no-op checks or claims that unavailable commands passed.
 - Consult the official [Conventional Commits 1.0.0 specification](https://www.conventionalcommits.org/en/v1.0.0/)
   and follow it strictly for every commit and PR title.
 - Repository-specific types, scopes, and subject limits are defined in `scripts/commits.toml`.
+- Follow the maintainer [squash-merge title rule](CONTRIBUTING.md#squash-merge-commit-titles).
 - Keep commits atomic; commit lint and hooks must pass without bypass.
 - Follow the official [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html) and
   [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) guidance, with

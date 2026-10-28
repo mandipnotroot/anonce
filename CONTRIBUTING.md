@@ -100,6 +100,18 @@ pipx run --spec pip-tools==7.6.2 pip-compile \
 - Exclude secrets and personal data.
 - Pass checks and obtain maintainer review.
 
+### Squash-merge commit titles
+
+Maintainers append the PR number as ` (#N)` to the final squash-merge commit
+title, for example, `feat(client): add member sessions (#2)`. Keep individual
+development commit subjects and PR titles free of this suffix; add it only when
+merging.
+
+The final title must still follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
+and the types, scopes, and subject limit in `scripts/commits.toml`. The suffix is
+part of the description and counts toward the subject limit. Preserve any
+breaking-change notation when preparing the final title.
+
 ## Dependency updates
 
 Review purpose, exact versions, hashes, licenses, and security advisories under
