@@ -47,7 +47,11 @@ Distinguish implemented from planned behavior.
 - `cmd/memberwasm`, `internal/memberwasm`: separate development-only WASM member
   setup/restoration, fixed requests, and lock/shutdown using shared sessions;
   bounded byte inputs, public/encrypted outputs, native/Node backup checks;
-  no page/worker host, account binding, storage, passkeys, or enrollment.
+  no page integration, account binding, storage, passkeys, or enrollment.
+- `internal/memberworker`: development-only dedicated-worker owner for that bridge,
+  bounded/correlated transferred messages, single active owner per module realm,
+  fixed startup/operation/lifetime limits, and terminal lock/disposal;
+  native/Node checks, no HTTP delivery, browser evidence, or cross-tab coordination.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
 
@@ -124,7 +128,7 @@ make web-lint         # rendered inert markup, local CSS, SRI, and HTTP delivery
 make wasm             # public-only Go WASM verifier, matching loader, hashes, size gate
 make wasm-test        # native/WASM public-request compatibility and bridge checks
 make member-wasm      # separate local member-session WASM and matching notices
-make member-wasm-test # native/Node backup compatibility and member bridge checks
+make member-wasm-test # native/Node backup compatibility, member bridge/worker checks
 ```
 
 See [testing](docs/testing.md) for required database, container, browser, and

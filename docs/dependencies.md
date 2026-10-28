@@ -83,14 +83,17 @@ and x/sys packages through the shared session. It copies each module's unchanged
 `PATENTS.x-crypto`, `LICENSE.x-sys`, and `PATENTS.x-sys`. Their contents match the
 reviewed Go notice hashes above and are verified independently from module-cache
 sources; replaced module sources are rejected. No additional dependency is admitted.
+It also packages first-party worker/client modules using standard browser APIs,
+without an npm install, third-party asset, or JavaScript cryptographic dependency.
 
 Node.js is pinned in the same manifest and CI. Use official
 [22.23.3 archives and checksums](https://nodejs.org/dist/v22.23.3/SHASUMS256.txt)
 and retain its upstream notices if redistributing that external test runtime.
-Only built-in assertion, crypto, filesystem, module, and path facilities are used
-by the test runners. The public verifier runner handles no passwords. The member
-runner handles only synthetic unlock bytes, encrypted backups, and public enrollment
-material for interoperability checks, never private-key fixtures or real credentials.
+Only built-in assertion, crypto, filesystem, module, path, URL, test, and worker-thread
+facilities are used by the test runners. The public verifier runner handles no
+passwords. The member runner handles only synthetic unlock bytes, encrypted backups,
+and public enrollment material for interoperability checks, never private-key
+fixtures or real credentials.
 
 ### Documentation theme
 

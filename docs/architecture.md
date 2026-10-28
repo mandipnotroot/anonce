@@ -100,7 +100,8 @@ the [protocol design](protocol.md#review-and-replies).
 | `internal/app`, `internal/service` | Implemented command configuration, bounded local HTTP, and unavailable-operation responses |
 | `cmd/client`, `internal/clientcli` | Implemented offline key CLI and file custody |
 | `cmd/wasm`, `internal/clientwasm` | Implemented public-only member-request verifier; no page integration or device-key access |
-| `cmd/memberwasm`, `internal/memberwasm` | Separate local WASM adapter for shared member sessions; no page/worker host, accounts, or storage |
+| `cmd/memberwasm`, `internal/memberwasm` | Separate local WASM adapter for shared member sessions; no page host, accounts, or storage |
+| `internal/memberworker` | Local dedicated-worker owner, bounded correlated transport, fixed lifetime, and terminal disposal; no HTTP/page integration or cross-tab coordination |
 | `cmd/cli` | Optional future protocol CLI, not required for product use |
 | `internal/client` | Shared composition, validation, and local state |
 | `internal/client/keystore` | Implemented in-memory device-backup encryption; no transport or persistence |
@@ -133,7 +134,9 @@ Current implementation limits:
   shares member-request validation with the CLI. No HTTP service serves it.
 - The separate [member WASM adapter](key-management.md#local-wasm-member-sessions)
   owns one shared session with bounded inputs and public/encrypted outputs. It adds
-  no account, worker host, browser page, transport, or persistence.
+  no account, browser page, or persistence. The separate
+  [worker owner](key-management.md#local-member-worker-host) adds a local bounded
+  transport and terminable execution context, not HTTP delivery or account custody.
 
 ## Availability and failure
 

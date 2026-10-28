@@ -77,6 +77,8 @@ def build(go, component="verifier"):
             # Build first so admitted modules are available in a fresh cache.
             # Both modules have the same reviewed Go notices. Check each original.
             materials.update(member_notices(go, env, config))
+            for name in ("member-client.mjs", "member-worker.mjs", "protocol.mjs"):
+                materials[name] = (ROOT / "internal/memberworker" / name).read_bytes()
         materials["client.wasm"] = data
         sums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in sorted(materials.items()))
         materials["SHA256SUMS"] = sums.encode()

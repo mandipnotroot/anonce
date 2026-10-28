@@ -64,6 +64,7 @@ member-wasm:
 	python3 scripts/build_wasm.py --go '$(GO)' --component member
 
 member-wasm-test: member-wasm
+	node --test scripts/member_worker_test.mjs
 	$(GO) test -race -count=1 -tags=wasmintegration ./internal/memberwasm
 
 test:

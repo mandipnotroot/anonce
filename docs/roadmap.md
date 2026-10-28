@@ -60,8 +60,10 @@ Available foundations:
   private bytes. Required expected-key matching, explicit lock, and cancellation
   are tested natively. A separate [local WASM bridge](key-management.md#local-wasm-member-sessions)
   adds bounded byte inputs, Promise-based setup/restoration, and lock/shutdown with
-  native/Node backup compatibility checks. Browser page/worker integration and
-  account binding remain unavailable.
+   native/Node backup compatibility checks. A separate
+   [local worker owner](key-management.md#local-member-worker-host) keeps WASM off
+   its owner's thread, bounds transport/lifetime, and terminates on disposal.
+   Browser page/delivery integration and account binding remain unavailable.
 
 These foundations do not establish protocol or storage security. Browser custody,
 enrollment, signing-service integration, reviewer round binding, expiry, submission

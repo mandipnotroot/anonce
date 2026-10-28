@@ -20,8 +20,8 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 | `make wasm` | Go `js/wasm` public-request verifier; matching reviewed loader/notices, SHA-256 manifest, 8 MiB uncompressed size gate |
 | `make wasm-test` | Rebuild artifacts, compare native and Node WASM public-request results, exercise the actual bridge, and run adapter unit tests under the Go JS/WASM runner |
-| `make member-wasm` | Separate local member-session module, matching reviewed loader/module notices, manifest, and 8 MiB gate |
-| `make member-wasm-test` | Native race/lifecycle tests and actual Node bridge setup/restoration, rejection, shutdown, and bidirectional encrypted-backup compatibility |
+| `make member-wasm` | Separate local member-session module, dedicated-worker/client assets, matching reviewed loader/module notices, manifest, and 8 MiB gate |
+| `make member-wasm-test` | Native race/lifecycle tests, actual Node direct bridge and dedicated-worker setup/restoration, rejection, termination, bidirectional encrypted-backup compatibility, owner lifecycle unit tests, and bounded command fuzzing |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -38,6 +38,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Member CSR | 130-byte fuzz input cap, 129-byte DER profile; bounded ASN.1 and signature verification, no KDF work |
 | Member session unlock admission | 1025-byte password, 65597-byte backup, and 33-byte expected-key fuzz caps; exercise invalid password/key lengths only, no KDF work; backup/payload parsing reuse the shared fuzzed implementations |
 | Member WASM admission sizes | Fixed-width integer fuzz inputs for password/backup/key lengths and operation kind; exact member bounds, no allocations or KDF work; byte parsing reuses shared backup/payload validation |
+| Member worker transport | `member_worker_test.mjs`: exhaustive byte-size boundary sweep and 2048 generated commands per run, each with at most four views of 1025 elements; independent metadata admission oracle, no KDF or I/O |
 | WASM request adapter | 259-byte request fuzz input cap, exact 258-byte ASCII hex representation before bounded shared CSR parsing; expected-key fuzzing also caps the key input at 65 bytes for an exact 64-byte ASCII hex representation; no KDF work |
 | CLI arguments | 8193-byte fuzz input cap; no file, network, or KDF work |
 | CLI expected-key record | 75-byte data and 9-byte kind fuzz caps; exact 72/74-byte lowercase kind-tagged lines, no file, network, or KDF work |
@@ -121,6 +122,8 @@ profile-2 nonce prefix and library composition.
 | Actual WASM bridge, type/arity/size rejection without object coercion, native/public result parity, shutdown and namespace collisions | `TestClientNativeWASMCompatibility` with `scripts/wasm_test.mjs`, through `make wasm-test` |
 | Member bridge admission, cancellation before shared-session entry, cleanup-before-shutdown, repeated lock/close, concurrent lock/admission, and size fuzzing | `TestMemberWASMSizes`, `TestMemberWASMLifecycle`, `TestMemberWASMConcurrent`, `FuzzMemberWASMSizes` |
 | Actual member WASM bridge, opaque passwords, native backup restore, WASM backup opened natively, public CSR validation, wrong password/purpose, corruption/key mismatch, byte types/arity/bounds, hostile objects/shadowed getters, shared/detached arrays, input snapshots, public-output ownership, lock/close and namespace collision | `TestMemberNativeWASMCompatibility` with `scripts/member_wasm_test.mjs`, through `make member-wasm-test` |
+| Worker owner single-instance/operation admission, snapshots/transfers, input types/arity/bounds, hostile properties, timeout/termination, late replies, protocol/transport failures, and bounded command fuzzing | Named `node:test` cases in `scripts/member_worker_test.mjs`, through `make member-wasm-test` |
+| Actual dedicated worker and owner, native restore, generated backup opened natively, wrong password/corruption/mismatch without replacement, public-output ownership, pending disposal, replay/malformed commands, failed/malformed/oversized runtime loads | `TestMemberNativeWorkerCompatibility` with `scripts/member_worker_integration.mjs` and test-only Node API adapter `scripts/member_worker_node.mjs` |
 | Reviewed loader/notice digest rejection, invalid artifact headers and size bounds | `scripts/test_build_wasm.py` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
@@ -177,9 +180,19 @@ cover cancellation before the worker enters the shared session and admission hel
 until pending cleanup. WASM is not race-instrumented. Cooperative execution means
 a lock/close event can arrive after KDF completion; tests do not claim preemption.
 
-No page/worker host, actual browser tests, mobile memory/latency measurements, CSP
-delivery, passkeys, account/vault authorization, recovery, multi-tab coordination,
-or independent cryptographic review is supplied. These checks do not satisfy the
+The same target also runs the [local dedicated-worker host](key-management.md#local-member-worker-host)
+in real Node worker threads using a test-only browser API adapter. Production client,
+worker, runtime, and WASM files are the built and hash-checked artifacts. The adapter
+maps fixed WASM fetching to a local file and rejects other fetches. Backups and CSRs
+are checked natively, just as for the direct bridge. Owner tests use controlled
+timers for the fixed startup/operation/lifetime limits and verify synchronous
+termination and pending settlement. These are not browser timing or erasure claims.
+Bounded transport fuzzing runs with `member-wasm-test`, not `make fuzz`; retain
+failures as synthetic cases in `scripts/member_worker_test.mjs`, never key fixtures.
+
+No page host, actual browser tests, mobile memory/latency measurements, CSP delivery,
+passkeys, account/vault authorization, recovery, multi-tab coordination, or
+independent cryptographic review is supplied. These checks do not satisfy the
 [browser acceptance cases](#browser-account-and-vault-acceptance).
 
 ## Required runtime command contract

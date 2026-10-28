@@ -92,7 +92,9 @@ Optional local development key tools are also available:
   for automatic setup/restoration and lock, built with `make member-wasm` and
   checked with `make member-wasm-test`; only public material and encrypted backups leave it.
 
-Browser page/worker and account integration are unavailable. Independent review is required before real-key use.
+The [local dedicated-worker host](docs/key-management.md#local-member-worker-host)
+adds bounded ownership and termination, checked in Node. Browser page/delivery and
+account integration are unavailable. Independent review is required before real-key use.
 
 ## Architecture at a glance
 

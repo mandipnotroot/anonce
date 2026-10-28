@@ -155,6 +155,14 @@ and cryptographic profiles are unchanged. This adds no browser page, account/vau
 API, PRF/recovery format, or supported-browser claim. Existing format-breaking and
 independent-review requirements still apply.
 
+The [local worker owner](key-management.md#local-member-worker-host) is an additive
+opt-in development interface requiring `semver:minor` review. Its module export,
+readiness, version-1 correlated transport, singleton/admission limits, timeouts,
+and terminal lock/disposal are new contracts. Unlike direct-bridge lock, owner lock
+permanently terminates its instance; restoration requires a new explicit instance.
+Direct WASM bridge methods, cryptographic formats, CLI, and HTTP are unchanged.
+No page delivery, account API, or supported-browser claim is added.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

@@ -10,7 +10,7 @@ Audience: contributors, repository administrators, and release maintainers.
 | Workflow/check | Coverage |
 | --- | --- |
 | Policy | Current files, full reachable history, PR text/commit range/title grammar, exactly one SemVer label, Unreleased change or maintainer exception |
-| Runtime | HTTP commands, offline key CLI, public-only WASM verifier, and separate local member-session bridge; race/coverage, lint, 15-second parser/admission fuzzing, vulnerability/secret scans, shell delivery, and native/Node request and member-backup compatibility. See [testing](testing.md#current-executable-checks) |
+| Runtime | HTTP commands, offline key CLI, public-only WASM verifier, separate local member-session bridge/worker; race/coverage, lint, 15-second parser/admission fuzzing, vulnerability/secret scans, shell delivery, and native/Node request and member-backup compatibility. See [testing](testing.md#current-executable-checks) |
 | Documentation / Pages | Pinned mdBook and upstream notices via `make docs-setup`, offline build, source/rendered links; `book.toml` and `SUMMARY.md` configure the site |
 | Nightly | Full-history policy, complete local runtime checks with pinned Node, documentation build and external links |
 | Weekly dependency updates | GitHub Actions, Python check tools, Go modules |

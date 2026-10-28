@@ -23,6 +23,15 @@ import (
 // TestMemberNativeWASMCompatibility exchanges only encrypted backups, public
 // material, and a synthetic test password. Private bytes never cross the bridge.
 func TestMemberNativeWASMCompatibility(t *testing.T) {
+	testMemberCompatibility(t, "member_wasm_test.mjs")
+}
+
+func TestMemberNativeWorkerCompatibility(t *testing.T) {
+	testMemberCompatibility(t, "member_worker_integration.mjs")
+}
+
+func testMemberCompatibility(t *testing.T, script string) {
+	t.Helper()
 	password := bytes.Repeat([]byte{0, 0xff, 'x', '\n'}, 256) // Synthetic maximum-length input.
 	defer clear(password)
 	var session membersession.Session
@@ -45,7 +54,7 @@ func TestMemberNativeWASMCompatibility(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 180*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "node", filepath.Join(root, "scripts/member_wasm_test.mjs"), filepath.Join(root, "bin/memberwasm"))
+	cmd := exec.CommandContext(ctx, "node", filepath.Join(root, "scripts", script), filepath.Join(root, "bin/memberwasm"))
 	cmd.Stdin = bytes.NewReader(input)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

@@ -145,7 +145,7 @@ properties described below.
 
 - The [separate adapter](key-management.md#local-wasm-member-sessions) retains one
   shared session, snapshots bounded nonshared byte inputs, and returns only public
-  enrollment material and encrypted backups. Invalid or busy calls start no worker;
+  enrollment material and encrypted backups. Invalid or busy calls start no operation;
   owned passwords are cleared before Promise settlement. Lock cancels pending work
   even before the shared session begins. Close waits for pending cleanup/settlement.
 - Expected-key trust, account binding, backup persistence, expiry, cross-tab lock,
@@ -153,11 +153,18 @@ properties described below.
   Failed restoration never generates a key. Public keys and requests are linkable
   and must stay off the anonymous submission origin.
 - Go WASM computation can block its host event loop despite a Promise interface.
-  Cancellation cannot preempt Argon2id. A future page needs a dedicated worker and
-  tested disposal, not a main-thread load. No worker integration exists yet.
+  Direct-bridge cancellation cannot preempt Argon2id. The separate
+  [local worker owner](key-management.md#local-member-worker-host) bounds admission
+  before posting, checks response correlation/shapes, and terminates from the owner
+  on lock, disposal, load/protocol errors, or timeout. This discards pending output
+  without waiting for worker cleanup; it cannot guarantee erasure. Owner timers can
+  be delayed by suspension or a blocked event loop. No HTTP or page integration exists.
   Hostile code in the loading realm can steal unlock material or inspect WASM memory;
   owned-buffer clearing does not erase runtime/library copies. Native/Node checks
   establish limited format/lifecycle evidence, not browser custody or security review.
+  The worker's fixed local imports and bounded credential-free WASM fetch still
+  require trusted delivery. One active owner per module realm does not constrain
+  other realms/tabs, authenticate an account, or coordinate logout across contexts.
 
 ## Browser account and vault risks
 

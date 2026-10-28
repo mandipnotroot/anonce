@@ -10,6 +10,14 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Development-only dedicated-worker host for member WASM sessions, with bounded
+  input snapshots, transferred buffers, correlated responses, one active owner per
+  module realm, and startup/operation/lifetime limits. Lock/disposal terminates the
+  worker and cancels pending output without waiting for queued worker execution.
+  Node worker/native backup compatibility, transport failure, and lifecycle checks
+  are included. Existing direct bridge, CLI, HTTP, and cryptographic profiles are
+  unchanged. No browser page, delivery/CSP integration, account storage, passkeys,
+  recovery, multi-tab coordination, or complete-erasure guarantee is provided.
 - Separate development-only WASM member-session bridge for automatic key/backup/CSR
   setup, required expected-key restoration, fixed requests, and lock/shutdown.
   Bounded nonshared byte inputs are snapshotted before work; owned passwords are

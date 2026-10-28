@@ -8,8 +8,9 @@ Audience: implementers, reviewers, and operators responsible for secret custody.
 Status: shared in-memory device-backup encryption and local member/reviewer-key
 generation, encrypted export, validated import, and an offline backup CLI are
 implemented, along with local member certificate requests and in-memory member
-sessions and a separate development-only WASM member bridge. Browser page custody,
-round binding, recovery, enrollment, and signing services are not implemented.
+sessions, a separate development-only WASM member bridge, and a local dedicated-worker
+host. Browser page custody, round binding, recovery, enrollment, and signing
+services are not implemented.
 
 ## Browser account vault
 
@@ -654,8 +655,9 @@ The loading realm, runtime, and built-ins must be trusted. WASM is not a secret
 boundary from its host. Promise-based calls do not make CPU-bound WASM nonblocking
 on a browser UI thread. A future page integration must use a dedicated worker,
 bound its lifetime, terminate it on disposal, and coordinate lock/logout across
-tabs. No worker host, browser delivery/CSP changes, account binding, trusted-key
-discovery, storage, enrollment, passkey/PRF, recovery, or automatic expiry is provided.
+tabs. The separate [local worker host](#local-member-worker-host) supplies bounded
+worker ownership, not browser delivery/CSP changes, account binding, trusted-key
+discovery, storage, enrollment, passkey/PRF, recovery, or cross-tab coordination.
 Never load member keys or requests on the anonymous submission origin. Server
 metadata alone is not an independent expected-key trust anchor. Runtime/library
 copies still prevent a complete-erasure guarantee.
@@ -666,6 +668,61 @@ and [ECMAScript 2025 typed-array semantics](https://262.ecma-international.org/1
 measurement, UI responsiveness, or browser custody evidence. See
 [testing](testing.md#wasm-member-session-checks) and
 [compatibility](versioning.md#wasm-member-session-compatibility).
+
+## Local member worker host
+
+`make member-wasm` also packages `member-client.mjs`, `member-worker.mjs`, and
+`protocol.mjs` with the manifest and notices. These are development-only assets,
+not served by the HTTP shell. Use synthetic inputs only pending independent review.
+The dedicated module worker wraps the existing member bridge. Its contract uses the
+[WHATWG HTML worker and messaging model](https://html.spec.whatwg.org/multipage/workers.html)
+(Living Standard consulted 2026-10-27) and the ECMAScript 2025 byte-array semantics
+linked above. No new cryptographic construction or backup format is introduced.
+
+Import `MemberWorkerSession` from `member-client.mjs` in a trusted identity-side
+host. Construction starts one worker with fixed relative assets and omitted
+credentials. At most one live instance is admitted per module realm; a second
+instance resolves `ready` to `false` without starting another worker. This is not
+a cross-tab or cross-realm limit. The runtime is never loaded into the owner realm.
+
+| Interface | Behavior |
+| --- | --- |
+| `ready` | Promise of `true` after runtime startup, otherwise `false`; data calls before readiness return `null`, never queue |
+| `create(password)`, `unlock(password, backup, expected)`, `request()` | Same byte sizes, arity, public/encrypted results, and Promise/null failures as the direct bridge; one operation admitted before copying/posting |
+| `lock()`, `close()` | No arguments; synchronously detach listeners, terminate the worker, and resolve pending work to `null`; repeated calls are safe; extra arguments do nothing |
+
+Inputs are checked with intrinsic getters before copying any bytes. Nonshared
+`Uint8Array` views are snapshotted and transferred without detaching or modifying
+caller inputs. Clear caller passwords after invocation. Worker snapshots are cleared
+before posting results on normal completion. Lock/disposal terminates from the owner
+instead of waiting for a lock queued behind CPU-bound derivation. It permanently
+closes that instance; a caller must explicitly construct a new locked instance.
+There is no automatic restart, fallback, or replacement key on failed restoration.
+
+The local version-1 transport uses `{version, id, method, inputs}` commands and
+`{version, id, result}` replies, with strictly increasing positive safe-integer IDs.
+Startup is `{version, type: "ready"}`; fatal startup/protocol errors send only
+`{version, type: "failed"}`. Exact fields, methods, sizes, and result shapes are
+checked on both sides. Unexpected, duplicate, stale, or malformed replies terminate
+the owner; late replies cannot settle cancelled calls. Do not use the transport
+directly or attach other message listeners to a session's worker.
+
+Startup is limited to 30 seconds, an operation to 120 seconds, and the instance's
+total lifetime to five minutes from construction. These are fixed development
+limits, not measured browser support budgets. Owner timers can be delayed by a
+blocked/suspended owner event loop, so they do not establish hard wall-clock expiry.
+Timeouts, load errors, and message decoding errors close the instance without
+output. WASM fetches use a fixed relative URL, omitted credentials, no referrer,
+no redirects/cache, and a bounded 8 MiB stream. Imports still need a trusted host
+and reviewed browser delivery policy; local manifest hashes do not authenticate a
+malicious distributor.
+
+Termination discards the worker without waiting for Go cleanup and cannot promise
+buffer clearing or complete erasure. The owner page sees unlock inputs and public
+results; a worker is not a boundary against hostile same-origin code. No UI, HTTP
+delivery/CSP changes, account binding, persistence, multi-tab coordination, or
+supported-browser matrix is supplied. See [checks](testing.md#wasm-member-session-checks)
+and [compatibility](versioning.md#wasm-member-session-compatibility).
 
 ## Retention and destruction
 
