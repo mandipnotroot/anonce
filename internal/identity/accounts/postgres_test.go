@@ -70,6 +70,196 @@ func TestPostgresAccounts(t *testing.T) {
 	t.Run("concurrent-disable", testPostgresConcurrentDisable)
 	t.Run("blocked-cancellation", testPostgresCancellation)
 	t.Run("disable-rollback", testPostgresDisableRollback)
+	t.Run("session-rotation", testPostgresRotation)
+	t.Run("concurrent-session-rotation", testPostgresConcurrentRotation)
+	t.Run("rotation-cancellation-and-rollback", testPostgresRotationCancellation)
+}
+
+func testPostgresRotation(t *testing.T) {
+	store, pool := testStore(t)
+	id, other := newAccount(t, store), newAccount(t, store)
+	token, original := startSession(t, store, id)
+	sibling, siblingSession := startSession(t, store, id)
+	before := bytes.Clone(token)
+	defer clear(before)
+	if fresh, session, err := store.RotateSession(t.Context(), other, token); fresh != nil || session != (Session{}) || !errors.Is(err, ErrUnavailable) {
+		t.Fatal("rotation accepted another authenticated account")
+	}
+	fresh, session, err := store.RotateSession(t.Context(), id, token)
+	if err != nil || len(fresh) != TokenSize || bytes.Equal(fresh, token) || !bytes.Equal(token, before) ||
+		session.AccountID != id || session.ExpiresAt != original.ExpiresAt || !session.CreatedAt.After(original.CreatedAt) {
+		t.Fatal("rotation changed owner/expiry or token ownership")
+	}
+	defer clear(fresh)
+	if resolved, err := store.Resolve(t.Context(), fresh); err != nil || resolved != session {
+		t.Fatal("rotated session unavailable")
+	}
+	if resolved, err := store.Resolve(t.Context(), sibling); err != nil || resolved != siblingSession {
+		t.Fatal("rotation changed sibling session")
+	}
+	digest, _ := tokenDigest(fresh)
+	var count int
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM anonce.account_sessions WHERE token_digest=$1", digest[:]).Scan(&count); err != nil || count != 1 {
+		t.Fatal("rotated digest missing")
+	}
+	for _, state := range []string{"replaced", "unknown", "expired", "future", "revoked", "disabled"} {
+		t.Run(state, func(t *testing.T) {
+			owner := id
+			candidate := token
+			if state == "unknown" || state == "expired" || state == "future" {
+				candidate = make([]byte, TokenSize)
+				rand.Read(candidate)
+				defer clear(candidate)
+				if state != "unknown" {
+					digest, _ := tokenDigest(candidate)
+					age := int64(-3600)
+					if state == "future" {
+						age = 3600
+					}
+					_, err := pool.Exec(t.Context(), `INSERT INTO anonce.account_sessions(token_digest,account_id,created_at,expires_at)
+                        VALUES ($1,$2,statement_timestamp()+$3*interval '1 second',statement_timestamp()+($3+60)*interval '1 second')`, digest[:], id[:], age)
+					if err != nil {
+						t.Fatal("insert synthetic rotation session")
+					}
+				}
+			} else if state == "revoked" || state == "disabled" {
+				owner = newAccount(t, store)
+				candidate, _ = startSession(t, store, owner)
+				var err error
+				if state == "revoked" {
+					err = store.Revoke(t.Context(), candidate)
+				} else {
+					err = store.Disable(t.Context(), owner)
+				}
+				if err != nil {
+					t.Fatal("invalidate rotation candidate")
+				}
+			}
+			if result, session, err := store.RotateSession(t.Context(), owner, candidate); result != nil || session != (Session{}) || !errors.Is(err, ErrUnavailable) {
+				t.Fatal("unavailable session rotated")
+			}
+		})
+	}
+	if _, err := store.Resolve(t.Context(), token); !errors.Is(err, ErrUnavailable) {
+		t.Fatal("old token survived rotation")
+	}
+}
+
+func testPostgresConcurrentRotation(t *testing.T) {
+	store, pool := testStore(t)
+	for _, invalidation := range []string{"none", "revoke-all", "disable"} {
+		t.Run(invalidation, func(t *testing.T) {
+			id := newAccount(t, store)
+			token, original := startSession(t, store, id)
+			gate := make(chan struct{})
+			results := make(chan []byte, 8)
+			var wg sync.WaitGroup
+			for range 8 {
+				wg.Go(func() {
+					<-gate
+					fresh, session, err := store.RotateSession(t.Context(), id, token)
+					if err == nil {
+						if session.ExpiresAt != original.ExpiresAt {
+							t.Error("concurrent rotation extended expiry")
+						}
+						results <- fresh
+					} else if !errors.Is(err, ErrUnavailable) || fresh != nil || session != (Session{}) {
+						t.Error("concurrent rotation failed unexpectedly")
+					}
+				})
+			}
+			if invalidation != "none" {
+				wg.Go(func() {
+					<-gate
+					var err error
+					if invalidation == "disable" {
+						err = store.Disable(t.Context(), id)
+					} else {
+						err = store.RevokeAll(t.Context(), id)
+					}
+					if err != nil {
+						t.Error("rotation invalidation failed")
+					}
+				})
+			}
+			close(gate)
+			wg.Wait()
+			close(results)
+			successes := 0
+			for fresh := range results {
+				if invalidation != "none" {
+					if _, err := store.Resolve(t.Context(), fresh); !errors.Is(err, ErrUnavailable) {
+						t.Error("rotated session survived invalidation")
+					}
+				}
+				clear(fresh)
+				successes++
+			}
+			want := 0
+			if invalidation == "none" {
+				want = 1
+				if successes != 1 {
+					t.Fatal("competing rotations did not have one winner")
+				}
+			}
+			var count int
+			if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM anonce.account_sessions WHERE account_id=$1", id[:]).Scan(&count); err != nil || count != want || successes > 1 {
+				t.Fatal("rotation persisted unexpected sessions")
+			}
+		})
+	}
+}
+
+func testPostgresRotationCancellation(t *testing.T) {
+	store, pool := testStore(t)
+	id := newAccount(t, store)
+	token, original := startSession(t, store, id)
+	digest, _ := tokenDigest(token)
+	for _, query := range []string{
+		"SELECT state FROM anonce.accounts WHERE id=$1 FOR UPDATE",
+		"DELETE FROM anonce.account_sessions WHERE token_digest=$1",
+	} {
+		tx, err := pool.Begin(t.Context())
+		if err != nil {
+			t.Fatal("begin rotation test lock")
+		}
+		defer func() { _ = tx.Rollback(t.Context()) }()
+		argument := id[:]
+		if query == "DELETE FROM anonce.account_sessions WHERE token_digest=$1" {
+			argument = digest[:]
+		}
+		if _, err := tx.Exec(t.Context(), query, argument); err != nil {
+			t.Fatal("hold rotation test lock")
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		fresh, session, err := store.RotateSession(ctx, id, token)
+		cancel()
+		if fresh != nil || session != (Session{}) || !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatal("blocked rotation cancellation lost")
+		}
+		if err := tx.Rollback(t.Context()); err != nil {
+			t.Fatal("release rotation test lock")
+		}
+		// Acquire the same account lock to wait for cancelled transaction cleanup.
+		check, err := pool.Begin(t.Context())
+		if err != nil {
+			t.Fatal("begin rotation rollback check")
+		}
+		defer func() { _ = check.Rollback(t.Context()) }()
+		if err := lockAccount(t.Context(), check, id, true); err != nil {
+			t.Fatal("rotation retained account lock")
+		}
+		if err := check.Rollback(t.Context()); err != nil {
+			t.Fatal("finish rotation rollback check")
+		}
+		if session, err := store.Resolve(t.Context(), token); err != nil || session != original {
+			t.Fatal("cancelled rotation changed old session")
+		}
+	}
+	pool.Close()
+	if fresh, session, err := store.RotateSession(t.Context(), id, token); fresh != nil || session != (Session{}) || err == nil || bytes.Contains([]byte(err.Error()), []byte("postgres")) {
+		t.Fatal("closed pool rotation admitted or leaked diagnostics")
+	}
 }
 
 func newAccount(t *testing.T, store *Store) ID {

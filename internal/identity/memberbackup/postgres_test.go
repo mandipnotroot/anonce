@@ -93,6 +93,217 @@ func TestPostgresMemberBackups(t *testing.T) {
 	t.Run("session-lock-order-and-cancellation", testPostgresSessionLocking)
 	t.Run("session-expiry-after-lock-wait", testPostgresSessionExpiryWait)
 	t.Run("session-revocation-after-lock-wait", testPostgresSessionRevocationWait)
+	t.Run("session-recent-authentication", testPostgresSessionRecentAuthentication)
+	t.Run("session-authentication-age-after-lock-wait", testPostgresSessionAuthenticationWait)
+	t.Run("session-rotation-after-lock-wait", testPostgresSessionRotationWait)
+}
+
+func agedSession(t *testing.T, pool *pgxpool.Pool, owner accounts.ID, age time.Duration) []byte {
+	t.Helper()
+	token := make([]byte, accounts.TokenSize)
+	rand.Read(token)
+	t.Cleanup(func() { clear(token) })
+	digest := sha256.Sum256(token)
+	_, err := pool.Exec(t.Context(), `INSERT INTO anonce.account_sessions(token_digest,account_id,created_at,expires_at)
+        VALUES ($1,$2,statement_timestamp()-$3*interval '1 second',statement_timestamp()+interval '2 hours')`,
+		digest[:], owner[:], int64(age/time.Second))
+	if err != nil {
+		t.Fatal("insert synthetic aged session")
+	}
+	return token
+}
+
+func testPostgresSessionRecentAuthentication(t *testing.T) {
+	store, accountStore, pool := testStores(t)
+	for _, tc := range []struct {
+		name string
+		age  time.Duration
+		want error
+	}{
+		{"fresh", 0, nil},
+		{"within-window", RecentAuthenticationWindow - 30*time.Second, nil},
+		{"at-window", RecentAuthenticationWindow, ErrReauthenticationRequired},
+		{"outside-window", RecentAuthenticationWindow + time.Second, ErrReauthenticationRequired},
+		{"future", -time.Minute, ErrUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			owner := newOwner(t, accountStore)
+			token := agedSession(t, pool, owner, tc.age)
+			if revision, err := store.PutForSession(t.Context(), token, 0, make([]byte, 32), envelope()); tc.want != nil {
+				if revision != 0 || !errors.Is(err, tc.want) {
+					t.Fatal("creation age policy bypassed")
+				}
+				if _, err := store.Get(t.Context(), owner); !errors.Is(err, ErrUnavailable) {
+					t.Fatal("denied creation persisted slot")
+				}
+				if _, err := store.Put(t.Context(), owner, 0, make([]byte, 32), envelope()); err != nil {
+					t.Fatal("prepare authentication-age slot")
+				}
+			} else if err != nil || revision != 1 {
+				t.Fatal("recent session creation failed")
+			}
+			if record, err := store.GetForSession(t.Context(), token); tc.age >= 0 && (err != nil || record.Revision != 1) || tc.age < 0 && (!errors.Is(err, ErrUnavailable) || record.Revision != 0) {
+				t.Fatal("read incorrectly applied authentication-age policy")
+			}
+			for _, expected := range []int64{0, 1, 9} {
+				revision, err := store.PutForSession(t.Context(), token, expected, make([]byte, 32), envelope())
+				if tc.want != nil {
+					if revision != 0 || !errors.Is(err, tc.want) {
+						t.Fatal("write age policy bypassed or exposed revision conflict")
+					}
+				} else if expected == 1 {
+					if revision != 2 || err != nil {
+						t.Fatal("recent session replacement failed")
+					}
+				} else if revision != 0 || !errors.Is(err, ErrConflict) {
+					t.Fatal("recent session bypassed revision policy")
+				}
+			}
+			expected := int64(1)
+			if tc.want == nil {
+				expected = 2
+			}
+			revision, err := store.DeleteForSession(t.Context(), token, expected)
+			if tc.want != nil {
+				if revision != 0 || !errors.Is(err, tc.want) {
+					t.Fatal("delete age policy bypassed")
+				}
+				if record, err := store.Get(t.Context(), owner); err != nil || record.Revision != 1 || !bytes.Equal(record.Backup, envelope()) {
+					t.Fatal("denied mutations changed backup")
+				}
+			} else if err != nil || revision != 3 {
+				t.Fatal("recent session deletion failed")
+			}
+			if errors.Is(tc.want, ErrReauthenticationRequired) {
+				original, err := accountStore.Resolve(t.Context(), token)
+				if err != nil {
+					t.Fatal("aged session no longer live")
+				}
+				fresh, session, err := accountStore.RotateSession(t.Context(), owner, token)
+				defer clear(fresh)
+				if err != nil || session.ExpiresAt != original.ExpiresAt {
+					t.Fatal("verified reauthentication rotation failed")
+				}
+				deniedSession(t, store, token)
+				if revision, err := store.PutForSession(t.Context(), fresh, 1, make([]byte, 32), envelope()); err != nil || revision != 2 {
+					t.Fatal("rotated session could not replace backup")
+				}
+				if revision, err := store.DeleteForSession(t.Context(), fresh, 2); err != nil || revision != 3 {
+					t.Fatal("rotated session could not delete backup")
+				}
+			}
+		})
+	}
+}
+
+func testPostgresSessionAuthenticationWait(t *testing.T) {
+	store, accountStore, pool := testStores(t)
+	for _, operation := range []string{"put", "delete"} {
+		t.Run(operation, func(t *testing.T) {
+			owner := newOwner(t, accountStore)
+			token := agedSession(t, pool, owner, RecentAuthenticationWindow-time.Second)
+			session, err := accountStore.Resolve(t.Context(), token)
+			if err != nil {
+				t.Fatal("resolve near-boundary session")
+			}
+			if _, err := store.Put(t.Context(), owner, 0, make([]byte, 32), envelope()); err != nil {
+				t.Fatal("prepare queued authentication slot")
+			}
+			tx, err := pool.Begin(t.Context())
+			if err != nil {
+				t.Fatal("begin authentication-age lock")
+			}
+			defer func() { _ = tx.Rollback(t.Context()) }()
+			if _, err := tx.Exec(t.Context(), "SELECT state FROM anonce.accounts WHERE id=$1 FOR UPDATE", owner[:]); err != nil {
+				t.Fatal("hold authentication-age lock")
+			}
+			done := make(chan error, 1)
+			go func() {
+				var revision int64
+				var err error
+				if operation == "put" {
+					revision, err = store.PutForSession(t.Context(), token, 1, make([]byte, 32), envelope())
+				} else {
+					revision, err = store.DeleteForSession(t.Context(), token, 1)
+				}
+				if revision != 0 {
+					t.Error("aged queued mutation returned revision")
+				}
+				done <- err
+			}()
+			waitForBlockedAccess(t, pool, tx.Conn().PgConn().PID())
+			if _, err := pool.Exec(t.Context(), "SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM ($1::timestamptz - clock_timestamp()))) + 0.05)", session.CreatedAt.Add(RecentAuthenticationWindow)); err != nil {
+				t.Fatal("wait for authentication-age boundary")
+			}
+			if err := tx.Rollback(t.Context()); err != nil {
+				t.Fatal("release authentication-age lock")
+			}
+			if err := <-done; !errors.Is(err, ErrReauthenticationRequired) {
+				t.Fatal("queued mutation ignored post-lock authentication age")
+			}
+			if record, err := store.GetForSession(t.Context(), token); err != nil || record.Revision != 1 {
+				t.Fatal("aged session cannot read or denied mutation changed slot")
+			}
+		})
+	}
+}
+
+func testPostgresSessionRotationWait(t *testing.T) {
+	store, accountStore, pool := testStores(t)
+	for _, invalidation := range []string{"revoke", "disable", "expiry"} {
+		t.Run(invalidation, func(t *testing.T) {
+			owner := newOwner(t, accountStore)
+			lifetime := time.Minute
+			if invalidation == "expiry" {
+				lifetime = time.Second
+			}
+			token, session, err := accountStore.StartSession(t.Context(), owner, lifetime)
+			if err != nil {
+				t.Fatal("prepare queued rotation session")
+			}
+			defer clear(token)
+			tx, err := pool.Begin(t.Context())
+			if err != nil {
+				t.Fatal("begin queued rotation lock")
+			}
+			defer func() { _ = tx.Rollback(t.Context()) }()
+			if _, err := tx.Exec(t.Context(), "SELECT state FROM anonce.accounts WHERE id=$1 FOR UPDATE", owner[:]); err != nil {
+				t.Fatal("hold queued rotation lock")
+			}
+			done := make(chan error, 1)
+			go func() {
+				fresh, session, err := accountStore.RotateSession(t.Context(), owner, token)
+				if fresh != nil || session != (accounts.Session{}) {
+					clear(fresh)
+					t.Error("invalidated queued rotation returned material")
+				}
+				done <- err
+			}()
+			waitForBlockedAccess(t, pool, tx.Conn().PgConn().PID())
+			if invalidation == "expiry" {
+				if _, err := pool.Exec(t.Context(), "SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM ($1::timestamptz - clock_timestamp()))) + 0.05)", session.ExpiresAt); err != nil {
+					t.Fatal("wait for queued rotation expiry")
+				}
+			} else {
+				if invalidation == "disable" {
+					if _, err := tx.Exec(t.Context(), "UPDATE anonce.accounts SET state='disabled', disabled_at=statement_timestamp() WHERE id=$1", owner[:]); err != nil {
+						t.Fatal("disable queued rotation account")
+					}
+				}
+				digest := sha256.Sum256(token)
+				if _, err := tx.Exec(t.Context(), "DELETE FROM anonce.account_sessions WHERE token_digest=$1", digest[:]); err != nil {
+					t.Fatal("revoke queued rotation session")
+				}
+			}
+			if err := tx.Commit(t.Context()); err != nil {
+				t.Fatal("release queued rotation lock")
+			}
+			if err := <-done; !errors.Is(err, accounts.ErrUnavailable) {
+				t.Fatal("queued rotation survived invalidation")
+			}
+			deniedSession(t, store, token)
+		})
+	}
 }
 
 func testPostgresLifecycle(t *testing.T) {
@@ -547,7 +758,7 @@ func testPostgresSessionLocking(t *testing.T) {
 			token := sessionToken(t, accountStore, owner)
 			// The callback runs only after the account lock and session recheck.
 			// Each invalidator must wait for this transaction, then cancel cleanly.
-			err := store.withSession(t.Context(), token, func(ctx context.Context, _ pgx.Tx, _ accounts.ID) error {
+			err := store.withSession(t.Context(), token, false, func(ctx context.Context, _ pgx.Tx, _ accounts.ID) error {
 				ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 				defer cancel()
 				var err error

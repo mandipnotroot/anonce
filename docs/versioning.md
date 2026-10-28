@@ -46,6 +46,12 @@ the existing account-first transaction lock order. Migration ranges, grants, HTT
 CLI, WASM, and cryptographic formats are unchanged; existing owner-ID storage
 methods retain their trusted-caller contract.
 
+Internal session rotation and the fixed five-minute authentication-age gate on
+session-scoped backup mutations change only unstable Go storage behavior. Older
+live sessions can read but must reauthenticate before mutations; there is no
+bearer-only refresh. No public wire/parameter, migration, grant, or device profile
+changes and no automatic release bump are introduced.
+
 The [browser account/vault direction](key-management.md#browser-account-vault)
 is a documentation requirement, not a new supported API or cryptographic profile.
 Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional

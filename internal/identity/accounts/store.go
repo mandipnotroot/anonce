@@ -120,6 +120,62 @@ func (s *Store) StartSession(ctx context.Context, id ID, lifetime time.Duration)
 	return token, session, nil
 }
 
+// RotateSession requires fresh, independently verified authentication for id, not
+// merely possession of token. The trusted caller must bind that ceremony to this
+// account and operation. It replaces only that account's live token, preserving
+// absolute expiry and sibling sessions. CreatedAt records the new admission time.
+// Inputs remain caller-owned and must not change until return. Clear the new
+// secret after protected delivery. An uncertain commit returns no token and can
+// invalidate the old one; require fresh sign-in rather than automatic retry.
+func (s *Store) RotateSession(ctx context.Context, id ID, token []byte) ([]byte, Session, error) {
+	if id == (ID{}) {
+		return nil, Session{}, ErrInvalidInput
+	}
+	digest, ok := tokenDigest(token)
+	if !ok {
+		return nil, Session{}, ErrUnavailable
+	}
+	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
+	defer cancel()
+	if err := s.ready(ctx); err != nil {
+		return nil, Session{}, err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return nil, Session{}, failure(ctx, "begin account session rotation")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockAccount(ctx, tx, id, true); err != nil {
+		return nil, Session{}, err
+	}
+	fresh := make([]byte, TokenSize)
+	rand.Read(fresh)
+	next, _ := tokenDigest(fresh)
+	session := Session{AccountID: id}
+	// A separate statement after the account lock observes revocation/expiry
+	// during lock waits. One timestamp bounds both deletion and insertion.
+	err = tx.QueryRow(ctx, `WITH previous AS (
+        DELETE FROM anonce.account_sessions
+        WHERE token_digest = $1 AND account_id = $2
+          AND created_at <= statement_timestamp() AND expires_at > statement_timestamp()
+        RETURNING expires_at)
+        INSERT INTO anonce.account_sessions(token_digest, account_id, expires_at)
+        SELECT $3, $2, expires_at FROM previous
+        RETURNING created_at, expires_at`, digest[:], id[:], next[:]).Scan(&session.CreatedAt, &session.ExpiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		clear(fresh)
+		return nil, Session{}, ErrUnavailable
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		clear(fresh)
+		return nil, Session{}, failure(ctx, "rotate account session")
+	}
+	return fresh, session, nil
+}
+
 // Resolve checks current account status and absolute expiry on every lookup.
 // A successful lookup is not authorization for membership or sensitive actions.
 func (s *Store) Resolve(ctx context.Context, token []byte) (Session, error) {

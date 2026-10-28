@@ -85,7 +85,9 @@ See [deployment](deployment.md#local-development) for limits and configuration.
 
 Internal [session-scoped backup access](database.md#session-scoped-member-backup-access)
 uses existing identity sessions only within Go storage transactions. It introduces
-no HTTP route, cookie encoding, OpenAPI schema, or recent-authentication mechanism.
+no HTTP route, cookie encoding, or OpenAPI schema. Recent-authentication admission
+and caller-verified session rotation are internal storage operations, not login or
+reauthentication endpoints.
 
 Account login, credential management, the eligible-round dashboard, and encrypted
 member-key backup operations belong only to the identity side. Their routes,

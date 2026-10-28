@@ -65,13 +65,13 @@ properties described below.
   delivery. SQL and driver diagnostics are not returned. Read-only digest theft
   does not directly reveal bearer secrets; stolen secrets or application/database
   write compromise still permit impersonation.
-- Session creation, individual/all-session revocation, and disabling take the account row lock first.
+- Session creation/rotation, individual/all-session revocation, and disabling take the account row lock first.
   Disable atomically removes sessions and prevents new ones. An already-authorized
   in-flight request is not recalled; no distributed revocation or browser logout
   claim is made. Database clock rollback can affect expiry.
 - This package trusts its caller to verify authentication and authorize changes.
   No login route, credentials, CSRF/cookie handling, rate limiting, session cap,
-  recent-authentication policy, recovery, vault access, or membership binding is
+  authentication ceremony, recovery, browser vault access, or membership binding is
   supplied. It must not be exposed directly to requests. Its pool must remain on
   the checked runtime role/database, without parameter tracing. Storage tests do
   not establish a secure account workflow or authorize anonymous submissions.
@@ -83,7 +83,8 @@ properties described below.
   Account locks serialize writes with disable; revisions reject stale concurrent
   writes, and tombstones prevent stale creation after deletion. Reads already in
   flight or returned before disable are not recalled. No HTTP owner authorization,
-  recent-authentication enforcement, write rate limit, or browser integration exists.
+  write rate limit, or browser integration exists. Owner-ID methods have no
+  authentication-age gate and must not be exposed as endpoint adapters.
 - [Session-scoped access](database.md#session-scoped-member-backup-access) derives
   ownership from an existing session and holds the account lock through backup
   access and commit. A fresh post-lock query rejects expired or revoked sessions,
@@ -91,8 +92,17 @@ properties described below.
   revocation and disable serialize with this access; a transaction admitted first
   commits before invalidation, but its result delivery can race invalidation.
   Expiry after admission does not recall
-  bounded in-flight work. A stolen live token can access that owner's ciphertext;
-  session ownership alone supplies no recent-authentication or recovery authority.
+  bounded in-flight work. A stolen live token can access that owner's ciphertext.
+  Mutations require a nonfuture session created within five minutes of database
+  admission, rechecked after lock waits. An older token cannot mutate or obtain
+  freshness without a separately verified authentication ceremony. A recently
+  stolen token can still mutate during this window; age is not operation intent.
+- Session rotation trusts its caller to bind fresh authentication to the same
+  account and operation. It replaces one live token atomically without extending
+  absolute expiry or changing sibling sessions. It serializes with invalidation
+  and backup access, but cannot recall already returned material. A compromised
+  trusted caller/runtime role can bypass the policy. No ceremony verification,
+  browser logout, key unlocking, or recovery authority is established.
 - The runtime role can access all identity slots. Package scoping is not RLS and
   cannot contain a compromised identity application. Public bindings are linkable
   metadata, never anonymous-request fields. Stored ciphertext can be guessed

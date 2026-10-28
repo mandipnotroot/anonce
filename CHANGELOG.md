@@ -10,13 +10,20 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Internal session rotation after caller-verified reauthentication, bound to the
+  same account, with fresh digest-only tokens, atomic old-token invalidation, and
+  unchanged absolute expiry. Session-scoped member-backup mutations now require
+  authentication admission within five minutes, rechecked after account-lock
+  waits; older live sessions retain read access. Native admission/fuzz and opt-in
+  real PostgreSQL race/cancellation tests cover the policy. No login ceremony,
+  browser/API integration, migration, grant, or encrypted-backup format is added.
 - Internal session-scoped member-backup reads, writes, and deletion, deriving the
   owner from a live session without an owner override. Account locking serializes
   access with individual/all-session revocation and disable; expiry is rechecked
   after lock waits. Existing revision/binding/tombstone rules remain unchanged.
   Native admission/fuzz tests and opt-in real PostgreSQL race/cancellation checks
-  cover access. No HTTP/browser vault, authentication ceremony, recent-authentication
-  policy, recovery, migration, or cryptographic format is added.
+  cover access. No HTTP/browser vault, authentication ceremony, recovery, migration,
+  or cryptographic format is added.
 - Identity version-3 encrypted member-backup slots and an internal runtime-role
   store with account scoping, fixed public-key binding, bounded profile-2 envelopes,
   revision-checked replacement/deletion, retained deletion tombstones, and account

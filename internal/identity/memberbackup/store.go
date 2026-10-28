@@ -44,8 +44,9 @@ type Record struct {
 // must preserve the checked role/database on every connection. It is concurrency
 // safe; its zero value fails closed. Owner-ID methods require a trusted
 // authenticated owner, not an unchecked request parameter. ForSession methods
-// derive the owner from a live session. Recent authentication and rate limits
-// are host responsibilities. There is no HTTP integration.
+// derive the owner from a live session and require recent creation/rotation for
+// writes. Verifying authentication ceremonies and rate limits remain host
+// responsibilities. There is no HTTP integration.
 type Store struct{ pool *pgxpool.Pool }
 
 func New(ctx context.Context, pool *pgxpool.Pool) (*Store, error) {

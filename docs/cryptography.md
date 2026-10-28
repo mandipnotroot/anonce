@@ -39,16 +39,26 @@ Raw secrets must be cleared after protected delivery; runtime/transport copies
 cannot be guaranteed erased. SQL traces must not collect parameters or results.
 
 This follows the [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
-on random opaque secrets, one-way server storage, and server-side expiry
-(consulted 2026-10-28). Read-only theft of digests alone does not yield bearer
-secrets, but application compromise, write access, or a stolen secret defeats this
-boundary. Passkey verification, cookie encoding/delivery, CSRF, idle expiry,
-rotation, and sensitive-action reauthentication are not implemented by this store.
+on random opaque secrets, one-way server storage, server-side expiry, and token
+replacement after reauthentication (consulted 2026-10-28). Read-only theft of digests
+alone does not yield bearer secrets, but application compromise, write access,
+or a stolen secret defeats this boundary. Passkey verification, cookie
+encoding/delivery, CSRF, idle expiry,
+and authentication ceremonies are not implemented by this store.
 Account sessions never unlock device backups or authorize anonymous submissions.
 
 Internal [session-scoped member-backup access](database.md#session-scoped-member-backup-access)
 reuses this exact digest/expiry profile for owner authorization. It neither derives
 an unlock key nor changes encrypted backups, session secrets, or browser formats.
+
+After independently verifying fresh authentication for the same account, a trusted
+caller may use `RotateSession` to atomically replace one live token with a fresh
+random token. The new row's creation time records that authentication admission;
+its absolute expiry is copied unchanged. No bearer-only renewal is permitted.
+Session-scoped backup writes require creation within the preceding five minutes,
+checked with the database clock after the account lock. This is a development
+storage policy, not proof of a verified ceremony or a product assurance level.
+See the [transaction contract](database.md#session-scoped-member-backup-access).
 
 ## Membership and authorization
 

@@ -52,8 +52,10 @@ Available foundations:
   retained tombstones, and disable serialization. Credentials, product vault access,
   protocol tables, and HTTP persistence remain unavailable.
   Internal session-scoped backup methods now derive the owner from a live session,
-  recheck expiry after lock waits, and serialize with revocation/disable. Login
-  ceremonies, recent-authentication policy, and browser/API integration remain open.
+  recheck expiry after lock waits, and serialize with revocation/disable. Mutations
+  require authentication admission within five minutes. Caller-verified
+  reauthentication can rotate one token without extending absolute expiry. Login
+  ceremonies, product authentication policy, and browser/API integration remain open.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).

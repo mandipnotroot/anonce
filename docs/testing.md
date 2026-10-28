@@ -274,6 +274,13 @@ Named subtests cover:
   do not expose driver diagnostics.
 - `disable-rollback`: a held session-row lock blocks deletion after the account
   update; cancellation rolls back both account disabling and session removal.
+- `session-rotation`: fresh tokens, unchanged owner/absolute expiry, digest storage,
+  old-token invalidation, sibling isolation, caller-account binding, and rejection
+  of replaced, unknown, expired, future-dated, revoked, and disabled sessions.
+- `concurrent-session-rotation`: competing rotations have exactly one winner;
+  revoke-all/disable races leave no live successor.
+- `rotation-cancellation-and-rollback`: held account/session-row locks cancel
+  rotation without changing the old session; closed pools expose no driver data.
 
 The submission run must reject store construction, and SQL checks verify that
 neither account table exists there. This is persistence evidence only, not passkey
@@ -321,18 +328,28 @@ Named subtests cover:
   lock cannot update its backup. The database clock determines expiry.
 - `session-revocation-after-lock-wait`: queued reads, writes, and deletes observe
   revocation committed while they waited, returning no data or mutation.
+- `session-recent-authentication`: fresh/near-boundary mutations succeed; at/after
+  five minutes mutations fail before revision checks while reads remain available.
+  Future-dated sessions fail closed. Verified-caller rotation restores mutation
+  admission without extending expiry and invalidates the old token.
+- `session-authentication-age-after-lock-wait`: queued replacement/deletion crossing
+  the age boundary cannot mutate; the live token can still read unchanged state.
+- `session-rotation-after-lock-wait`: rotation queued behind committed revocation,
+  disable, or expiry returns no successor token or session.
 
 The submission run rejects construction; separate SQL checks require all identity
 account/session/member-backup tables to be absent there. These are internal storage
-checks, not HTTP owner authorization, recent authentication, rate limits, trusted
-enrollment binding, ciphertext authentication, malicious-server rollback defense,
-production retention, encrypted database restoration, or the browser vault journey.
+checks, not HTTP owner authorization, authentication ceremony verification, rate
+limits, trusted enrollment binding, ciphertext authentication, malicious-server
+rollback defense, production retention, encrypted database restoration, or the
+browser vault journey.
 Bounded native admission tests/fuzzing run in `make check`; real PostgreSQL remains
 an explicit opt-in target.
 
 On 2026-10-28, `make db-member-backup-test` passed on Linux x86_64 with PostgreSQL
 18.6, Engine 29.9.2, and Compose 5.6.1, including version-3 upgrade/failure checks,
-the account tests, and all member-backup subtests above.
+session rotation, authentication-age admission, cancellation, and all named
+runtime-role race checks above. No authentication ceremony was exercised.
 
 ### WASM verifier checks
 

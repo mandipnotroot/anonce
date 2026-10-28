@@ -90,6 +90,19 @@ separately authenticated session. Disabling is idempotent; no re-enable API exis
 Lock ordering follows PostgreSQL 18 [row-lock semantics](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS)
 (consulted 2026-10-28).
 
+`RotateSession(ctx, id, token)` requires fresh authentication independently verified
+by its trusted caller for `id` and bound to this operation. It is not a bearer-only
+refresh method or an authentication verifier. It locks that active account, then
+rechecks token ownership and expiry in a fresh statement before atomically deleting
+the old digest and inserting a fresh random digest. The new creation timestamp
+records reauthentication admission; absolute expiry is preserved, not extended.
+Sibling sessions are unchanged. Competing rotations of one token have at most one
+winner; revocation/disable ordered first prevents rotation. No caller-selected
+timestamp, replacement token, or new lifetime is accepted. Failure returns no
+secret or session; an uncertain commit may invalidate the old token and leave the
+new one unreachable.
+Require fresh sign-in rather than retrying that operation automatically.
+
 Revocation removes live session references immediately. Expired references remain
 until `PurgeExpired` is called, bounded to 1–1000 rows per call. No cleanup scheduler,
 account deletion, production retention policy, backup restoration, authentication
@@ -166,8 +179,9 @@ This is a development retention policy: one live ciphertext, no application
 history, and a retained tombstone until a future reviewed account-deletion policy.
 Disable denies access but does not erase the slot. PostgreSQL WAL, dead tuples,
 snapshots, and operator backups may retain earlier ciphertext. Production retention,
-write admission/rate limits, recent authentication, enrollment binding, recovery,
-and encrypted database restoration remain prerequisites for product integration.
+write admission/rate limits, verified authentication ceremonies, enrollment binding,
+recovery, and encrypted database restoration remain prerequisites for product
+integration.
 Reviewer backups and all per-submission state remain excluded.
 
 The store borrows a pool under the same checked boundary, five-second operation
@@ -192,14 +206,16 @@ all revision, public-binding, envelope, and tombstone rules above still apply.
 Tokens remain caller-owned and must not change until return; clear them after use.
 
 Each operation discovers the session's owner, locks the active account, then checks
-session existence and absolute expiry in a fresh Read Committed statement using
-the database clock. It accesses the slot in that same five-second transaction and
-returns material or a revision only after commit. Individual revocation, revoke-all,
-disable, and all package backup writes use the same account-first lock order.
+session existence, nonfuture creation, and absolute expiry in a fresh Read Committed
+statement using the database clock. It accesses the slot in that same five-second
+transaction and returns material or a revision only after commit. Individual
+revocation, revoke-all, disable, and all package backup writes use the same
+account-first lock order.
 An invalidator ordered first denies queued access; an access transaction ordered
-first commits before invalidation. Delivery of its prepared result can race
-invalidation. Expiry is checked at admission after the account lock, not continuously
-during the bounded operation. Already returned data is not recalled.
+first commits before invalidation. Session rotation uses this same lock order.
+Delivery of its prepared result can race invalidation. Expiry is checked at
+admission after the account lock, not continuously during the bounded operation.
+Already returned data is not recalled.
 Expired-reference cleanup may remove an expired session without this account lock;
 it grants no access or extension of an already admitted operation.
 
@@ -207,10 +223,25 @@ Malformed, unknown, expired, revoked, or disabled sessions and absent read slots
 share `ErrUnavailable`; failed authorization returns no slot data or revision.
 Invalid write envelopes/revisions still fail as `ErrInvalidInput` before SQL.
 Cancelled or failed transactions return no result; uncertain commits must not be
-retried blindly. These internal methods add owner authorization from existing
-sessions, not a login ceremony or recent authentication. A future trusted host must
-enforce recent-authentication policy, CSRF protection, and rate limits before product
-use. Owner-ID methods remain trusted internal operations, not endpoint adapters.
+retried blindly.
+
+`PutForSession` and `DeleteForSession` additionally require the session creation
+timestamp to be strictly newer than the database admission time minus five minutes
+and no later than admission. The fixed `RecentAuthenticationWindow` applies to
+creation, replacement, tombstone restoration, and deletion, before any slot lookup
+or revision conflict. An older live session returns `ErrReauthenticationRequired`
+with no revision or mutation, while `GetForSession` still permits reading. Unknown,
+future-dated, expired, revoked, and disabled sessions return `ErrUnavailable` instead.
+The age check runs after account-lock waits, at admission rather than continuously
+during bounded work. Clock rollback can affect this policy, as it can expiry.
+
+`StartSession` and `RotateSession` must only follow independently verified
+authentication by a trusted caller. Row creation time is a storage assertion by
+that caller, not proof of a ceremony. There is no endpoint that grants freshness
+from token possession alone, and no API to edit existing session timestamps.
+Owner-ID methods remain trusted internal operations without this age gate, not
+endpoint adapters. A future host still needs verified login/reauthentication,
+operation/account binding, CSRF protection, and rate limits before product use.
 No HTTP route, browser transport, migration, or grant change is introduced.
 
 ## Submission database

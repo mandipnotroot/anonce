@@ -35,12 +35,18 @@ func TestAccountAdmission(t *testing.T) {
 	}
 	for _, size := range []int{0, 1, TokenSize - 1, TokenSize + 1, 4096} {
 		token := bytes.Repeat([]byte{'x'}, size)
+		if fresh, session, err := store.RotateSession(t.Context(), id, token); fresh != nil || session != (Session{}) || !errors.Is(err, ErrUnavailable) {
+			t.Fatal("invalid rotation token admitted")
+		}
 		if session, err := store.Resolve(t.Context(), token); session != (Session{}) || !errors.Is(err, ErrUnavailable) {
 			t.Fatal("invalid token resolved")
 		}
 		if err := store.Revoke(t.Context(), token); !errors.Is(err, ErrInvalidInput) {
 			t.Fatal("invalid revocation admitted")
 		}
+	}
+	if fresh, session, err := store.RotateSession(t.Context(), ID{}, make([]byte, TokenSize)); fresh != nil || session != (Session{}) || !errors.Is(err, ErrInvalidInput) {
+		t.Fatal("zero rotation account admitted")
 	}
 	for _, limit := range []int{-1, 0, 1001} {
 		if count, err := store.PurgeExpired(t.Context(), limit); count != 0 || !errors.Is(err, ErrInvalidInput) {
@@ -77,6 +83,9 @@ func TestAccountUnavailableAndCancellation(t *testing.T) {
 					}
 					if session, err := store.Resolve(ctx, make([]byte, TokenSize)); session != (Session{}) || !errors.Is(err, want) {
 						t.Error("resolve did not fail closed")
+					}
+					if token, session, err := store.RotateSession(ctx, ID{1}, make([]byte, TokenSize)); token != nil || session != (Session{}) || !errors.Is(err, want) {
+						t.Error("rotation did not fail closed")
 					}
 					if err := store.Revoke(ctx, make([]byte, TokenSize)); !errors.Is(err, want) {
 						t.Error("revoke did not fail closed")
@@ -130,6 +139,10 @@ func FuzzAccountToken(f *testing.F) {
 		}
 		if ok && digest != sha256.Sum256(token) || !ok && digest != ([sha256.Size]byte{}) {
 			t.Fatal("wrong token verifier")
+		}
+		var store Store
+		if fresh, session, err := store.RotateSession(t.Context(), ID{1}, token); fresh != nil || session != (Session{}) || !errors.Is(err, ErrUnavailable) || !bytes.Equal(before, token) {
+			t.Fatal("rotation admission or ownership differs")
 		}
 	})
 }
