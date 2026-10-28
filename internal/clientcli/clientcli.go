@@ -11,6 +11,7 @@ import (
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -29,12 +30,13 @@ import (
 const usage = `Development-only local keys; independent review is required before real use.
 Usage:
   client generate -kind member|reviewer -out PATH
-  client inspect -kind member|reviewer -in PATH
-  client rewrap -kind member|reviewer -in PATH -out PATH
-  client csr -kind member -in PATH
-  client verify-csr -kind member -in PATH
+  client inspect -kind member|reviewer -in PATH [-out PATH] [EXPECTED-KEY]
+  client rewrap -kind member|reviewer -in PATH -out PATH [EXPECTED-KEY]
+  client csr -kind member -in PATH [-out PATH] [EXPECTED-KEY]
+  client verify-csr -kind member -in PATH [-out PATH] [EXPECTED-KEY]
   client -help
 
+EXPECTED-KEY: -expect-public-key HEX or -expect-public-key-file PATH, never both.
 Backup passwords come only from a pipe or regular file on stdin, never a terminal.
 Generate requires two matching LF-terminated password lines and EOF.
 Inspect requires one LF-terminated password line and EOF.
@@ -46,8 +48,22 @@ Backup parents must already exist with owner-only permissions.
 Generate publishes an encrypted backup without overwriting any existing path.
 Rewrap preserves the key in a new backup; it neither replaces nor revokes old copies.
 Inspect validates the backup and prints only its public key, not authorization.
+Inspect and verify-csr -out publish the public-key line in a new owner-only file,
+without stdout or overwriting an existing path. Public keys are linkable, not encrypted.
 CSR prints a signed identity-free DER request, not a certificate or enrollment.
+CSR -out publishes the public request in a new owner-only file without stdout.
+Request publication never overwrites a path; requests are public, not encrypted.
 Verify-csr checks a request and prints only its public key; it never reads stdin.
+Inspect, rewrap, csr, and verify-csr accept -expect-public-key with an independently trusted
+64-character hex public key for the selected kind.
+Alternatively, -expect-public-key-file reads an independently trusted owner-only export
+before password or backup/request access. It requires the exact lowercase kind:hex line
+with LF, as emitted by inspect/verify-csr; malformed or wrong-kind records fail closed.
+Empty, malformed, or repeated expected-key flags fail; mismatches print nothing.
+Rewrap checks the key before re-encryption or output-file creation.
+CSR checks the key before request signing or output-file creation.
+Public keys in arguments remain linkable and may appear in process listings/history.
+Expected-key file paths are also visible; file permissions do not establish trust.
 Request inputs require owner-only files and parents, just like backup inputs.
 Request verification establishes neither certificate trust nor enrollment authority.
 No enrollment, round binding, expiry enforcement, or network operations exist.
@@ -58,10 +74,12 @@ const maxArgumentBytes = 8192
 var errArguments = errors.New("configure client: invalid arguments; use -help")
 
 type config struct {
-	operation string
-	kind      string
-	input     string
-	output    string
+	operation         string
+	kind              string
+	input             string
+	output            string
+	expectedPublicKey []byte
+	expectedKeyFile   string
 }
 
 // Main returns the process exit code after signal-aware execution.
@@ -100,8 +118,35 @@ func parse(args []string) (config, error) {
 	if cfg.operation == "generate" || cfg.operation == "rewrap" {
 		flags.StringVar(&cfg.output, "out", "", "new encrypted backup output")
 	}
+	if cfg.operation == "csr" {
+		flags.StringVar(&cfg.output, "out", "", "new public request output instead of stdout")
+	}
+	if cfg.operation == "inspect" || cfg.operation == "verify-csr" {
+		flags.StringVar(&cfg.output, "out", "", "new public key output instead of stdout")
+	}
 	if cfg.operation != "generate" {
 		flags.StringVar(&cfg.input, "in", "", "input file")
+	}
+	if cfg.operation != "generate" {
+		// Both supported key kinds have exactly 32 public bytes.
+		flags.Func("expect-public-key", "expected public key in hexadecimal", func(value string) error {
+			if cfg.expectedPublicKey != nil || cfg.expectedKeyFile != "" || len(value) != 2*ed25519.PublicKeySize {
+				return errArguments
+			}
+			public, err := hex.DecodeString(value)
+			if err != nil {
+				return errArguments
+			}
+			cfg.expectedPublicKey = public
+			return nil
+		})
+		flags.Func("expect-public-key-file", "independently trusted public key file", func(value string) error {
+			if value == "" || strings.ContainsRune(value, 0) || cfg.expectedKeyFile != "" || cfg.expectedPublicKey != nil {
+				return errArguments
+			}
+			cfg.expectedKeyFile = value
+			return nil
+		})
 	}
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -117,6 +162,17 @@ func parse(args []string) (config, error) {
 	if (cfg.operation == "generate" || cfg.operation == "rewrap") && cfg.output == "" ||
 		cfg.operation != "generate" && cfg.input == "" {
 		return config{}, errArguments
+	}
+	if cfg.output == "" {
+		var emptyOutput bool
+		flags.Visit(func(f *flag.Flag) {
+			if f.Name == "out" {
+				emptyOutput = true
+			}
+		})
+		if emptyOutput {
+			return config{}, errArguments
+		}
 	}
 	return cfg, nil
 }
@@ -135,8 +191,14 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("client: %w", err)
 	}
+	if cfg.expectedKeyFile != "" {
+		cfg.expectedPublicKey, err = readExpectedPublicKey(ctx, cfg.kind, cfg.expectedKeyFile)
+		if err != nil {
+			return err
+		}
+	}
 	if cfg.operation == "verify-csr" {
-		return verifyCSR(ctx, cfg.input, output)
+		return verifyCSR(ctx, cfg.input, cfg.expectedPublicKey, cfg.output, output)
 	}
 	if cfg.operation == "rewrap" {
 		return runRewrap(ctx, cfg, input)
@@ -160,7 +222,10 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 	}
 	defer clear(backup)
 	if cfg.operation == "csr" {
-		return writeCSR(ctx, password, backup, output)
+		if cfg.output != "" {
+			return writeCSRFile(ctx, password, backup, cfg.expectedPublicKey, cfg.output)
+		}
+		return writeCSR(ctx, password, backup, cfg.expectedPublicKey, output)
 	}
 	public, err := inspect(ctx, cfg.kind, password, backup)
 	if err != nil {
@@ -169,8 +234,13 @@ func run(ctx context.Context, args []string, input *os.File, output io.Writer) e
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("inspect backup: %w", err)
 	}
-	if _, err := fmt.Fprintf(output, "%s:%x\n", cfg.kind, public); err != nil {
-		return errors.New("inspect backup: write public key")
+	// Compare only after typed authentication and payload validation. Both values
+	// are public; matching cannot authorize a malformed or wrong-purpose backup.
+	if cfg.expectedPublicKey != nil && !bytes.Equal(public, cfg.expectedPublicKey) {
+		return errors.New("inspect backup: public key does not match expected key")
+	}
+	if err := outputPublicKey(ctx, cfg.kind, public, cfg.output, output); err != nil {
+		return fmt.Errorf("inspect backup: %w", err)
 	}
 	return nil
 }

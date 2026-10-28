@@ -28,18 +28,32 @@ must use `/vN` module/import paths for breaking v2+ releases, even in a monorepo
 are unreleased, not stable wire profiles or a product. Future crypto formats need
 explicit breaking review.
 
+The [browser account/vault direction](key-management.md#browser-account-vault)
+is a documentation requirement, not a new supported API or cryptographic profile.
+Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional
+for product use does not remove its documented interfaces. Before implementation,
+review account/vault APIs, recovery and wrapping formats, credential binding, and
+anonymous handoff compatibility explicitly. Do not silently reinterpret profile 2
+as a PRF-based format or migrate keys during a failed unlock.
+
+The [in-memory member session](key-management.md#in-memory-member-sessions) is an
+unstable internal Go component, not a public account/vault or browser interface.
+It reuses the existing backup, member-key, and CSR profiles. No wire format,
+parameter, CLI, HTTP, or WASM contract changes; the formats' independent-review
+and breaking-impact requirements remain in force.
+
 ### Cryptographic file compatibility
 
 The following formats are unreleased breaking additions requiring `semver:major`
-review and independent security review before real-key use. None has a prior
-supported format or legacy migration.
+review and independent security review before real-key use. No released
+compatibility baseline exists.
 
 | Contract | Compatibility boundary |
 | --- | --- |
-| [Device-backup profile 1](cryptography.md#device-backup-profile-1) | Defines the outer encrypted file. Unknown versions/profiles fail closed; future format or parameter changes require breaking review and an explicit migration plan |
+| [Device-backup profile 2](cryptography.md#device-backup-profile-2) | Argon2id and ChaCha20-Poly1305; format version 1/profile byte 2; unsupported profiles fail before derivation |
 | [Member-key payload profile 1](cryptography.md#member-key-payload-profile-1) | Canonical Ed25519 PKCS #8 inside member-purpose backups |
 | [Reviewer-key payload profile 1](cryptography.md#reviewer-key-payload-profile-1) | Canonical X25519 PKCS #8 inside reviewer-purpose backups |
-| [Member CSR profile 1](cryptography.md#member-csr-profile-1) | Fixed identity-free Ed25519 PKCS #10 DER; no legacy decoder, alternate claims, or enrollment transport |
+| [Member CSR profile 1](cryptography.md#member-csr-profile-1) | Fixed identity-free Ed25519 PKCS #10 DER; no alternate claims or enrollment transport |
 
 Typed key importers reject opaque, wrong-algorithm, and noncanonical payloads.
 Their addition does not change the outer format, generic opaque keystore API,
@@ -65,15 +79,57 @@ breaking-impact or independent-review requirements for those unreleased formats.
 Its three-line password framing applies only to that command. Existing commands,
 password framing, backup/payload formats, and HTTP behavior remain unchanged.
 
+The optional `client rewrap -expect-public-key HEX` is an additive interface requiring
+`semver:minor` review. It checks the complete public key after typed backup validation,
+before replacement-password derivation or file creation. Omitting it preserves
+existing rewrapping. Password framing, backup/payload formats, other commands,
+WASM, and HTTP behavior are unchanged.
+
+The optional `client inspect -expect-public-key HEX` is an additive interface
+requiring `semver:minor` review. For either supported key kind it checks the complete
+public key after typed backup validation, before output. Omitting it preserves
+existing inspection. Password framing, backup/payload formats, request verification,
+WASM, and HTTP behavior are unchanged.
+
 `client csr` adds an opt-in member-only command with one-line password framing and
 binary DER stdout. The new cryptographic request profile requires `semver:major`
 review under the format policy above. Existing commands, encrypted backups, and
 HTTP behavior are unchanged. No certificate or enrollment compatibility is claimed.
 
+The optional `client csr -out PATH` is an additive interface requiring
+`semver:minor` review. It selects owner-only, no-replace file publication instead
+of stdout. Omitting it preserves the existing stdout contract; other commands,
+password framing, cryptographic profiles, and HTTP behavior are unchanged.
+
+The optional `client csr -expect-public-key HEX` is an additive interface requiring
+`semver:minor` review. It checks the complete member public key after typed backup
+validation, before request signing or file creation, for both stdout and `-out`.
+Omitting it preserves existing CSR creation. Password framing, cryptographic
+profiles, other commands, WASM, and HTTP behavior are unchanged.
+
 `client verify-csr` is an additive opt-in command requiring `semver:minor` review.
 It reads an owner-only request file, does not read stdin, and prints the same
 public-key line as `inspect` after validating the existing CSR profile. Existing
 commands, password framing, cryptographic formats, and HTTP behavior are unchanged.
+
+The optional `client verify-csr -expect-public-key HEX` is an additive interface
+requiring `semver:minor` review. It checks the complete expected public key after
+validating the request, before output. Omitting the flag preserves existing
+behavior. Cryptographic profiles and the WASM interface are unchanged.
+
+Optional `client inspect -out PATH` and `client verify-csr -out PATH` are additive
+interfaces requiring `semver:minor` review. They select owner-only, no-replace file
+publication of the existing public-key line after validation and optional expected-key
+matching. Omitting the flag preserves stdout behavior. Password framing, cryptographic
+profiles, WASM, and HTTP behavior are unchanged.
+
+Optional `-expect-public-key-file PATH` on `inspect`, `rewrap`, `csr`, and
+`verify-csr` is an additive interface requiring `semver:minor` review. It reads the
+existing canonical public-key export for the selected kind and is mutually exclusive
+with `-expect-public-key HEX`. Omitting it preserves existing behavior. Password
+framing, output, cryptographic profiles, WASM, and HTTP behavior are unchanged.
+See [expected-key files](key-management.md#local-expected-key-files) for exact grammar,
+file-custody requirements, and trust limits.
 
 ### WASM verifier compatibility
 
@@ -82,6 +138,40 @@ is an additive opt-in development interface requiring `semver:minor` review. Its
 namespace, methods, bounded hex input, public-key output, rejection, and shutdown
 behavior are new contracts. Existing CLI commands, HTTP behavior, and cryptographic
 profiles are unchanged. No browser delivery or private-key compatibility is claimed.
+
+`verifyCSRForKey(hex, expectedHex)` is an additive opt-in method requiring
+`semver:minor` review. It requires an independently trusted expected key, validates
+the unchanged request profile/signature, and rejects mismatches without public
+output. Existing `verifyCSR` arity, output, and rejection behavior, shutdown, CLI,
+HTTP, and cryptographic profiles are unchanged.
+
+### WASM member session compatibility
+
+The [member-session bridge](key-management.md#local-wasm-member-sessions) is a
+separate opt-in development interface requiring `semver:minor` review. Its namespace,
+byte-array inputs/outputs, Promise/null results, single-session admission, and lock/
+shutdown behavior are new contracts. The existing public verifier, CLI, HTTP,
+and cryptographic profiles are unchanged. This adds no browser page, account/vault
+API, PRF/recovery format, or supported-browser claim. Existing format-breaking and
+independent-review requirements still apply.
+
+The [local worker owner](key-management.md#local-member-worker-host) is an additive
+opt-in development interface requiring `semver:minor` review. Its module export,
+readiness, version-1 correlated transport, singleton/admission limits, timeouts,
+and terminal lock/disposal are new contracts. Unlike direct-bridge lock, owner lock
+permanently terminates its instance; restoration requires a new explicit instance.
+Direct WASM bridge methods, cryptographic formats, CLI, and HTTP are unchanged.
+No page delivery, account API, or supported-browser claim is added.
+
+Requiring BroadcastChannel and global page event APIs and notifying peers on explicit
+owner lock is a breaking development lifecycle change requiring `semver:major`
+review under the current pre-1.0 policy. Hosts must provide those browser facilities
+or startup fails closed. Use the new `lockMemberWorkers()` export for future logout
+or account-switch notifications even after local disposal; use `close()` for local
+disposal only. Hosts must handle terminal pagehide without reusing the old instance.
+The [fixed notification contract and delivery limits](key-management.md#lock-notifications-and-page-disposal)
+are separate from the unchanged version-1 worker command transport. Direct bridge
+methods, cryptographic profiles, CLI, and HTTP behavior are unchanged.
 
 ## Change classification
 

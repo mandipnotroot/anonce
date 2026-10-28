@@ -74,8 +74,8 @@ func TestReviewerKeyRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(backup) != 108 || backup[10] != byte(keystore.ReviewerKey) {
-		t.Fatal("unexpected reviewer-key backup size or purpose")
+	if len(backup) != 108 || backup[8] != 1 || backup[9] != 2 || backup[10] != byte(keystore.ReviewerKey) {
+		t.Fatal("unexpected reviewer-key backup size, profile, or purpose")
 	}
 	backupCopy := bytes.Clone(backup)
 	opened, err := Open(t.Context(), password, backup)

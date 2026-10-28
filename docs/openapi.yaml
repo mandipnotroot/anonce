@@ -9,6 +9,14 @@ info:
     Local demonstration processes implement liveness, status, and source discovery.
     Readiness always returns 503. Only submission serves the read-only HTML shell.
 
+    Local WASM request verification and expected-key matching use an in-process
+    interface, not HTTP routes. These processes serve no verifier artifacts.
+
+    The planned product is browser-only with identity-side accounts and encrypted
+    member-key backups, automatic device-side key management, and separate anonymous
+    submission. Account, vault, recovery, dashboard, and browser-handoff contracts
+    are not specified or implemented here. No private-key decryption API is planned.
+
     Protocol/discovery routes return 501 on their owning process; successful
     responses below remain proposed. Cryptographic request formats are not
     published or stable.

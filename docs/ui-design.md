@@ -8,6 +8,50 @@ Audience: front-end contributors, accessibility reviewers, and product reviewers
 Status: read-only local shell implemented; product UI is design only. No browser
 screenshots or accessibility results yet.
 
+## Account and review workflow
+
+The product goal is: **sign in, open a review, submit**. All member, reviewer, and
+administrator workflows must work in a supported browser without installing an
+app, extension, CLI, or developer tools. Key generation, certificate requests,
+encryption, and encrypted member-key backup are automatic browser operations,
+not tasks assigned to users.
+
+| Situation | Required experience |
+| --- | --- |
+| First visit | Create/sign in to an account, verify membership through the enrollment flow, and let the browser prepare keys and encrypted backup |
+| Shared review link | Show common round information, sign in on the identity origin if needed, then return to the selected round without repeating navigation |
+| Member dashboard | List eligible available rounds and public schedules, with a clear action to open each form |
+| Submit | Complete an accessible form, confirm, encrypt locally, send anonymously, and verify the receipt locally |
+| Return visit | Reuse an unlocked session where safe; avoid repeated key prompts for each form action |
+| Another device | Sign in and restore the encrypted member-key backup through a supported local unlock method, without copying key files |
+| Recovery | Explain whether account access, encrypted keys, or both can be restored and what remains inaccessible |
+| Reviewer/admin | Browser dashboards with role-scoped access; reviewer keys are prepared automatically per round and answers decrypt locally |
+
+Account creation alone does not establish eligibility. Preserve enrollment checks,
+published response limits, explicit submission consent, and the
+[identity/anonymous boundary](architecture.md#account-and-anonymous-flow).
+Shared review URLs identify a common round, not a member, tracking code, or bearer
+token. Invitations carrying enrollment secrets stop at the identity origin.
+
+The identity dashboard must not store which submission belongs to an account or
+poll anonymous receipts/mailboxes using account credentials. Receipt and reply
+views belong to the anonymous browser context; cross-device access to those views
+is not promised by restoring the member-key backup.
+
+Use passkey sign-in as the preferred account experience. Where supported and
+reviewed, combine it with local vault unlocking. Otherwise present a plain-language
+browser unlock step, not manual key generation or an instruction to install the
+CLI. Follow the [vault decision and recovery limits](key-management.md#browser-account-vault).
+Do not label successful login as successful restoration until local decryption
+and key validation succeed.
+
+Support password-manager autofill and paste for any passphrase fields. Provide
+accessible progress, cancellation, safe errors, and a way to lock/sign out. Warn
+before lock/expiry can discard an unsent answer; do not save plaintext drafts on
+the server. Shared-device sessions must not persist unlocked secrets or silently
+enable remember-device storage. Browser compatibility and these UX paths require
+[real browser evidence](testing.md#browser-account-and-vault-acceptance).
+
 ## Current local shell
 
 - **Pages:** submission-only `/` and `/about`; `/dev/styleguide` requires
@@ -56,7 +100,8 @@ error combinations against [WCAG 2.2 AA](https://www.w3.org/TR/WCAG22/).
 | Area | Planned paths |
 | --- | --- |
 | Public | `/`, `/about`, `/source`, `/verify`, `/transparency` |
-| Member | `/enroll`, `/member`, `/member/submit`, `/member/receipts`, `/member/replies` |
+| Identity-side account/member | `/login`, `/account`, `/enroll`, `/member` |
+| Anonymous member | `/member/submit`, `/member/receipts`, `/member/replies` |
 | Admin access/overview | `/admin/login`, `/admin` |
 | CA | `/admin/ca`, `/admin/ca/certificates`, `/admin/ca/revocations` |
 | Cohorts | `/admin/cohorts`, `/admin/cohorts/members`, `/admin/cohorts/import`, `/admin/cohorts/codes` |
@@ -64,6 +109,11 @@ error combinations against [WCAG 2.2 AA](https://www.w3.org/TR/WCAG22/).
 | Review | `/reviewer`, `/reviewer/results`, `/reviewer/replies`, `/reviewer/flags` |
 | Administration | `/admin/audit`, `/admin/users`, `/admin/settings` |
 | Explicit development mode | `/dev/styleguide` |
+
+Paths are proposed UI locations, not implemented routes. Assign them to the
+origins in [architecture](architecture.md#account-and-anonymous-flow), not one
+shared authenticated application. A shared round-link path and the cross-origin
+handoff remain to be specified before implementation.
 
 ## Component contract
 

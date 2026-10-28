@@ -11,8 +11,16 @@ and separates implemented endpoints from proposed discovery APIs. Cryptographic
 schemas await encoding and profile review.
 
 The separate [local WASM verifier](key-management.md#local-wasm-request-verification)
-has an in-process JavaScript interface, not an HTTP route. Its artifacts are not
-served by these commands; the HTTP contract and OpenAPI definition are unchanged.
+provides request validation and opt-in expected-key matching through an in-process
+JavaScript interface, not an HTTP route. These commands serve no verifier artifacts;
+HTTP routes and OpenAPI schemas are unchanged.
+
+The separate [local member-session bridge](key-management.md#local-wasm-member-sessions)
+also uses only an in-process interface. It adds no HTTP endpoint or OpenAPI schema;
+the services still handle no passwords, private keys, or encrypted member backups.
+Its [worker lock notifications](key-management.md#lock-notifications-and-page-disposal)
+are local browser messages, not a logout endpoint or server revocation API. HTTP
+behavior and OpenAPI schemas remain unchanged.
 
 ## Implemented infrastructure
 
@@ -58,6 +66,13 @@ See [deployment](deployment.md#local-development) for limits and configuration.
 
 ## Endpoint ownership
 
+Account login, credential management, the eligible-round dashboard, and encrypted
+member-key backup operations belong only to the identity side. Their routes,
+schemas, session/recovery contracts, and wrapping metadata are not specified or
+implemented yet. Do not infer new endpoints from proposed UI paths. Follow the
+[vault requirements](key-management.md#browser-account-vault) before defining them
+in OpenAPI. This documentation change adds no working route or wire format.
+
 | Origin | Planned endpoints | Input boundary |
 | --- | --- | --- |
 | CA/issuer | `/healthz`, `/readyz`, `/api/v1/status`, `/api/v1/ca/certificate`, `/api/v1/ca/revocations` | Public discovery; no private material |
@@ -93,6 +108,14 @@ existence or participation oracles. Where necessary, use equivalent safe respons
 Administrative writes require server-side authorization, CSRF protection, and recent
 reauthentication for sensitive actions. Never share issuer session cookies or
 authentication headers with the submission origin.
+
+Future account/vault APIs require owner authorization, bounded encrypted input,
+CSRF protection for session-authenticated writes, secret-free errors, and no-store
+responses. Plaintext device private keys, unlock passphrases, key-recovery secrets,
+and PRF outputs must not appear in requests or responses. A client must serialize
+only the intended authentication fields, not arbitrary browser extension results.
+There is no decrypt endpoint, account-linked submission-history API, or
+identity-authenticated reply API.
 
 Public certificate, bulletin, checkpoint, and asset responses may use explicit
 caches with freshness requirements. Secret or identity-bearing responses use

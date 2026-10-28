@@ -15,11 +15,13 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make build` | All Go commands with Go 1.27.3 |
 | `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no native-package exclusions, including wrappers and signal handling. JS-only code is checked separately below |
 | `make lint` | Native and WASM entry-point vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzWASMRequest`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make fuzz` | `FuzzConfig`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzMemberWASMSizes`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 | `make wasm` | Go `js/wasm` public-request verifier; matching reviewed loader/notices, SHA-256 manifest, 8 MiB uncompressed size gate |
 | `make wasm-test` | Rebuild artifacts, compare native and Node WASM public-request results, exercise the actual bridge, and run adapter unit tests under the Go JS/WASM runner |
+| `make member-wasm` | Separate local member-session module, dedicated-worker/client assets, matching reviewed loader/module notices, manifest, and 8 MiB gate |
+| `make member-wasm-test` | Native race/lifecycle tests, actual Node direct bridge and dedicated-worker setup/restoration, rejection, termination, bidirectional encrypted-backup compatibility, owner lifecycle unit tests, and bounded command fuzzing |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -34,8 +36,12 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Backup structure | Maximum backup size plus one byte; allocation-free parser, no Argon2id |
 | Member/reviewer payload | 49-byte input cap, 48-byte ASN.1 profile; no KDF work |
 | Member CSR | 130-byte fuzz input cap, 129-byte DER profile; bounded ASN.1 and signature verification, no KDF work |
-| WASM request adapter | 259-byte fuzz input cap, exact 258-byte ASCII hex representation before bounded shared CSR parsing; no KDF work |
+| Member session unlock admission | 1025-byte password, 65597-byte backup, and 33-byte expected-key fuzz caps; exercise invalid password/key lengths only, no KDF work; backup/payload parsing reuse the shared fuzzed implementations |
+| Member WASM admission sizes | Fixed-width integer fuzz inputs for password/backup/key lengths and operation kind; exact member bounds, no allocations or KDF work; byte parsing reuses shared backup/payload validation |
+| Member worker transport | `member_worker_test.mjs`: exhaustive byte-size boundary sweep and 2048 generated commands per run, each with at most four views of 1025 elements; independent metadata admission oracle, no KDF or I/O |
+| WASM request adapter | 259-byte request fuzz input cap, exact 258-byte ASCII hex representation before bounded shared CSR parsing; expected-key fuzzing also caps the key input at 65 bytes for an exact 64-byte ASCII hex representation; no KDF work |
 | CLI arguments | 8193-byte fuzz input cap; no file, network, or KDF work |
+| CLI expected-key record | 75-byte data and 9-byte kind fuzz caps; exact 72/74-byte lowercase kind-tagged lines, no file, network, or KDF work |
 | CLI password framing | 2051 bytes for ordinary framing, 3076 for rewrap; no file, network, or KDF work |
 
 Review and license synthetic regression inputs before committing. Retain failures
@@ -46,8 +52,14 @@ in the relevant package's `testdata/fuzz/<target>` directory:
 - `internal/client/keystore`: `FuzzBackup`.
 - `internal/client/memberkey`: `FuzzMemberKeyPayload`.
 - `internal/client/membercsr`: `FuzzMemberCSR`, public requests or malformed data only.
-- `internal/clientwasm`: `FuzzWASMRequest`, public hex requests or malformed data only.
+- `internal/client/membersession`: `FuzzMemberSessionUnlockInputs`, synthetic
+  admission inputs only; no real passwords or private-key fixtures.
+- `internal/clientwasm`: `FuzzWASMRequest` and `FuzzWASMExpectedKey`, public hex
+  requests/expected keys or malformed data only.
+- `internal/memberwasm`: `FuzzMemberWASMSizes`, integer admission bounds only.
 - `internal/client/reviewerkey`: `FuzzReviewerKeyPayload`.
+- `internal/clientcli`: `FuzzClientArguments`, `FuzzClientPublicKeyLine`,
+  `FuzzClientPassword`, and `FuzzClientRewrapPasswords`.
 
 Key-payload seeds contain only malformed non-key data and public DER structure.
 CLI seeds are synthetic, not credentials. Never retain real passwords or private
@@ -63,10 +75,10 @@ CI's restrictive `umask 077` cannot make a public-file case owner-only. Tests do
 not change the process-wide mask while parallel tests run. Reproduce CI defaults
 locally with `BASH_ENV="$PWD/scripts/ci-shell.sh" bash -c 'make check'`.
 
-The keystore's single `G407` annotation documents a scanner false positive:
-`NewGCMWithRandomNonce` requires an empty nonce argument and generates the nonce
-itself. `TestKeystoreFreshRandomness` and `TestKeystoreLibraryCompatibility` check
-its nonce-prefix behavior. Production code does not use ordinary fixed-nonce GCM.
+The keystore uses the library's RFC 8439 ChaCha20-Poly1305 AEAD with explicit
+`crypto/rand` nonces and one export per freshly salted derived key.
+`TestKeystoreFreshRandomness` and `TestKeystoreLibraryCompatibility` check the
+profile-2 nonce prefix and library composition.
 
 ### Implemented test mapping
 
@@ -77,7 +89,8 @@ its nonce-prefix behavior. Production code does not use ordinary fixed-nonce GCM
 | Lifecycle and limits | `TestServeLifecycle`, `TestServePropagatesCancellationToRequests`, `TestServeClosesUnresponsiveRequests`, `TestServeListenerFailureClosesRequests`, `TestConnectionLimitAndClose`, `TestServerBounds` |
 | Shell paths, development gate, SRI, headers, methods, HEAD, no body reads/reflection | `TestSite`, `TestStylesheetIntegrity`, `TestSiteRejectsBrokenAssets`, `TestWebServiceBoundary`, `TestWebDelivery`, `TestDevelopmentStyleGuideFlag` |
 | Rejection of scripts, handlers, remote assets, active controls, malformed markup, wrong asset hashes | `scripts/test_web_check.py` |
-| Device-backup size, purpose, version/profile, reserved-byte and length validation before KDF work | `TestKeystoreRejectsInvalidInputs`, `TestKeystoreRejectsUnsafeParameters`, `FuzzBackup` |
+| Device-backup size, purpose, version/profile, reserved-byte and length validation for both key purposes before KDF work, without output or input mutation | `TestKeystoreRejectsInvalidInputs`, `TestKeystoreRejectsUnsafeParameters`, `FuzzBackup` |
+| CLI inspection, rewrapping, and member CSR rejection of unsupported profiles without stdout, files, input mutation, or sensitive error reflection | `TestClientRejectsUnsupportedBackup` |
 | Backup round trips, owned buffers, fresh salt/nonce, wrong passwords, header/ciphertext tampering, independent library composition | `TestKeystoreRoundTrip`, `TestKeystoreFreshRandomness`, `TestKeystoreRejectsTampering`, `TestKeystoreLibraryCompatibility` |
 | Backup cancelled/queued calls, cancellation at admission/derivation/output boundaries, and concurrent derivation admission | `TestKeystoreCancellation`, `TestKeystoreCancellationBoundaries`, `TestKeystoreConcurrent` |
 | Fresh member keys, usable signatures, backup round trips, buffer ownership, fresh exports, independent library encoding | `TestMemberKeyGenerate`, `TestMemberKeyRoundTrip`, `TestMemberKeyLibraryCompatibility` |
@@ -88,16 +101,30 @@ its nonce-prefix behavior. Production code does not use ordinary fixed-nonce GCM
 | Reviewer-key cancellation at entry/output and concurrent shared-key export/import | `TestReviewerKeyCancellation`, `TestReviewerKeyConcurrent` |
 | CLI argument validation, bounded opaque password framing/confirmation, pipe and non-device stdin, help and secret-free failures | `TestClientArguments`, `TestClientPasswordInput`, `TestClientPasswordPipe`, `TestClientFailsClosed`, `FuzzClientArguments`, `FuzzClientPassword` |
 | Offline generation/import through the shared profiles; exact public-only output; wrong password/purpose and ciphertext tampering | `TestClientRoundTrip` |
+| Optional backup expected-key matching for member/reviewer keys, either-case hex, malformed/repeated flag rejection before stdin/file access, mismatches without output, unchanged source, concurrent calls, cancellation, failed/short writes, authenticated non-key rejection, and rewrapped-key checks | `TestClientExpectedPublicKeyArguments`, `TestClientInspectExpectedKey`, `TestClientInspectExpectedKeyRejectsInvalidPayload`, `TestClientRoundTrip`, `TestClientRewrapRoundTrip`, `FuzzClientArguments` |
 | Owner-only files/directories, bounded regular-file imports, symlink/dangling-symlink rejection, no overwrite and complete concurrent publication | `TestClientBackupFiles`, `TestClientBackupRejectsUnsafePaths`, `TestClientBackupConcurrentPublication` |
 | Cancelled pipe reads, inherited stdin in a subprocess, file operations before/after publication, temporary-file cleanup | `TestClientPasswordPipeCancellation`, `TestClientInheritedPipeCancellation`, `TestClientBackupCancellation` |
 | Rewrap opaque password framing, confirmation, bounds, owned outputs, and no partial passwords on failure | `TestClientRewrapPasswords`, `FuzzClientRewrapPasswords` |
 | Rewrap exact private/public-key preservation, fresh salt/nonce, old-password rejection, unchanged source and no overwrite | `TestClientRewrapRoundTrip`, `TestClientRewrapConcurrent` |
 | Rewrap wrong passwords/purposes, malformed/tampered/authenticated non-key backups, secret-free failures, cancellation and no output on failure | `TestClientRewrapRejectsInvalidBackup`, `TestClientRewrapCancellation`, `TestClientRewrapFailsClosed` |
+| Optional rewrap expected-key matching for both kinds, either-case hex, malformed/repeated flags rejected before stdin/file access, mismatch rejection before replacement encryption or file creation, unchanged source, preserved keys, no overwrite, cancellation and concurrent matching | `TestClientExpectedPublicKeyArguments`, `TestClientRewrapExpectedKey`, `TestClientRewrapRejectsInvalidBackup`, `TestClientRewrapCancellation`, `TestClientRewrapConcurrent`, `FuzzClientArguments` |
 | Member CSR library verification, deterministic fixed profile, buffer ownership, invalid/inconsistent keys, extra claims, algorithms, byte mutations, cancellation, concurrent calls | `TestMemberCSRRoundTrip`, `TestMemberCSRRejectsInvalidKeys`, `TestMemberCSRRejectsInvalidRequests`, `TestMemberCSRCancellation`, `TestMemberCSRConcurrent`, `FuzzMemberCSR` |
+| In-memory automatic member setup/restoration, profile compatibility, public-output ownership, fresh generation, opaque bounded passwords, invalid inputs/backups, every-byte expected-key mismatches, unchanged inputs, state admission, owned-key clearing, cancellation at installation boundaries, pending lock with a blocked derivation slot, and concurrent setup/request/lock | `TestMemberSessionRoundTrip`, `TestMemberSessionFreshSetup`, `TestMemberSessionPasswordOwnership`, `TestMemberSessionRejectsInvalidInputs`, `TestMemberSessionUnlockRejectsBackup`, `TestMemberSessionExpectedKey`, `TestMemberSessionState`, `TestMemberSessionCancellation`, `TestMemberSessionPendingLock`, `TestMemberSessionConcurrent`, `FuzzMemberSessionUnlockInputs` |
 | CLI member CSR exact public DER, unchanged backup, wrong password/purpose, authenticated non-key or tampered input, secret-free errors, cancellation, help, short/failed writes | `TestClientCSRRoundTrip`, `TestClientCSRRejectsInvalidBackup`, `TestClientCSRFailsClosed`, `TestClientArguments`, `FuzzClientArguments` |
+| CSR file export matching stdout, direct password-free verification, owner-only no-replace publication, unchanged backup/destination, unsafe paths, cancellation before/after publication, concurrent export and cleanup | `TestClientCSRRoundTrip`, `TestClientCSRFileRejectsUnsafePaths`, `TestClientCSRFileCancellation`, `TestClientCSRFileConcurrentPublication`, `TestClientCSRRejectsInvalidBackup`, `TestClientArguments`, `FuzzClientArguments` |
+| Optional CSR expected-key matching for stdout/file output, either-case hex, malformed/repeated flags rejected before stdin/file access, mismatches without output/files, unchanged source/profile, no overwrite, typed validation, short/failed writes, cancellation and concurrent publication | `TestClientExpectedPublicKeyArguments`, `TestClientCSRExpectedKey`, `TestClientCSRRejectsInvalidBackup`, `TestClientCSRFileCancellation`, `TestClientCSRFileConcurrentPublication`, `FuzzClientArguments` |
 | Password-free CSR verification, exact matching public key, concurrent calls, unchanged input, malformed/claimed/tampered requests, owner-only bounded files, symlink rejection, cancellation and short/failed writes | `TestClientVerifyCSRRoundTrip`, `TestClientVerifyCSRRejectsInvalidRequests`, `TestClientVerifyCSRRejectsUnsafeFiles`, `TestClientVerifyCSRFailsClosed`, `TestClientCSRRoundTrip`, `FuzzClientArguments`, `FuzzMemberCSR` |
+| Optional expected-key checking, either-case bounded hex, malformed/empty/repeated flag rejection before file access, every-byte key mismatches without output, and unchanged profile/signature checks | `TestClientExpectedPublicKeyArguments`, `TestClientVerifyCSRExpectedKey`, `TestClientVerifyCSRRoundTrip`, `TestClientVerifyCSRRejectsInvalidRequests`, `TestClientVerifyCSRFailsClosed`, `FuzzClientArguments` |
+| Optional inspection/request-verification public-key file export, exact public-only lines, unchanged input, owner-only/no-replace paths, no stdout fallback, validation and expected-key checks before file creation, cancellation before/after publication, concurrent publication and cleanup | `TestClientPublicKeyFileArguments`, `TestClientPublicKeyFile`, `TestClientPublicKeyFileValidation`, `TestClientPublicKeyFileRejectsUnsafePaths`, `TestClientPublicKeyFileCancellation`, `TestClientPublicKeyFileConcurrentPublication`, `TestClientInspectExpectedKeyRejectsInvalidPayload`, `TestClientVerifyCSRRejectsInvalidRequests`, `TestClientExpectedPublicKeyArguments`, `FuzzClientArguments` |
+| Expected-key file argument conflicts/bounds before file or stdin access, canonical kind-specific records, direct reuse of exports for all supported commands, mismatch and invalid-subject rejection, unchanged sources, no overwrite, unsafe files, cancellation, concurrent calls, and bounded record fuzzing | `TestClientExpectedKeyFileArguments`, `TestClientPublicKeyLine`, `TestClientExpectedKeyFile`, `TestClientExpectedKeyFileValidation`, `TestClientExpectedKeyFileRejectsUnsafePaths`, `TestClientExpectedKeyFileCancellation`, `TestClientExpectedKeyFileConcurrent`, `FuzzClientArguments`, `FuzzClientPublicKeyLine` |
 | WASM adapter valid/malformed hex, shared profile rejection, every-byte request mutations, concurrent native calls, bounded fuzzing | `TestWASMVerifyCSR`, `TestWASMVerifyCSRRejectsInvalidInput`, `FuzzWASMRequest` |
+| WASM expected-key matching in either hex case, malformed/empty/oversized keys, every-byte key mismatches, unchanged profile/signature rejection, concurrent calls and bounded two-input fuzzing | `TestWASMVerifyCSRForKey`, `TestWASMVerifyCSRForKeyRejectsInvalidInput`, `FuzzWASMExpectedKey` |
 | Actual WASM bridge, type/arity/size rejection without object coercion, native/public result parity, shutdown and namespace collisions | `TestClientNativeWASMCompatibility` with `scripts/wasm_test.mjs`, through `make wasm-test` |
+| Member bridge admission, cancellation before shared-session entry, cleanup-before-shutdown, repeated lock/close, concurrent lock/admission, and size fuzzing | `TestMemberWASMSizes`, `TestMemberWASMLifecycle`, `TestMemberWASMConcurrent`, `FuzzMemberWASMSizes` |
+| Actual member WASM bridge, opaque passwords, native backup restore, WASM backup opened natively, public CSR validation, wrong password/purpose, corruption/key mismatch, byte types/arity/bounds, hostile objects/shadowed getters, shared/detached arrays, input snapshots, public-output ownership, lock/close and namespace collision | `TestMemberNativeWASMCompatibility` with `scripts/member_wasm_test.mjs`, through `make member-wasm-test` |
+| Worker owner single-instance/operation admission, snapshots/transfers, input types/arity/bounds, hostile properties, timeout/termination, late replies, protocol/transport failures, and bounded command fuzzing | Named `node:test` cases in `scripts/member_worker_test.mjs`, through `make member-wasm-test` |
+| Secret-free peer/global lock, startup/pending cancellation, no echo/restart, required coordination APIs, notification failures, local disposal, and cached-pagehide cleanup | Named `node:test` lock, channel failure, global lock, and pagehide cases in `scripts/member_worker_test.mjs`; controlled channels and lifecycle events, not actual browser tabs |
+| Actual dedicated worker and owner, native restore, generated backup opened natively, wrong password/corruption/mismatch without replacement, public-output ownership, pending disposal, replay/malformed commands, failed/malformed/oversized runtime loads | `TestMemberNativeWorkerCompatibility` with `scripts/member_worker_integration.mjs` and test-only Node API adapter `scripts/member_worker_node.mjs` |
 | Reviewed loader/notice digest rejection, invalid artifact headers and size bounds | `scripts/test_build_wasm.py` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
@@ -112,7 +139,7 @@ go test ./internal/client/keystore -run='^$' -bench=BenchmarkKeystore -benchmem
 ```
 
 This measures the full 64 MiB, three-pass profile, not a weakened test substitute.
-Browser costs, private-key/backup native/WASM compatibility, independent cryptographic review,
+Browser costs, reviewer-backup native/WASM compatibility, independent cryptographic review,
 independent file-custody review, certificate/enrollment integration, and end-to-end device
 confidentiality remain untested. Reviewer round binding, expiry enforcement, and
 envelope-decryption workflows are not implemented.
@@ -126,17 +153,54 @@ installs the pinned external runtime. `make wasm` needs only Go and Python.
 `TestClientNativeWASMCompatibility` generates three fresh member requests natively,
 checks their expected public keys, and sends only public hex requests/results to
 the actual built WASM module. It checks both hex cases, every-byte mutations,
-extra claims, malformed inputs, bridge argument types/arity, oversized strings,
-hostile objects, shutdown, and namespace collisions. The runner verifies artifact
-hashes before loading and rejects unexpected `fetch` calls. Failures and missing
+extra claims, malformed inputs, expected-key matches and every-byte mismatches,
+both methods' argument types/arity, oversized strings, hostile objects, shutdown,
+and namespace collisions. The runner verifies artifact hashes before loading and
+rejects unexpected `fetch` calls. Failures and missing
 tools/artifacts fail the target; it does not skip unavailable checks.
 
 The Go JS/WASM runner also executes adapter unit tests and fuzz seeds. Native race
 coverage does not instrument WASM; Node execution is not browser, CSP, accessibility,
-private-key interoperability, or independent security evidence. Loader and compiler
+member-key custody, or independent security evidence. Loader and compiler
 must match under the official [Go WASM guidance](https://go.dev/wiki/WebAssembly)
 (accessed 2026-10-27). See the [interface](key-management.md#local-wasm-request-verification)
 and [dependency review](dependencies.md#wasm-runtime-support).
+
+### WASM member session checks
+
+`make member-wasm-test` uses the same pinned Go/Node runtimes and build gates as
+the verifier and is included in `make check` and CI. It generates a native member
+backup at full profile costs, restores it through the actual bridge, creates a
+fresh WASM backup, and validates that backup's key and CSR natively. The runtime
+exchange contains only encrypted backups, public material, and a synthetic opaque
+password; there are no committed private-key fixtures or plaintext key exports.
+
+The Node runner verifies artifact hashes, rejects unexpected network calls, and
+exercises the failure/lifecycle cases mapped above. Native race tests additionally
+cover cancellation before the worker enters the shared session and admission held
+until pending cleanup. WASM is not race-instrumented. Cooperative execution means
+a lock/close event can arrive after KDF completion; tests do not claim preemption.
+
+The same target also runs the [local dedicated-worker host](key-management.md#local-member-worker-host)
+in real Node worker threads using a test-only browser API adapter. Production client,
+worker, runtime, and WASM files are the built and hash-checked artifacts. The adapter
+maps fixed WASM fetching to a local file and rejects other fetches. Backups and CSRs
+are checked natively, just as for the direct bridge. Owner tests use controlled
+timers for the fixed startup/operation/lifetime limits and verify synchronous
+termination and pending settlement. These are not browser timing or erasure claims.
+Lock checks additionally model independent owner modules, inspect the exact
+secret-free notification, reject missing/failed channel facilities, and exercise
+local pagehide cleanup, including a synthetic back/forward cache event. The real
+Node worker runner receives native BroadcastChannel notifications and handles a
+synthetic pagehide with pending WASM work. Node does not model browser origin or
+storage partition rules, navigation caching, suspension, or real logout.
+Bounded transport fuzzing runs with `member-wasm-test`, not `make fuzz`; retain
+failures as synthetic cases in `scripts/member_worker_test.mjs`, never key fixtures.
+
+No page host, actual browser tests, mobile memory/latency measurements, CSP delivery,
+passkeys, account/vault authorization, recovery, browser multi-tab evidence, or
+independent cryptographic review is supplied. These checks do not satisfy the
+[browser acceptance cases](#browser-account-and-vault-acceptance).
 
 ## Required runtime command contract
 
@@ -173,6 +237,33 @@ JavaScript and full syntax validation.
 - Measure native/WASM interoperability, bundle size, startup, cryptographic latency,
   and memory on supported desktop/mobile browsers.
 
+## Browser account and vault acceptance
+
+These are required, **unimplemented** acceptance cases for the
+[account workflow](ui-design.md#account-and-review-workflow) and
+[vault design](key-management.md#browser-account-vault). Add real browser and
+PostgreSQL tests, not mock success or a CLI-only substitute.
+
+| Area | Required evidence |
+| --- | --- |
+| Ordinary member journey | Fresh browser, account creation/sign-in, verified enrollment, automatic key/CSR/backup setup, common review link or dashboard, local encryption, anonymous submission, and locally verified receipt; no installed tooling or manual key files |
+| Browser support | Record browser/OS/authenticator/provider versions, PRF extension results, user verification, synced and cross-device behavior; publish unsupported paths honestly |
+| Local unlocking | Login can succeed without PRF; configured browser-passphrase unlocking works without weakening profile 2; missing PRF, failed authentication, corrupt backups, wrong passphrase, and cancelled ceremonies never trigger server decrypt or silent fallback |
+| New device and credentials | Restore the same enrolled key locally; authorize adding/removing passkeys and wrapping methods, handle different PRF secrets, reject unauthorized replacement and account/key mismatch |
+| Vault authorization and races | Another dummy account cannot read/write/delete backups; require CSRF and recent authentication for sensitive changes; bound input/work and reject stale concurrent replacement |
+| Recovery | Distinguish login reset from key restoration; exercise reviewed recovery material, revoked credentials, all-methods-lost messaging, preserved quotas, and no expired reviewer-key reactivation |
+| Privacy boundary | Capture requests, headers, URLs, referrers, storage, logs, and database rows; no raw keys, unlock/recovery secrets, or PRF outputs reach services; no identity credentials or vault/account identifiers reach anonymous requests |
+| Dashboard and replies | Available rounds work without a server-side account-to-submission index; no account-linked receipt/mailbox lookup or token backup; member-key restore does not claim anonymous reply restore |
+| Lifecycle and storage | Shared/private browsing, disabled/evicted storage, logout, account switch, multiple tabs, lock/expiry, and worker termination; no persisted plaintext keys, drafts, unlock material, or PRF outputs |
+| Reviewer and accessibility | Automatic fresh round keys, authorized ciphertext retrieval and local decryption; mobile/desktop, keyboard, assistive technology, autofill/paste, safe errors, progress/cancellation, and unsent-answer warnings |
+
+Test an ordinary user on actual browsers as well as automated flows. Record prompt
+counts, task completion, startup/unlock latency, and peak memory on representative
+mobile devices. Agree and document resource/UX budgets before claiming support.
+Virtual authenticators do not establish provider sync, physical authenticator,
+cross-device PRF behavior, or usable recovery. Retain no test secrets or real user
+data in screenshots, traces, logs, or crash artifacts.
+
 ## Multi-user simulation
 
 - At least 24 dummy members across multiple cohorts/rounds, each with separate
@@ -194,6 +285,13 @@ All named protocol tests below are **planned**, not present.
 
 | Attack | Expected result | Planned test name |
 | --- | --- | --- |
+| Cross-account encrypted-backup access or replacement | Owner-scoped authorization denies read/write/delete without exposing backup contents | `TestVaultEnforcesOwnerIsolation` |
+| PRF/unlock material serialized with login or persisted locally | Boundary assertion fails; no server decrypt fallback | `TestVaultKeepsUnlockMaterialLocal` |
+| Login reset or unapproved new passkey used to open an existing vault | No key recovery without a configured local unlock/recovery method | `TestVaultSeparatesAccountAndKeyRecovery` |
+| Changed binding or stale concurrent backup replacement | Reject mismatched keys/stale writes; disclose unresolved malicious-server rollback limits | `TestVaultRejectsBindingAndVersionMismatch` |
+| Personalized round URL, session cookie, or vault ID crosses anonymous handoff | Credential-free round-scoped flow or fail closed; no identity fetch from anonymous pages | `TestBrowserPreservesAnonymousHandoff` |
+| Account dashboard or backup stores receipt/token/mailbox mapping | Privacy assertion fails without an identity-to-submission record | `TestDashboardExcludesSubmissionHistory` |
+| Logout/account switch leaves another tab unlocked | All controlled contexts lock and clear accessible buffers without an erasure guarantee | `TestVaultCoordinatesSessionLock` |
 | Untrusted CA or forged certificate | Issuance rejected | `TestIssuerRejectsUntrustedCertificate` |
 | Expired/revoked membership | Issuance rejected with fresh revocation policy | `TestIssuerRejectsRevokedOrExpired` |
 | Stale or unavailable required revocation data | Fail closed | `TestIssuerRejectsStaleRevocations` |

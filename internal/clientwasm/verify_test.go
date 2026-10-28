@@ -76,6 +76,101 @@ func TestWASMVerifyCSRRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestWASMVerifyCSRForKey(t *testing.T) {
+	der, want := request(t)
+	encoded := hex.EncodeToString(der)
+	expected := strings.TrimSuffix(strings.TrimPrefix(want, "member:"), "\n")
+	for name, key := range map[string]string{"lowercase": expected, "uppercase": strings.ToUpper(expected)} {
+		t.Run(name, func(t *testing.T) {
+			for _, input := range []string{encoded, strings.ToUpper(encoded)} {
+				if got, err := verifyHexForKey(input, key); err != nil || got != want {
+					t.Fatalf("expected-key verification = %q, %v", got, err)
+				}
+			}
+		})
+	}
+	public, err := hex.DecodeString(expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range public {
+		changed := bytes.Clone(public)
+		changed[i] ^= 1
+		if got, err := verifyHexForKey(encoded, hex.EncodeToString(changed)); got != "" || !errors.Is(err, membercsr.ErrInvalidRequest) {
+			t.Fatalf("key mismatch at byte %d returned output or unexpected error", i)
+		}
+	}
+	var group sync.WaitGroup
+	for range 8 {
+		group.Go(func() {
+			if got, err := verifyHexForKey(encoded, expected); err != nil || got != want {
+				t.Error("concurrent expected-key verification failed")
+			}
+		})
+	}
+	group.Wait()
+}
+
+func TestWASMVerifyCSRForKeyRejectsInvalidInput(t *testing.T) {
+	der, want := request(t)
+	encoded := hex.EncodeToString(der)
+	expected := strings.TrimSuffix(strings.TrimPrefix(want, "member:"), "\n")
+	cases := map[string]string{
+		"empty": "", "short": expected[:len(expected)-1], "long": expected + "00",
+		"nonhex": strings.Repeat("z", 64), "unicode": strings.Repeat("é", 32),
+		"space": " " + expected[1:], "newline": expected[:len(expected)-1] + "\n",
+		"label": "member:" + expected, "oversized": strings.Repeat("0", 1024*1024),
+	}
+	for name, key := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got, err := verifyHexForKey(encoded, key); got != "" || !errors.Is(err, membercsr.ErrInvalidRequest) {
+				t.Fatal("invalid expected key returned output or unexpected error")
+			}
+		})
+	}
+	// A matching key must not admit a malformed profile or signature.
+	for i := range der {
+		mutated := bytes.Clone(der)
+		mutated[i] ^= 1
+		if got, err := verifyHexForKey(hex.EncodeToString(mutated), expected); got != "" || !errors.Is(err, membercsr.ErrInvalidRequest) {
+			t.Fatalf("request mutation %d accepted with expected key", i)
+		}
+	}
+	for _, input := range []string{"", encoded[:len(encoded)-1], encoded + "00", strings.Repeat("z", encodedRequestSize)} {
+		if got, err := verifyHexForKey(input, expected); got != "" || !errors.Is(err, membercsr.ErrInvalidRequest) {
+			t.Fatal("invalid request returned output or unexpected error with expected key")
+		}
+	}
+}
+
+func FuzzWASMExpectedKey(f *testing.F) {
+	der, want := request(f)
+	encoded := hex.EncodeToString(der)
+	expected := strings.TrimSuffix(strings.TrimPrefix(want, "member:"), "\n")
+	f.Add(encoded, expected)
+	f.Add(strings.ToUpper(encoded), strings.ToUpper(expected))
+	f.Add(encoded, strings.Repeat("0", 64))
+	f.Add(encoded, "")
+	f.Add("", expected)
+	f.Add(encoded, strings.Repeat("z", 64))
+	f.Fuzz(func(t *testing.T, input, key string) {
+		if len(input) > encodedRequestSize+1 || len(key) > 2*ed25519.PublicKeySize+1 {
+			return
+		}
+		got, err := verifyHexForKey(input, key)
+		keyBytes, decodeErr := hex.DecodeString(key)
+		ordinary, verifyErr := verifyHex(input)
+		valid := decodeErr == nil && len(keyBytes) == ed25519.PublicKeySize && verifyErr == nil && ordinary == "member:"+hex.EncodeToString(keyBytes)+"\n"
+		if valid {
+			if err != nil || got != ordinary {
+				t.Fatal("expected-key verification rejected a matching validated request")
+			}
+		} else if got != "" || !errors.Is(err, membercsr.ErrInvalidRequest) {
+			t.Fatal("invalid input returned output or unexpected error")
+		}
+	})
+}
+
 func FuzzWASMRequest(f *testing.F) {
 	der, _ := request(f)
 	f.Add(hex.EncodeToString(der))

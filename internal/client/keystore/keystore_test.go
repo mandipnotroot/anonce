@@ -6,8 +6,6 @@ package keystore
 import (
 	"bytes"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -17,6 +15,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 // All payloads are synthetic non-key data. No private key fixtures are retained.
@@ -109,48 +108,64 @@ func TestKeystoreRejectsUnsafeParameters(t *testing.T) {
 	// Occupy the KDF slot: malformed imports must fail without waiting for it.
 	kdfSlot <- struct{}{}
 	defer func() { <-kdfSlot }()
-	reject := func(t *testing.T, backup []byte) {
-		t.Helper()
-		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-		defer cancel()
-		secret, err := Open(ctx, MemberKey, []byte("synthetic test password"), backup)
-		if secret != nil || !errors.Is(err, ErrInvalidBackup) {
-			t.Fatalf("malformed import reached derivation or returned output: %v", err)
-		}
-	}
-	cases := []struct {
-		name   string
-		offset int
-		value  byte
-	}{
-		{"magic", 0, 0},
-		{"old version", 8, 0},
-		{"future version", 8, 2},
-		{"downgrade profile", 9, 0},
-		{"unknown cost profile", 9, 255},
-		{"missing purpose", 10, 0},
-		{"other purpose", 10, byte(ReviewerKey)},
-		{"unknown purpose", 10, 255},
-		{"reserved", 11, 1},
-		{"overflow length", 28, 255},
-		{"wrong length", 31, 0},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, purpose := range []Purpose{MemberKey, ReviewerKey} {
+		t.Run(fmt.Sprintf("purpose=%d", purpose), func(t *testing.T) {
+			reject := func(t *testing.T, backup []byte) {
+				t.Helper()
+				original := bytes.Clone(backup)
+				ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+				defer cancel()
+				secret, err := Open(ctx, purpose, []byte("synthetic test password"), backup)
+				if secret != nil || !errors.Is(err, ErrInvalidBackup) || !bytes.Equal(backup, original) {
+					t.Fatalf("malformed import reached derivation, changed input, or returned output: %v", err)
+				}
+			}
+			otherPurpose := MemberKey
+			if purpose == MemberKey {
+				otherPurpose = ReviewerKey
+			}
+			cases := []struct {
+				name   string
+				offset int
+				value  byte
+			}{
+				{"magic", 0, 0},
+				{"zero version", 8, 0},
+				{"unsupported version", 8, 2},
+				{"zero profile", 9, 0},
+				{"unsupported profile", 9, 1},
+				{"unknown profile", 9, 3},
+				{"maximum profile", 9, 255},
+				{"missing purpose", 10, 0},
+				{"other purpose", 10, byte(otherPurpose)},
+				{"unknown purpose", 10, 255},
+				{"reserved", 11, 1},
+				{"overflow length", 28, 255},
+				{"wrong length", 31, 0},
+			}
 			backup := formatOnlyBackup(24)
-			backup[tc.offset] = tc.value
-			reject(t, backup)
+			backup[10] = byte(purpose)
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					mutated := bytes.Clone(backup)
+					mutated[tc.offset] = tc.value
+					reject(t, mutated)
+				})
+			}
+			for end := range len(backup) {
+				reject(t, backup[:end])
+			}
+			reject(t, append(bytes.Clone(backup), 0))
+			for _, size := range []int{0, 1, MaxSecretSize, MaxSecretSize + 1} {
+				boundary := formatOnlyBackup(size)
+				boundary[10] = byte(purpose)
+				if size == 0 || size > MaxSecretSize {
+					reject(t, boundary)
+				} else if !validBackup(purpose, boundary) {
+					t.Fatal("rejected valid size boundary")
+				}
+			}
 		})
-	}
-	backup := formatOnlyBackup(24)
-	for end := range len(backup) {
-		reject(t, backup[:end])
-	}
-	reject(t, append(backup, 0))
-	reject(t, formatOnlyBackup(0))
-	reject(t, formatOnlyBackup(MaxSecretSize+1))
-	if !validBackup(MemberKey, formatOnlyBackup(1)) || !validBackup(MemberKey, formatOnlyBackup(MaxSecretSize)) {
-		t.Fatal("rejected valid size boundaries")
 	}
 }
 
@@ -201,25 +216,20 @@ func TestKeystoreRejectsTampering(t *testing.T) {
 }
 
 func TestKeystoreLibraryCompatibility(t *testing.T) {
-	// Independently compose the documented format with ordinary GCM, which takes
-	// an explicit nonce, rather than the production random-nonce wrapper. The
-	// payload is not a private key and the fixed inputs are only a format test.
+	// Independently compose profile 2 without the production framing or KDF helper.
+	// The payload is not a private key and fixed inputs are only a format test.
 	password, payload := []byte("synthetic test password"), []byte("synthetic non-key payload")
-	header := append([]byte("ANONCEKS\x01\x01\x01\x00"), bytes.Repeat([]byte{0xa5}, 16)...)
+	header := append([]byte("ANONCEKS\x01\x02\x01\x00"), bytes.Repeat([]byte{0xa5}, 16)...)
 	header = binary.BigEndian.AppendUint32(header, uint32(len(payload)+28))
 	key := argon2.IDKey(password, header[12:28], 3, 65536, 4, 32)
 	defer clear(key)
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	gcm, err := cipher.NewGCM(block)
+	aead, err := chacha20poly1305.New(key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	nonce := bytes.Repeat([]byte{0x5a}, 12)
 	reference := append(bytes.Clone(header), nonce...)
-	reference = gcm.Seal(reference, nonce, payload, header)
+	reference = aead.Seal(reference, nonce, payload, header)
 	opened, err := Open(t.Context(), MemberKey, password, reference)
 	if err != nil || !bytes.Equal(opened, payload) {
 		t.Fatalf("could not open independently composed backup: %v", err)
@@ -232,15 +242,11 @@ func TestKeystoreLibraryCompatibility(t *testing.T) {
 	}
 	key2 := argon2.IDKey(password, backup[12:28], 3, 65536, 4, 32)
 	defer clear(key2)
-	block2, err := aes.NewCipher(key2)
+	aead2, err := chacha20poly1305.New(key2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	gcm2, err := cipher.NewGCM(block2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	opened, err = gcm2.Open(nil, backup[32:44], backup[44:], backup[:32])
+	opened, err = aead2.Open(nil, backup[32:44], backup[44:], backup[:32])
 	if err != nil || !bytes.Equal(opened, payload) {
 		t.Fatalf("could not independently open production backup: %v", err)
 	}
@@ -361,7 +367,7 @@ func (c *cancelOnCheck) Err() error {
 // formatOnlyBackup is deliberately unauthenticated, synthetic parser input.
 func formatOnlyBackup(size int) []byte {
 	backup := make([]byte, 32+28+size)
-	copy(backup, "ANONCEKS\x01\x01\x01\x00")
+	copy(backup, "ANONCEKS\x01\x02\x01\x00")
 	binary.BigEndian.PutUint32(backup[28:32], uint32(28+size))
 	return backup
 }
@@ -390,7 +396,7 @@ func FuzzBackup(f *testing.F) {
 			return
 		}
 		if len(backup) < 61 || len(backup) > 65596 ||
-			string(backup[:8]) != "ANONCEKS" || backup[8] != 1 || backup[9] != 1 ||
+			string(backup[:8]) != "ANONCEKS" || backup[8] != 1 || backup[9] != 2 ||
 			(purpose != 1 && purpose != 2) || backup[10] != purpose || backup[11] != 0 ||
 			uint64(binary.BigEndian.Uint32(backup[28:32]))+32 != uint64(len(backup)) {
 			t.Fatal("parser accepted a noncanonical or unbounded backup")

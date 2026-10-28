@@ -6,9 +6,11 @@ package clientcli
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -106,10 +108,13 @@ func TestClientRewrapRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			openedPublic, err := inspect(t.Context(), kind, replacement, sealed)
-			if err != nil || !bytes.Equal(public, openedPublic) {
-				t.Fatal("typed inspection changed the public key")
+			if err := run(t.Context(), []string{"inspect", "-kind", kind, "-in", output, "-expect-public-key", hex.EncodeToString(public)}, passwordFile(t, "synthetic new\n"), &stdout); err != nil {
+				t.Fatal(err)
 			}
+			if stdout.String() != kind+":"+hex.EncodeToString(public)+"\n" {
+				t.Fatal("rewrapped backup did not match the independently retained public key")
+			}
+			stdout.Reset()
 			original, err := os.ReadFile(input)
 			if err != nil || !bytes.Equal(original, backup) {
 				t.Fatal("rewrap changed the input file")
@@ -141,7 +146,7 @@ func TestClientRewrapRoundTrip(t *testing.T) {
 
 func assertRewrappedKey(t *testing.T, kind string, current, replacement, backup, sealed []byte) {
 	t.Helper()
-	if len(sealed) != 108 || bytes.Equal(backup[12:28], sealed[12:28]) || bytes.Equal(backup[32:44], sealed[32:44]) {
+	if len(sealed) != 108 || sealed[9] != 2 || bytes.Equal(backup[12:28], sealed[12:28]) || bytes.Equal(backup[32:44], sealed[32:44]) {
 		t.Fatal("rewrap changed the profile size or reused salt/nonce")
 	}
 	purpose := keystore.MemberKey
@@ -160,6 +165,104 @@ func assertRewrappedKey(t *testing.T, kind string, current, replacement, backup,
 	defer clear(after)
 	if !bytes.Equal(before, after) {
 		t.Fatal("rewrap changed private key payload bytes")
+	}
+}
+
+func TestClientRewrapExpectedKey(t *testing.T) {
+	for _, kind := range []string{"member", "reviewer"} {
+		t.Run(kind, func(t *testing.T) {
+			current, replacement := []byte("synthetic old"), []byte("synthetic new")
+			defer clear(current)
+			defer clear(replacement)
+			backup, err := generate(t.Context(), kind, current)
+			if err != nil {
+				t.Fatal(err)
+			}
+			public, err := inspect(t.Context(), kind, current, backup)
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded := hex.EncodeToString(public)
+			for _, tc := range []struct {
+				name, expected string
+			}{
+				{"lowercase", encoded},
+				{"uppercase", strings.ToUpper(encoded)},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					directory := privateDirectory(t)
+					input, output := filepath.Join(directory, "old"), filepath.Join(directory, "new")
+					if err := writeBackup(t.Context(), input, backup); err != nil {
+						t.Fatal(err)
+					}
+					args := []string{"rewrap", "-kind", kind, "-in", input, "-out", output, "-expect-public-key", tc.expected}
+					var stdout bytes.Buffer
+					if err := run(t.Context(), args, passwordFile(t, "synthetic old\nsynthetic new\nsynthetic new\n"), &stdout); err != nil {
+						t.Fatal(err)
+					}
+					sealed, err := readBackup(t.Context(), output)
+					if err != nil {
+						t.Fatal(err)
+					}
+					assertRewrappedKey(t, kind, current, replacement, backup, sealed)
+					// Matching a key must not bypass no-replace publication, even
+					// when the destination is the source backup itself.
+					for _, destination := range []string{input, output} {
+						repeated := slices.Clone(args)
+						repeated[6] = destination
+						if err := run(t.Context(), repeated, passwordFile(t, "synthetic old\nsynthetic new\nsynthetic new\n"), &stdout); err == nil {
+							t.Fatal("expected-key rewrap replaced an existing file")
+						}
+						got, err := os.ReadFile(destination)
+						want := backup
+						if destination == output {
+							want = sealed
+						}
+						if err != nil || !bytes.Equal(got, want) {
+							t.Fatal("expected-key rewrap changed an existing file")
+						}
+					}
+					entries, err := os.ReadDir(directory)
+					if err != nil || len(entries) != 2 || stdout.Len() != 0 {
+						t.Fatal("expected-key rewrap left temporary files or stdout")
+					}
+				})
+			}
+			for _, index := range []int{0, len(public) / 2, len(public) - 1} {
+				expected := bytes.Clone(public)
+				expected[index] ^= 1
+				directory := privateDirectory(t)
+				input, output := filepath.Join(directory, "old"), filepath.Join(directory, "new")
+				if err := writeBackup(t.Context(), input, backup); err != nil {
+					t.Fatal(err)
+				}
+				var stdout bytes.Buffer
+				mismatch := hex.EncodeToString(expected)
+				err := run(t.Context(), []string{"rewrap", "-kind", kind, "-in", input, "-out", output, "-expect-public-key", mismatch}, passwordFile(t, "synthetic old\nsynthetic new\nsynthetic new\n"), &stdout)
+				if err == nil || !strings.Contains(err.Error(), "public key does not match expected key") || stdout.Len() != 0 {
+					t.Fatal("mismatched rewrap did not fail without stdout")
+				}
+				for _, value := range []string{input, output, encoded, mismatch, "synthetic"} {
+					if strings.Contains(err.Error(), value) {
+						t.Fatal("mismatched rewrap reflected input")
+					}
+				}
+				entries, err := os.ReadDir(directory)
+				if err != nil || len(entries) != 1 || entries[0].Name() != "old" {
+					t.Fatal("mismatched rewrap created an output or temporary file")
+				}
+				original, err := os.ReadFile(input)
+				if err != nil || !bytes.Equal(original, backup) {
+					t.Fatal("mismatched rewrap changed the input")
+				}
+				// An invalid replacement password would fail Seal. A key mismatch
+				// must take precedence, proving replacement derivation is not reached.
+				sealed, err := rewrap(t.Context(), kind, current, nil, backup, expected)
+				if err == nil || err.Error() != "public key does not match expected key" || sealed != nil {
+					t.Fatal("mismatched rewrap reached replacement encryption")
+				}
+			}
+		})
 	}
 }
 
@@ -200,12 +303,15 @@ func TestClientRewrapRejectsInvalidBackup(t *testing.T) {
 						t.Fatal(err)
 					}
 					var stdout bytes.Buffer
-					err := run(t.Context(), []string{"rewrap", "-kind", tc.kind, "-in", input, "-out", output}, passwordFile(t, tc.passwords), &stdout)
-					if !errors.Is(err, keystore.ErrInvalidBackup) || stdout.Len() != 0 {
-						t.Fatal("invalid backup returned output or wrong error")
-					}
-					if strings.Contains(err.Error(), directory) || strings.Contains(err.Error(), "synthetic") {
-						t.Fatal("rewrap failure reflected sensitive input")
+					for _, flags := range [][]string{nil, {"-expect-public-key", strings.Repeat("ab", 32)}} {
+						args := append([]string{"rewrap", "-kind", tc.kind, "-in", input, "-out", output}, flags...)
+						err := run(t.Context(), args, passwordFile(t, tc.passwords), &stdout)
+						if !errors.Is(err, keystore.ErrInvalidBackup) || stdout.Len() != 0 {
+							t.Fatal("invalid backup returned output or wrong error")
+						}
+						if strings.Contains(err.Error(), directory) || strings.Contains(err.Error(), "synthetic") {
+							t.Fatal("rewrap failure reflected sensitive input")
+						}
 					}
 					entries, err := os.ReadDir(directory)
 					if err != nil || len(entries) != 1 || entries[0].Name() != "old" {
@@ -230,17 +336,23 @@ func TestClientRewrapCancellation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			public, err := inspect(t.Context(), kind, password, backup)
+			if err != nil {
+				t.Fatal(err)
+			}
 			// Entry, typed Seal after successful Open, and final encrypted output.
-			for _, at := range []int{1, 6, 10} {
-				ctx := &cancelAtCheck{Context: t.Context(), at: at}
-				sealed, err := rewrap(ctx, kind, password, password, backup)
-				if !errors.Is(err, context.Canceled) || sealed != nil {
-					t.Fatal("cancelled rewrap returned output or wrong error")
+			for _, expected := range [][]byte{nil, public} {
+				for _, at := range []int{1, 6, 10} {
+					ctx := &cancelAtCheck{Context: t.Context(), at: at}
+					sealed, err := rewrap(ctx, kind, password, password, backup, expected)
+					if !errors.Is(err, context.Canceled) || sealed != nil {
+						t.Fatal("cancelled rewrap returned output or wrong error")
+					}
 				}
 			}
 		})
 	}
-	if sealed, err := rewrap(t.Context(), "unsupported", nil, nil, nil); !errors.Is(err, errArguments) || sealed != nil {
+	if sealed, err := rewrap(t.Context(), "unsupported", nil, nil, nil, nil); !errors.Is(err, errArguments) || sealed != nil {
 		t.Fatal("unsupported rewrap kind selected an algorithm")
 	}
 }
@@ -277,11 +389,15 @@ func TestClientRewrapConcurrent(t *testing.T) {
 				t.Fatal(err)
 			}
 			original := bytes.Clone(backup)
+			public, err := inspect(t.Context(), kind, password, backup)
+			if err != nil {
+				t.Fatal(err)
+			}
 			results := make(chan []byte, 2)
 			var group sync.WaitGroup
 			for range 2 {
 				group.Go(func() {
-					sealed, err := rewrap(t.Context(), kind, password, password, backup)
+					sealed, err := rewrap(t.Context(), kind, password, password, backup, public)
 					if err != nil {
 						t.Error(err)
 						return

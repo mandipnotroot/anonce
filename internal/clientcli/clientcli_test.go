@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdh"
+	"crypto/ed25519"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -37,13 +39,15 @@ func TestClientArguments(t *testing.T) {
 		{"rewrap reviewer", []string{"rewrap", "-kind=reviewer", "-in=old", "-out=new"}, nil},
 		{"rewrap help", []string{"rewrap", "-help"}, flag.ErrHelp},
 		{"csr member", []string{"csr", "-kind=member", "-in=backup"}, nil},
+		{"csr file", []string{"csr", "-kind=member", "-in=backup", "-out=request"}, nil},
+		{"csr file split flags", []string{"csr", "-kind", "member", "-in", "backup", "-out", "request"}, nil},
 		{"csr help", []string{"csr", "-help"}, flag.ErrHelp},
 		{"verify csr member", []string{"verify-csr", "-kind=member", "-in=request"}, nil},
 		{"verify csr help", []string{"verify-csr", "-help"}, flag.ErrHelp},
 		{"verify csr missing input", []string{"verify-csr", "-kind=member"}, errArguments},
 		{"verify csr missing kind", []string{"verify-csr", "-in=request"}, errArguments},
 		{"verify csr reviewer", []string{"verify-csr", "-kind=reviewer", "-in=request"}, errArguments},
-		{"verify csr output flag", []string{"verify-csr", "-kind=member", "-in=request", "-out=result"}, errArguments},
+		{"verify csr output flag", []string{"verify-csr", "-kind=member", "-in=request", "-out=result"}, nil},
 		{"verify csr password flag", []string{"verify-csr", "-password=synthetic"}, errArguments},
 		{"verify csr positional", []string{"verify-csr", "-kind=member", "-in=request", "extra"}, errArguments},
 		{"verify csr empty path", []string{"verify-csr", "-kind=member", "-in="}, errArguments},
@@ -51,7 +55,11 @@ func TestClientArguments(t *testing.T) {
 		{"csr missing input", []string{"csr", "-kind=member"}, errArguments},
 		{"csr missing kind", []string{"csr", "-in=backup"}, errArguments},
 		{"csr reviewer", []string{"csr", "-kind=reviewer", "-in=backup"}, errArguments},
-		{"csr output flag", []string{"csr", "-kind=member", "-in=backup", "-out=result"}, errArguments},
+		{"csr empty output", []string{"csr", "-kind=member", "-in=backup", "-out="}, errArguments},
+		{"csr empty output split flag", []string{"csr", "-kind=member", "-in=backup", "-out", ""}, errArguments},
+		{"csr null output", []string{"csr", "-kind=member", "-in=backup", "-out=a\x00b"}, errArguments},
+		{"csr missing output value", []string{"csr", "-kind=member", "-in=backup", "-out"}, errArguments},
+		{"csr reviewer file", []string{"csr", "-kind=reviewer", "-in=backup", "-out=request"}, errArguments},
 		{"csr subject flag", []string{"csr", "-kind=member", "-in=backup", "-subject=synthetic"}, errArguments},
 		{"help", []string{"-help"}, flag.ErrHelp},
 		{"operation help", []string{"generate", "-h"}, flag.ErrHelp},
@@ -66,7 +74,7 @@ func TestClientArguments(t *testing.T) {
 		{"rewrap unknown kind", []string{"rewrap", "-kind", "ca", "-in", "old", "-out", "new"}, errArguments},
 		{"rewrap password flag", []string{"rewrap", "-password=synthetic-input"}, errArguments},
 		{"input on generate", []string{"generate", "-kind", "member", "-out", "b", "-in", "a"}, errArguments},
-		{"output on inspect", []string{"inspect", "-kind", "member", "-in", "a", "-out", "b"}, errArguments},
+		{"output on inspect", []string{"inspect", "-kind", "member", "-in", "a", "-out", "b"}, nil},
 		{"empty input on generate", []string{"generate", "-kind", "member", "-out", "b", "-in="}, errArguments},
 		{"empty output on inspect", []string{"inspect", "-kind", "member", "-in", "a", "-out="}, errArguments},
 		{"unknown flag", []string{"generate", "-password=synthetic-input"}, errArguments},
@@ -86,6 +94,91 @@ func TestClientArguments(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestClientExpectedPublicKeyArguments(t *testing.T) {
+	t.Parallel()
+	// Synthetic public-only parser input, not a private key fixture.
+	encoded := strings.Repeat("ab", ed25519.PublicKeySize)
+	for _, base := range [][]string{
+		{"verify-csr", "-kind=member", "-in=request"},
+		{"inspect", "-kind=member", "-in=backup"},
+		{"inspect", "-kind=reviewer", "-in=backup"},
+		{"inspect", "-kind=member", "-in=backup", "-out=public"},
+		{"inspect", "-kind=reviewer", "-in=backup", "-out=public"},
+		{"verify-csr", "-kind=member", "-in=request", "-out=public"},
+		{"rewrap", "-kind=member", "-in=old", "-out=new"},
+		{"rewrap", "-kind=reviewer", "-in=old", "-out=new"},
+		{"csr", "-kind=member", "-in=backup"},
+		{"csr", "-kind=member", "-in=backup", "-out=request"},
+	} {
+		t.Run(base[0]+"/"+base[1], func(t *testing.T) {
+			t.Parallel()
+			for _, tc := range []struct {
+				name  string
+				flags []string
+				valid bool
+			}{
+				{"omitted", nil, true},
+				{"lowercase", []string{"-expect-public-key=" + encoded}, true},
+				{"uppercase", []string{"-expect-public-key", strings.ToUpper(encoded)}, true},
+				{"mixed case", []string{"-expect-public-key=" + strings.Repeat("aB", ed25519.PublicKeySize)}, true},
+				{"empty", []string{"-expect-public-key="}, false},
+				{"empty split", []string{"-expect-public-key", ""}, false},
+				{"missing value", []string{"-expect-public-key"}, false},
+				{"short", []string{"-expect-public-key=" + encoded[:len(encoded)-2]}, false},
+				{"odd", []string{"-expect-public-key=" + encoded[:len(encoded)-1]}, false},
+				{"long", []string{"-expect-public-key=" + encoded + "00"}, false},
+				{"oversized", []string{"-expect-public-key=" + strings.Repeat("a", maxArgumentBytes)}, false},
+				{"not hex", []string{"-expect-public-key=" + strings.Repeat("z", len(encoded))}, false},
+				{"late invalid hex", []string{"-expect-public-key=" + encoded[:len(encoded)-1] + "z"}, false},
+				{"non ascii", []string{"-expect-public-key=" + encoded[:len(encoded)-2] + "é"}, false},
+				{"prefix", []string{"-expect-public-key=member:" + encoded}, false},
+				{"reviewer prefix", []string{"-expect-public-key=reviewer:" + encoded}, false},
+				{"leading whitespace", []string{"-expect-public-key= " + encoded[1:]}, false},
+				{"trailing newline", []string{"-expect-public-key=" + encoded[:len(encoded)-1] + "\n"}, false},
+				{"null", []string{"-expect-public-key=" + encoded[:len(encoded)-1] + "\x00"}, false},
+				{"repeat same", []string{"-expect-public-key=" + encoded, "-expect-public-key=" + encoded}, false},
+				{"repeat different", []string{"-expect-public-key=" + encoded, "-expect-public-key=" + strings.Repeat("cd", ed25519.PublicKeySize)}, false},
+				{"repeat empty", []string{"-expect-public-key=" + encoded, "-expect-public-key="}, false},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
+					args := append(slices.Clone(base), tc.flags...)
+					cfg, err := parse(args)
+					if tc.valid {
+						if err != nil {
+							t.Fatal(err)
+						}
+						if len(tc.flags) == 0 {
+							if cfg.expectedPublicKey != nil {
+								t.Fatal("omitted expected key enabled matching")
+							}
+						} else if hex.EncodeToString(cfg.expectedPublicKey) != encoded {
+							t.Fatal("parser did not preserve the complete expected key")
+						}
+						return
+					}
+					if !errors.Is(err, errArguments) || cfg.expectedPublicKey != nil || cfg.operation != "" {
+						t.Fatal("invalid expected key returned configuration or wrong error")
+					}
+					var stdout bytes.Buffer
+					// Nil stdin and a missing file ensure invalid flags fail at parsing.
+					if err := run(t.Context(), args, nil, &stdout); !errors.Is(err, errArguments) || stdout.Len() != 0 {
+						t.Fatal("invalid expected key did not fail before file or stdin access")
+					}
+				})
+			}
+		})
+	}
+	t.Run("generate", func(t *testing.T) {
+		t.Parallel()
+		args := []string{"generate", "-kind=member", "-out=result", "-expect-public-key=" + encoded}
+		var stdout bytes.Buffer
+		if err := run(t.Context(), args, nil, &stdout); !errors.Is(err, errArguments) || stdout.Len() != 0 {
+			t.Fatal("generation accepted an expected key or read stdin")
+		}
+	})
 }
 
 func TestClientPasswordInput(t *testing.T) {
@@ -233,6 +326,50 @@ func TestClientInheritedPipeCancellation(t *testing.T) {
 	}
 }
 
+func TestClientRejectsUnsupportedBackup(t *testing.T) {
+	for _, tc := range []struct {
+		command, kind, passwords string
+	}{
+		{"inspect", "member", "synthetic old\n"},
+		{"inspect", "reviewer", "synthetic old\n"},
+		{"rewrap", "member", "synthetic old\nsynthetic new\nsynthetic new\n"},
+		{"rewrap", "reviewer", "synthetic old\nsynthetic new\nsynthetic new\n"},
+		{"csr", "member", "synthetic old\n"},
+	} {
+		t.Run(tc.command+"/"+tc.kind, func(t *testing.T) {
+			// Synthetic unsupported-profile framing, not encrypted private-key data.
+			backup := make([]byte, 108)
+			copy(backup, "ANONCEKS\x01\xff")
+			backup[10], backup[31] = byte(keystore.MemberKey), 76
+			if tc.kind == "reviewer" {
+				backup[10] = byte(keystore.ReviewerKey)
+			}
+			directory := privateDirectory(t)
+			input, output := filepath.Join(directory, "old"), filepath.Join(directory, "new")
+			if err := writeBackup(t.Context(), input, backup); err != nil {
+				t.Fatal(err)
+			}
+			var stdout bytes.Buffer
+			args := []string{tc.command, "-kind", tc.kind, "-in", input, "-out", output}
+			err := run(t.Context(), args, passwordFile(t, tc.passwords), &stdout)
+			if !errors.Is(err, keystore.ErrInvalidBackup) || stdout.Len() != 0 {
+				t.Fatalf("unsupported backup returned output or wrong error: %v", err)
+			}
+			if strings.Contains(err.Error(), directory) || strings.Contains(err.Error(), "synthetic") {
+				t.Fatal("unsupported-backup error reflected sensitive input")
+			}
+			entries, err := os.ReadDir(directory)
+			if err != nil || len(entries) != 1 || entries[0].Name() != "old" {
+				t.Fatal("unsupported backup created an output or temporary file")
+			}
+			original, err := os.ReadFile(input)
+			if err != nil || !bytes.Equal(original, backup) {
+				t.Fatal("unsupported-backup rejection changed the input")
+			}
+		})
+	}
+}
+
 func TestClientRoundTrip(t *testing.T) {
 	for _, kind := range []string{"member", "reviewer"} {
 		t.Run(kind, func(t *testing.T) {
@@ -251,8 +388,8 @@ func TestClientRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(backup) != 108 {
-				t.Fatal("generation did not preserve the existing backup profile")
+			if len(backup) != 108 || backup[9] != 2 {
+				t.Fatal("generation did not use backup profile 2")
 			}
 			var public []byte
 			if kind == "member" {
@@ -281,6 +418,15 @@ func TestClientRoundTrip(t *testing.T) {
 			if output.String() != kind+":"+hex.EncodeToString(public)+"\n" {
 				t.Fatal("inspect did not return exactly the expected public key")
 			}
+			for _, expected := range []string{hex.EncodeToString(public), strings.ToUpper(hex.EncodeToString(public))} {
+				output.Reset()
+				if err := run(t.Context(), append(slices.Clone(args), "-expect-public-key", expected), passwordFile(t, "synthetic test password\n"), &output); err != nil {
+					t.Fatal(err)
+				}
+				if output.String() != kind+":"+hex.EncodeToString(public)+"\n" {
+					t.Fatal("expected-key inspection changed the public output")
+				}
+			}
 			for _, tc := range []struct {
 				name     string
 				kind     string
@@ -298,10 +444,16 @@ func TestClientRoundTrip(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
-					output.Reset()
-					err := run(t.Context(), []string{"inspect", "-kind", tc.kind, "-in", path}, passwordFile(t, tc.password), &output)
-					if !errors.Is(err, keystore.ErrInvalidBackup) || output.Len() != 0 {
-						t.Fatal("invalid backup produced public output or wrong error")
+					for _, expected := range []string{"", hex.EncodeToString(public)} {
+						output.Reset()
+						args := []string{"inspect", "-kind", tc.kind, "-in", path}
+						if expected != "" {
+							args = append(args, "-expect-public-key", expected)
+						}
+						err := run(t.Context(), args, passwordFile(t, tc.password), &output)
+						if !errors.Is(err, keystore.ErrInvalidBackup) || output.Len() != 0 {
+							t.Fatal("invalid backup produced public output or wrong error")
+						}
 					}
 				})
 			}
@@ -370,12 +522,56 @@ func passwordFile(t *testing.T, data string) *os.File {
 }
 
 func FuzzClientArguments(f *testing.F) {
+	for _, base := range []string{
+		"inspect\x00-kind=member\x00-in=backup",
+		"inspect\x00-kind=reviewer\x00-in=backup",
+		"rewrap\x00-kind=member\x00-in=old\x00-out=new",
+		"rewrap\x00-kind=reviewer\x00-in=old\x00-out=new",
+		"csr\x00-kind=member\x00-in=backup",
+		"verify-csr\x00-kind=member\x00-in=request",
+		"generate\x00-kind=member\x00-out=backup",
+	} {
+		f.Add(base + "\x00-expect-public-key-file=trusted")
+		f.Add(base + "\x00-expect-public-key-file=")
+		f.Add(base + "\x00-expect-public-key-file=trusted\x00-expect-public-key-file=trusted")
+		f.Add(base + "\x00-expect-public-key-file=trusted\x00-expect-public-key=" + strings.Repeat("ab", ed25519.PublicKeySize))
+	}
 	f.Add("generate\x00-kind\x00member\x00-out\x00backup")
 	f.Add("inspect\x00-kind=reviewer\x00-in=backup")
+	for _, base := range []string{"inspect\x00-kind=member\x00-in=backup", "inspect\x00-kind=reviewer\x00-in=backup", "verify-csr\x00-kind=member\x00-in=request"} {
+		f.Add(base + "\x00-out=public")
+		f.Add(base + "\x00-out=")
+		f.Add(base + "\x00-out=public\x00-expect-public-key=" + strings.Repeat("ab", ed25519.PublicKeySize))
+	}
+	for _, kind := range []string{"member", "reviewer"} {
+		base := "inspect\x00-kind=" + kind + "\x00-in=backup\x00-expect-public-key="
+		f.Add(base + strings.Repeat("ab", ed25519.PublicKeySize))
+		f.Add(base + strings.Repeat("AB", ed25519.PublicKeySize))
+		f.Add(base)
+		f.Add(base + strings.Repeat("ab", ed25519.PublicKeySize) + "\x00-expect-public-key=")
+		rewrapBase := "rewrap\x00-kind=" + kind + "\x00-in=old\x00-out=new\x00-expect-public-key="
+		f.Add(rewrapBase + strings.Repeat("ab", ed25519.PublicKeySize))
+		f.Add(rewrapBase + strings.Repeat("AB", ed25519.PublicKeySize))
+		f.Add(rewrapBase)
+		f.Add(rewrapBase + strings.Repeat("ab", ed25519.PublicKeySize) + "\x00-expect-public-key=")
+	}
 	f.Add("rewrap\x00-kind=member\x00-in=old\x00-out=new")
 	f.Add("csr\x00-kind=member\x00-in=backup")
+	f.Add("csr\x00-kind=member\x00-in=backup\x00-out=request")
+	f.Add("csr\x00-kind=member\x00-in=backup\x00-out=")
+	for _, output := range []string{"", "\x00-out=request"} {
+		base := "csr\x00-kind=member\x00-in=backup" + output + "\x00-expect-public-key="
+		f.Add(base + strings.Repeat("ab", ed25519.PublicKeySize))
+		f.Add(base + strings.Repeat("AB", ed25519.PublicKeySize))
+		f.Add(base)
+		f.Add(base + strings.Repeat("ab", ed25519.PublicKeySize) + "\x00-expect-public-key=")
+	}
 	f.Add("verify-csr\x00-kind=member\x00-in=request")
 	f.Add("verify-csr\x00-kind=reviewer\x00-in=request")
+	f.Add("verify-csr\x00-kind=member\x00-in=request\x00-expect-public-key=" + strings.Repeat("ab", ed25519.PublicKeySize))
+	f.Add("verify-csr\x00-kind=member\x00-in=request\x00-expect-public-key=" + strings.Repeat("AB", ed25519.PublicKeySize))
+	f.Add("verify-csr\x00-kind=member\x00-in=request\x00-expect-public-key=")
+	f.Add("verify-csr\x00-kind=member\x00-in=request\x00-expect-public-key=" + strings.Repeat("ab", ed25519.PublicKeySize) + "\x00-expect-public-key=")
 	f.Add("-help")
 	f.Fuzz(func(t *testing.T, input string) {
 		if len(input) > maxArgumentBytes+1 {
@@ -386,6 +582,9 @@ func FuzzClientArguments(f *testing.F) {
 			cfg.operation != "generate" && cfg.operation != "inspect" && cfg.operation != "rewrap" && cfg.operation != "csr" && cfg.operation != "verify-csr" ||
 			(cfg.operation == "csr" || cfg.operation == "verify-csr") && cfg.kind != "member" ||
 			cfg.operation != "generate" && cfg.input == "" ||
+			cfg.expectedPublicKey != nil && (cfg.operation == "generate" || len(cfg.expectedPublicKey) != ed25519.PublicKeySize) ||
+			cfg.expectedKeyFile != "" && (cfg.operation == "generate" || cfg.expectedPublicKey != nil) ||
+			strings.ContainsRune(cfg.input+cfg.output+cfg.expectedKeyFile, 0) ||
 			(cfg.operation == "generate" || cfg.operation == "rewrap") && cfg.output == "") {
 			t.Fatal("parser accepted unsupported configuration")
 		}

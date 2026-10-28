@@ -10,6 +10,78 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Development-only member-worker lock coordination using a fixed, secret-free
+  BroadcastChannel notification and local pagehide termination. Explicit lock
+  notifies peers; disposal remains local. A host helper can lock peers without a
+  live local owner. Missing coordination facilities reject startup without fallback.
+  Node lifecycle/failure checks cover the implementation, not browser delivery,
+  partition behavior, account logout, reliable global revocation, or memory erasure.
+- Development-only dedicated-worker host for member WASM sessions, with bounded
+  input snapshots, transferred buffers, correlated responses, one active owner per
+  module realm, and startup/operation/lifetime limits. Lock/disposal terminates the
+  worker and cancels pending output without waiting for queued worker execution.
+  Node worker/native backup compatibility, transport failure, and lifecycle checks
+  are included. Existing direct bridge, CLI, HTTP, and cryptographic profiles are
+  unchanged. No browser page, delivery/CSP integration, account storage, passkeys,
+  recovery, account logout integration, or complete-erasure guarantee is provided.
+- Separate development-only WASM member-session bridge for automatic key/backup/CSR
+  setup, required expected-key restoration, fixed requests, and lock/shutdown.
+  Bounded nonshared byte inputs are snapshotted before work; owned passwords are
+  cleared before Promise settlement, with one admitted operation per instance.
+  Native/Node backup compatibility and rejection/lifecycle checks are included.
+  Existing verifier, CLI, HTTP, and cryptographic profiles are unchanged. Browser
+  page/worker integration, accounts, persistence, passkeys, and recovery remain unavailable.
+- Shared in-memory member sessions for automatic key, encrypted-backup, and CSR
+  preparation; restoration requires a validated backup and an independently trusted
+  expected key. Private bytes stay internal, lock clears owned key buffers and
+  cancels pending work, and concurrent setup/restoration is bounded per session.
+  Existing cryptographic profiles and CLI/HTTP/WASM contracts are unchanged.
+  Browser integration, account binding, persistence, expiry, and recovery remain
+  unavailable; native race, failure, lifecycle, and bounded admission-fuzz checks
+  cover the local component only.
+- Optional `-expect-public-key-file PATH` on `client inspect`, `rewrap`, `csr`, and
+  `verify-csr` to read an independently trusted public-key export instead of a hex
+  argument. Bounded owner-only imports reject malformed or wrong-kind records before
+  password/input access; conflicting or repeated expected-key flags fail closed.
+  Matching still follows typed backup or request validation, before output, signing,
+  or replacement encryption. Existing formats, password framing, default behavior,
+  WASM, and HTTP are unchanged. Records remain public and linkable, not proof of
+  freshness, revocation, round binding, or enrollment authority.
+- Optional `client inspect -out PATH` and `client verify-csr -out PATH` for owner-only,
+  synced, no-replace public-key files instead of stdout. Validation and optional
+  expected-key matching precede file creation; publication failures never fall back
+  to stdout. Default output, password framing, cryptographic formats, WASM, and HTTP
+  behavior are unchanged. Exported keys remain public and linkable, not trusted
+  attestations or evidence of freshness or enrollment authority.
+- Optional `client csr -expect-public-key HEX` to reject a substituted member
+  backup after typed validation, before signing or creating a request file. Works
+  with stdout and `-out`; mismatches produce no output. The expected key must be
+  independently trusted. Existing password framing, cryptographic formats, WASM,
+  and HTTP behavior are unchanged; this adds no freshness or enrollment authority.
+- Optional `client rewrap -expect-public-key HEX` to reject a substituted member or
+  reviewer backup after typed validation, before replacement encryption or file
+  creation. The expected key must be independently trusted. Existing rewrapping,
+  password framing, cryptographic formats, WASM, and HTTP behavior are unchanged;
+  matching does not establish freshness, revocation, or reviewer round binding.
+- Optional `client inspect -expect-public-key HEX` for validated member/reviewer
+  backup key matching before public output. Malformed or repeated flags fail before
+  password/file access; mismatches print nothing. The expected key must be
+  independently trusted. Existing formats, password framing, default inspection,
+  request verification, WASM, and HTTP behavior are unchanged. Matching does not
+  establish backup freshness, revocation, or reviewer round binding.
+- Public-only WASM `verifyCSRForKey(hex, expectedHex)` for bounded request and
+  signature validation followed by exact expected-key matching. Invalid input or
+  mismatches return `null` without public output or fallback. Existing `verifyCSR`,
+  CLI, HTTP, and cryptographic profiles are unchanged; the expected key must be
+  independently trusted. No page integration or enrollment is added.
+- Optional `client verify-csr -expect-public-key HEX` to reject requests for a
+  different member key before public output. Malformed or repeated expected-key
+  flags fail before file access. Existing verification, cryptographic profiles,
+  and WASM behavior are unchanged; the expected key must be independently trusted.
+- Optional `client csr -out PATH` for owner-only, synced, no-replace public request
+  files that can be used directly by `verify-csr`. Existing stdout behavior,
+  passwords, cryptographic formats, and HTTP services are unchanged. This does not
+  implement enrollment or certificate issuance.
 - Public-only Go WASM member request verifier using the existing CSR profile and
   parser, with bounded input, explicit shutdown, reviewed loader hashes/notices,
   an artifact size gate, and native/WASM compatibility checks. No page integration,
@@ -36,7 +108,7 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 - Shared local Ed25519 member-key generation, validated encrypted PKCS #8 backups,
   strict import validation, cancellation/concurrency tests, and bounded payload
   fuzzing. Browser custody and enrollment remain unavailable.
-- Shared in-memory device-backup encryption with bounded Argon2id, AES-256-GCM,
+- Shared in-memory device-backup encryption with bounded Argon2id, ChaCha20-Poly1305,
   authenticated key purposes and headers, cancellation-aware derivation admission,
   tampering/concurrency tests, parser fuzzing, and native benchmarks. See
   [key management](docs/key-management.md#device-keystores) for custody limits.
@@ -56,6 +128,20 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking development worker-owner lifecycle change: BroadcastChannel and page
+  event APIs are now required, and explicit lock also notifies participating peers.
+  Direct bridge methods, worker commands, CLI, HTTP, and cryptographic profiles
+  are unchanged. See [compatibility](docs/versioning.md#wasm-member-session-compatibility).
+- Document only the supported ChaCha20-Poly1305 device-backup profile, remove repeated
+  custody guidance, and consolidate parser-rejection tests across both key purposes.
+  Backup formats and runtime behavior are unchanged.
+- Set the planned product direction to browser-only accounts, shared review links
+  and an eligible-round dashboard, with automatic device-side key management and
+  identity-side encrypted member-key backups. Document researched passkey/PRF
+  unlocking, browser-only compatibility, separate account/key recovery, anonymity
+  boundaries, and required acceptance evidence. Prioritize the complete browser
+  journey over optional CLI extensions. No account/vault API, new cryptographic
+  profile, or runtime behavior is implemented by this documentation change.
 - Breaking cryptographic-format addition: define member CSR profile 1 as fixed,
   canonical Ed25519 PKCS #10 DER. Existing backups and HTTP behavior are unchanged;
   independent review is required before real use.
@@ -73,9 +159,6 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
   wrong-algorithm, and noncanonical payloads. Independent review is still required.
 - Modernize internal Go cleanup, slice searches, and test contexts without changing
   HTTP responses, command interfaces, or device-backup formats.
-- Breaking cryptographic-format addition: define device-backup profile 1 with no
-  legacy decoder or parameter fallback. Independent review and native/WASM
-  interoperability evidence are still required before real-key use.
 - Shorten documentation, improve scanning, and link named standards without changing
   requirements or behavior.
 - Breaking HTTP behavior: the submission process now serves HTML at `/` instead
@@ -90,5 +173,10 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 - Consolidate documentation around canonical references and remove repeated guidance.
 - Focus documentation and planning on project capabilities and implementation evidence.
 - Keep baseline requirements and acceptance evidence explicit in the documentation index.
+
+### Fixed
+
+- Backup inspection now reports short public-key writes as failures, rather than
+  treating a partial stdout line as successful inspection.
 
 [Unreleased]: https://github.com/mandipnotroot/anonce/commits/main

@@ -26,7 +26,7 @@ properties described below.
 
 ### Device keys and backups
 
-- [Device-backup profile 1](cryptography.md#device-backup-profile-1) authenticates
+- [Device-backup profile 2](cryptography.md#device-backup-profile-2) authenticates
   bounded secrets and headers. Imports cannot choose KDF costs, but a structurally
   valid import with an invalid password or tag still costs a full derivation.
   Serialized work does not bound caller queues, total process memory, or repeated guessing.
@@ -42,6 +42,25 @@ properties described below.
   or prevent expired-key reuse. Hostile callers and compromised devices can access returned secrets.
   Owned private buffers require caller cleanup; library/runtime copies prevent
   complete erasure. See [custody limits](key-management.md#device-keystores).
+- Profile 2 uses ChaCha20-Poly1305 with one encryption per freshly salted derived
+  key and a fresh 96-bit nonce. Do not reuse the key for multiple exports.
+  Unsupported profiles fail before derivation, with no algorithm fallback.
+  This is not a FIPS-validation claim.
+
+### In-memory member sessions
+
+- The [shared session](key-management.md#in-memory-member-sessions) retains private
+  member bytes internally and returns only encrypted backups and public enrollment
+  material. Restoring a different key fails before request signing or installation;
+  the expected key must be independently trusted. Failed unlock never creates a
+  replacement key.
+- Lock clears the owned key and cancels pending setup/restoration. Cancelled work
+  cannot later install a key, and each session admits only one pending operation.
+  This does not limit hostile callers creating many sessions, erase runtime copies,
+  or revoke already returned public material/backups.
+- There is no account binding, automatic expiry, cross-tab lock, persistence,
+  enrollment, or recovery. Callers still control passwords and session
+  lifetime. Native state/ownership tests are not browser custody evidence.
 
 ### Offline key CLI
 
@@ -58,14 +77,51 @@ properties described below.
   establish freshness or expiry. Retained copies remain open to password guessing.
 - Passwords and private bytes enter the local process. Compromised-device risks
   remain, and independent device-workflow review is still required.
+- Optional [backup key matching](key-management.md#local-backup-key-matching) rejects
+  a different member/reviewer public key after full backup validation, without stdout.
+  With `rewrap`, a mismatch also prevents replacement-password derivation and file
+  creation; matching uses the authenticated in-memory key, not a separate file read.
+  It requires an independently trusted expected key. Old backups for the same key
+  still match, so this does not detect rollback, expiry, or revocation. Public-key
+  arguments may appear in process listings and shell history.
 - [Member requests](cryptography.md#member-csr-profile-1) sign only a fixed,
   identity-free PKCS #10 structure. Bounded validation rejects extra claims and
   invalid signatures. Requests are public but linkable and replayable; they do not
   authenticate enrollment or belong on the anonymous submission path. HTTP
   services still perform no signing or request handling.
+- Optional `csr -expect-public-key` rejects a substituted member backup after typed
+  authentication and validation, before signing or creating a request file. It
+  compares and signs with the same in-memory key. The expected key must be
+  independently trusted; this does not detect rollback or revocation, establish
+  identity, or authorize enrollment. Process listings and shell history can expose
+  the linkable public-key argument.
+- Optional [request file export](key-management.md#local-member-certificate-requests)
+  shares the owner-only, no-replace publication path but stores public DER, not
+  encrypted data. Failed validation creates no file; interruption after publication
+  can leave a complete request, and crashes can leave public temporary files.
+  File permissions do not establish confidentiality from the device owner or make
+  a request trusted.
 - Local `verify-csr` uses the same bounded profile and signature validation before
   printing a public key, without passwords or private keys. File checks do not
   make that key trusted, prove freshness, or authorize enrollment.
+  Its optional expected-key check rejects a valid request for a different key
+  without public output. It prevents substitution only when the expected key was
+  obtained independently and trusted. Public key arguments remain linkable and
+  may be visible in local process listings or shell history.
+- Optional [public-key file export](key-management.md#local-public-key-file-export)
+  from `inspect` and `verify-csr` uses owner-only, no-replace publication after
+  validation and optional expected-key matching. A mismatch creates no file;
+  publication failures never fall back to stdout. Interruption after publication
+  can leave a complete file, and crashes can leave public temporary files. These
+  records are linkable and neither encrypted nor signed attestations. Saving a key
+  from an untrusted input does not establish independent trust or freshness.
+- Optional [expected-key file input](key-management.md#local-expected-key-files)
+  snapshots a bounded, kind-matched public record before password or subject-file
+  access, then uses the existing post-validation comparison without fallback.
+  Invalid records fail without output or file creation. This avoids a raw public-key
+  argument but exposes the file path; the record remains linkable. Owner-only file
+  checks do not authenticate the record or defeat hostile same-user writers. It
+  must be independently trusted and adds no freshness or authorization guarantee.
 
 ### Public-only WASM verifier
 
@@ -75,11 +131,73 @@ properties described below.
 - Requests remain linkable and replayable; signature validation establishes no
   identity, certificate trust, freshness, or enrollment authority. Do not load
   membership requests on the anonymous submission origin.
+- `verifyCSRForKey` rejects valid requests for another key without public output.
+  Substitution protection requires an independently trusted expected key and a
+  trusted host. Copying the expected key from the request provides no protection;
+  neither key matching nor WASM protects against a compromised loading realm.
 - Build hashes detect changed local artifacts, not a hostile distributor. The
   host realm and built-ins are trusted. Repeated calls, host allocations, and Go
   runtime memory are not bounded by the per-request size limit.
 - Node compatibility tests are not browser execution, CSP, private-key custody,
   or independent security evidence. The HTTP shell still loads no executable code.
+
+### Local WASM member bridge
+
+- The [separate adapter](key-management.md#local-wasm-member-sessions) retains one
+  shared session, snapshots bounded nonshared byte inputs, and returns only public
+  enrollment material and encrypted backups. Invalid or busy calls start no operation;
+  owned passwords are cleared before Promise settlement. Lock cancels pending work
+  even before the shared session begins. Close waits for pending cleanup/settlement.
+- Expected-key trust, account binding, backup persistence, expiry, integrated account
+  logout, and browser delivery remain integration responsibilities, not bridge controls.
+  Failed restoration never generates a key. Public keys and requests are linkable
+  and must stay off the anonymous submission origin.
+- Go WASM computation can block its host event loop despite a Promise interface.
+  Direct-bridge cancellation cannot preempt Argon2id. The separate
+  [local worker owner](key-management.md#local-member-worker-host) bounds admission
+  before posting, checks response correlation/shapes, and terminates from the owner
+  on lock, disposal, load/protocol errors, or timeout. This discards pending output
+  without waiting for worker cleanup; it cannot guarantee erasure. Owner timers can
+  be delayed by suspension or a blocked event loop. No HTTP or page integration exists.
+  Hostile code in the loading realm can steal unlock material or inspect WASM memory;
+  owned-buffer clearing does not erase runtime/library copies. Native/Node checks
+  establish limited format/lifecycle evidence, not browser custody or security review.
+  The worker's fixed local imports and bounded credential-free WASM fetch still
+  require trusted delivery. One active owner per module realm does not constrain
+  other realms/tabs or authenticate an account.
+- The worker owner's [lock notifications](key-management.md#lock-notifications-and-page-disposal)
+  contain no secrets or account/key identifiers. Explicit lock can notify eligible
+  same-origin, same-partition peers; all incoming traffic terminates locally without
+  echo. Missing coordination facilities fail startup closed. Pagehide also terminates
+  locally, including back/forward caching. These are development-only controls, not
+  integrated account logout. Notifications are asynchronous, unacknowledged, and
+  nondurable; suspended, new, or nonparticipating contexts may miss them. Page events
+  are not guaranteed, and same-origin code can observe timing or force locking.
+  Neither mechanism supplies a global singleton, durable revocation, hard expiry,
+  or protection from hostile code in the owner realm. Browser evidence is outstanding.
+
+## Browser account and vault risks
+
+The [account vault](key-management.md#browser-account-vault) and
+[account-to-anonymous flow](architecture.md#account-and-anonymous-flow) are planned,
+not current controls. Assess them against these boundaries:
+
+| Threat | Required control | Residual risk |
+| --- | --- | --- |
+| Stolen identity database/backups | Only authenticated ciphertext for member private keys; unlock material remains client-side | Password-wrapped copies permit offline guessing; wrapping/recovery strength limits protection |
+| Account/session takeover | Owner-scoped vault access, recent authentication for changes, and separate local unlock | Attacker can deny access or replace encrypted copies; local validation/binding and recovery are still needed |
+| Unsupported or replaced passkey | Check PRF outputs and prove local restoration; authorize each added unlock method | Login can succeed while decryption is unavailable; deleting a credential does not revoke copied secrets |
+| Weak account recovery | Separate authentication recovery from client-held key recovery; no server decrypt fallback | Lost unlock/recovery material can mean permanent key loss |
+| Backup substitution or rollback | Authenticated format, expected enrollment binding, version/concurrency and recovery review | Server-held metadata alone cannot defeat a malicious vault server; no rollback protection is implemented |
+| Account-linked review history | No receipts, tokens, reply capabilities, or submission state in the account vault | Eligibility/issuance timing and user content can still correlate activity |
+| Identity leakage during handoff | Separate origins, no identity cookies/headers/referrers or link identifiers in submissions; reviewed bounded handoff | Shared infrastructure and a malicious browser distributor can still correlate or exfiltrate |
+| Shared device, stale tab, or persisted unlock | Bounded unlocked sessions, coordinated lock/logout/account switch, no persisted plaintext secrets | Browser/runtime copies prevent complete erasure; compromised devices remain outside protection |
+
+Server-stored ciphertext is not a claim that the website operator cannot access
+keys: a malicious update can capture them during unlock. Passkeys, PRF, WASM, and
+non-extractable browser keys do not make hostile page code trustworthy. See
+[browser delivery trust](#browser-delivery-trust) and the dated primary sources in
+[key management](key-management.md#research-basis-and-outstanding-evidence).
 
 ## Assets and principals
 
@@ -125,7 +243,9 @@ properties described below.
 - CSP, local assets, SRI, pinned WASM hashes, and reproducible builds aid inspection
   and reduce accidental compromise. A hostile origin can replace code and its displayed hash.
 - Stronger verification requires an independent signature/checkpoint trust anchor
-  and separately obtained CLI.
+  and independently obtained verification tooling. An optional CLI can support
+  review; it must not become a prerequisite for ordinary browser use. The web-only
+  product does not eliminate trust in the delivered client.
 - WASM does not protect secrets from its loading page. No complete-erasure or
   universally constant-time guarantee in Go/browser runtimes.
 
@@ -165,6 +285,7 @@ establish protocol security.
 | One accepted submission per token | Atomic canonical spending and payload-rebinding tests |
 | Token unlinkability | Standards vectors, shared-key checks, transcript and storage inspection |
 | Device-side confidentiality | Request capture, boundary tests, and log inspection proving no plaintext or keys cross into services |
+| Browser accounts and encrypted key custody | [Vault acceptance](testing.md#browser-account-and-vault-acceptance), owner-isolation tests, recovery and handoff inspection; no identity-to-submission index |
 | Ciphertext integrity | Tampering and cross-context rejection tests |
 | Inclusion and append-only consistency | Independent proof verification, mutation tests, and split-view detection |
 | Administrative accountability | Role tests and independently anchored audit verification |

@@ -21,23 +21,66 @@ Distinguish implemented from planned behavior.
 - `.github/`: collaboration templates and supported CI workflows.
 - `cmd/`, `internal/`: local CA, issuer, and submission HTTP infrastructure.
 - `internal/client/keystore`: bounded, in-memory device-backup encryption, used by
-  typed key wrappers; no browser or service integration.
+  typed key wrappers; profile 2 uses Argon2id and ChaCha20-Poly1305;
+  no browser or service integration.
 - `internal/client/memberkey`: local Ed25519 member keys and validated encrypted
   backups; offline CLI integration, no browser or enrollment integration.
 - `internal/client/reviewerkey`: local X25519 reviewer keys and validated encrypted
   backups; offline CLI integration, no browser, round-binding, or decryption integration.
 - `internal/clientcli`, `cmd/client`: offline backup generation and public-only
-  inspection plus password rewrapping; bounded stdin passwords and no-replace
-  encrypted files, plus identity-free member CSR output and password-free request
-  verification, with no old-backup
-  revocation, key rotation, or enrollment.
+  inspection and password rewrapping with optional expected-public-key matching;
+  bounded stdin passwords and no-replace
+  encrypted files, plus identity-free member CSR stdout or no-replace file output
+  with optional expected-public-key matching before signing
+  and password-free request verification with optional expected-public-key matching;
+  inspection and request verification support owner-only no-replace public-key files;
+  expected-key checks also accept independently trusted public-key export files;
+  no old-backup revocation, key rotation, or enrollment.
 - `internal/client/membercsr`: local Ed25519 certificate requests and bounded
   profile validation; no identity claims, certificate issuance, or transport.
+- `internal/client/membersession`: in-memory member setup, required expected-key
+  restoration, fixed CSR requests, and explicit lock/cancellation; public-only
+  results and encrypted backups, no account binding or persistence.
 - `cmd/wasm`, `internal/clientwasm`: public-only member request verification using
-  the shared parser; local WASM artifacts and Node compatibility checks, no page
-  integration, device-key access, or enrollment.
+  the shared parser, with opt-in expected-public-key matching; local WASM artifacts
+  and Node compatibility checks, no page integration, device-key access, or enrollment.
+- `cmd/memberwasm`, `internal/memberwasm`: separate development-only WASM member
+  setup/restoration, fixed requests, and lock/shutdown using shared sessions;
+  bounded byte inputs, public/encrypted outputs, native/Node backup checks;
+  no page integration, account binding, storage, passkeys, or enrollment.
+- `internal/memberworker`: development-only dedicated-worker owner for that bridge,
+  bounded/correlated transferred messages, single active owner per module realm,
+  fixed startup/operation/lifetime limits, terminal lock/disposal, secret-free
+  same-partition lock notifications, and local pagehide termination;
+  native/Node checks, no HTTP delivery, browser evidence, or account logout integration.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - Planned runtime layout also includes `migrations/`.
+
+## Product direction
+
+The required product is browser-only for members, reviewers, and administrators:
+sign in, open a shared review link or an available round, complete the form, and
+submit. No app, extension, CLI, manual key generation, CSR handling, or key-file
+management may be required for ordinary use. The existing CLI is optional tooling,
+not the product onboarding path. Prioritize a complete browser workflow over
+additional optional CLI features.
+
+- Follow [account and review UX](docs/ui-design.md#account-and-review-workflow)
+  and the [browser account vault](docs/key-management.md#browser-account-vault).
+- Generate member and round-scoped reviewer keys automatically on the device.
+  Only encrypted member-key backups may enter identity-side vault storage;
+  never upload plaintext keys, unlock secrets, or passkey PRF outputs.
+- Keep account authentication, local vault unlocking, and anonymous submission
+  authorization separate. Passkey login alone does not decrypt a vault.
+- Prefer passkey-assisted unlocking after compatibility/profile review; provide
+  an explicit browser-only unlock path for unsupported setups, never a server
+  decryption fallback. Do not promise universal one-gesture access or recovery.
+- Keep submission history, receipts, reply capabilities, and tokens out of the
+  account vault. Dashboards must not create identity-to-submission records.
+- Recovery must preserve membership quotas, revocations, and round-key expiry.
+  Login reset is not recovery of encrypted keys. Reviewer-key server backup needs
+  a separately reviewed retention policy before it can be enabled.
+- These are planned requirements. Do not present them as implemented controls.
 
 ## Authorship and wording
 
@@ -85,11 +128,13 @@ make vuln             # Go vulnerability, static security, and secret checks
 make web-lint         # rendered inert markup, local CSS, SRI, and HTTP delivery checks
 make wasm             # public-only Go WASM verifier, matching loader, hashes, size gate
 make wasm-test        # native/WASM public-request compatibility and bridge checks
+make member-wasm      # separate local member-session WASM and matching notices
+make member-wasm-test # native/Node backup compatibility, member bridge/worker checks
 ```
 
 See [testing](docs/testing.md) for required database, container, browser, and
 protocol targets, none available yet. WASM evidence covers request verification
-only. Add real Make targets with implementation.
+and local member sessions in Node, not browser custody. Add real Make targets with implementation.
 No successful no-op checks or claims that unavailable commands passed.
 
 ## Engineering boundaries

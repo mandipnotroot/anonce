@@ -33,18 +33,31 @@ assert.ok(WebAssembly.validate(bytes));
 const go = new globalThis.Go();
 const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
 const running = go.run(instance);
-assert.deepEqual(Object.keys(globalThis.anonce).sort(), ["close", "verifyCSR"]);
+assert.deepEqual(Object.keys(globalThis.anonce).sort(), ["close", "verifyCSR", "verifyCSRForKey"]);
 const verify = globalThis.anonce.verifyCSR;
+const verifyForKey = globalThis.anonce.verifyCSRForKey;
+const vectors = JSON.parse(readFileSync(0, "utf8"));
+assert.ok(vectors.length > 900, "missing native public corpus");
+const validInput = vectors[0].input;
+const validKey = vectors[0].want.slice("member:".length, -1);
 const hostile = new Proxy({}, { get() { assert.fail("object input was inspected"); } });
 for (const args of [[], [null], [undefined], [true], [129], [0n], [Symbol("invalid")], [() => {}], [{}], [[]], [new Uint8Array(129)], [new String("0".repeat(258))], [hostile], ["0".repeat(258), "extra"], ["0".repeat(1024 * 1024)], ["é".repeat(258)], ["😀".repeat(129)]]) {
   assert.equal(verify(...args), null, "invalid bridge input must fail without output");
 }
+for (const args of [[], [validInput], [validInput, validKey, "extra"]]) {
+  assert.equal(verifyForKey(...args), null, "expected-key bridge must reject invalid arity");
+}
+const revoked = Proxy.revocable({}, {});
+revoked.revoke();
+for (const value of [null, undefined, true, 129, 0n, Symbol("invalid"), () => {}, {}, [], new Uint8Array(32), new String("0".repeat(64)), hostile, revoked.proxy, "", "0".repeat(63), "0".repeat(65), "0".repeat(1024 * 1024), "é".repeat(64), "😀".repeat(32)]) {
+  assert.equal(verifyForKey(value, validKey), null, "invalid request argument must fail without coercion");
+  assert.equal(verifyForKey(validInput, value), null, "invalid expected key must fail without coercion");
+}
 // Invalid shutdown arguments must not terminate the runtime.
 assert.equal(globalThis.anonce.close("extra"), null);
-const vectors = JSON.parse(readFileSync(0, "utf8"));
-assert.ok(vectors.length > 390, "missing native public corpus");
-for (const { input, want } of vectors) {
-  assert.equal(verify(input), want, "native/WASM result mismatch");
+for (const { input, expected, want } of vectors) {
+  const result = expected === undefined ? verify(input) : verifyForKey(input, expected);
+  assert.equal(result, want, "native/WASM result mismatch");
 }
 globalThis.anonce.close();
 await running;

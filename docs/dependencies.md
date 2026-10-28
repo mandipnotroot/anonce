@@ -25,7 +25,7 @@ advisories before further imports.
 | pip-tools 7.6.2 | BSD-3-Clause | External documentation lock compiler |
 | [Go 1.27.3](https://go.dev/dl/?mode=json) | BSD-3-Clause | Pinned standard-library runtime and external compiler; WASM build copies the matching loader and original notices unchanged |
 | [Node.js 22.23.3](https://nodejs.org/dist/v22.23.3/) | MIT with bundled third-party notices | External development-only WASM test runtime; no npm dependencies or Node product build |
-| [x/crypto 0.58.0](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/argon2) | BSD-3-Clause | Admitted Argon2id and its BLAKE2b dependency for device-backup profile 1; exact hashes in `go.sum` |
+| [x/crypto 0.58.0](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/argon2) | BSD-3-Clause | Admitted Argon2id/BLAKE2b and ChaCha20-Poly1305 composition for device-backup profile 2; exact hashes in `go.sum` |
 | [x/sys 0.49.0](https://pkg.go.dev/golang.org/x/sys@v0.49.0/cpu) | BSD-3-Clause | Indirect CPU-feature detection for x/crypto; exact hashes in `go.sum` |
 | [gofumpt 0.12.0](https://github.com/mvdan/gofumpt) | BSD-3-Clause | External Go formatter |
 | [golangci-lint 2.15.0](https://github.com/golangci/golangci-lint) | GPL-3.0-only | External Go lint aggregator |
@@ -42,9 +42,14 @@ advisories before further imports.
 
 ### Admitted Go modules
 
-x/crypto and x/sys are maintained Go project libraries that avoid a custom KDF.
-Their imported package graph was inspected for Argon2id, BLAKE2b, and CPU-feature
-detection only.
+x/crypto and x/sys are maintained Go project libraries that avoid a custom KDF
+or AEAD. Admission for device-backup profile 2 includes Argon2id, BLAKE2b,
+ChaCha20-Poly1305, its ChaCha20/Poly1305 and alias helpers, and CPU-feature detection.
+The standard 12-byte-nonce `New` API is selected, not `NewX` or a custom primitive.
+The [pinned API and source](https://pkg.go.dev/golang.org/x/crypto@v0.58.0/chacha20poly1305)
+were reviewed against RFC 8439 on 2026-10-27. Package admission does not establish
+independent cryptographic review or browser performance. FIPS-only configurations
+may reject this algorithm; there is no algorithm fallback or FIPS-validation claim.
 
 - **Licensing:** both pinned module `LICENSE` files use BSD-3-Clause and retain
   the original Go copyright holder; `PATENTS` grants remain upstream. No source is
@@ -72,11 +77,23 @@ notices stay intact. No upstream asset or generated WASM is checked in or served
 by the shell. Updating Go requires reviewing these pins and rerunning compatibility
 and security checks (sources accessed 2026-10-27).
 
+The separate `make member-wasm` module also links the already admitted x/crypto
+and x/sys packages through the shared session. It copies each module's unchanged
+`LICENSE` and `PATENTS` alongside the artifact as `LICENSE.x-crypto`,
+`PATENTS.x-crypto`, `LICENSE.x-sys`, and `PATENTS.x-sys`. Their contents match the
+reviewed Go notice hashes above and are verified independently from module-cache
+sources; replaced module sources are rejected. No additional dependency is admitted.
+It also packages first-party worker/client modules using standard browser APIs,
+without an npm install, third-party asset, or JavaScript cryptographic dependency.
+
 Node.js is pinned in the same manifest and CI. Use official
 [22.23.3 archives and checksums](https://nodejs.org/dist/v22.23.3/SHASUMS256.txt)
 and retain its upstream notices if redistributing that external test runtime.
-Only built-in assertion, crypto, filesystem, module, and path facilities are used
-by the test runner. No Node code handles passwords or private-key fixtures.
+Only built-in assertion, crypto, filesystem, module, path, URL, test, and worker-thread
+facilities are used by the test runners. The public verifier runner handles no
+passwords. The member runner handles only synthetic unlock bytes, encrypted backups,
+and public enrollment material for interoperability checks, never private-key
+fixtures or real credentials.
 
 ### Documentation theme
 
@@ -99,6 +116,13 @@ Docs contain no private data or runnable remote playground. Device fonts replace
 bundled fonts; no font binaries are published. Docs assets are separate from product dependencies.
 
 ## Proposed product dependencies
+
+Browser accounts target [WebAuthn Level 3](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/)
+as the authentication design reference (consulted 2026-10-27). PRF unlocking needs
+actual browser/provider evidence and a separately reviewed wrapping profile; the
+presence of a passkey library is not proof of encrypted-key recovery support.
+See [the decision and research](key-management.md#browser-account-vault).
+No new library or browser asset is admitted by this design update.
 
 | Dependency | Observed version | License | Purpose |
 | --- | --- | --- | --- |

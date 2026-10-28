@@ -77,7 +77,13 @@ Required future local stack:
 
 ## Production separation
 
+- Deliver the product through the browser for every role; users install no app,
+  extension, CLI, or Node runtime. The offline CLI remains optional tooling.
 - Separate issuer/CA and submission origins and operational trust boundaries.
+- Keep account login, dashboard, encrypted member-key vault, and their sessions
+  on the identity side. Use narrowly scoped WebAuthn RP IDs and exact allowed
+  origins; do not authorize the anonymous submission origin for account assertions
+  or PRF evaluation. Reviewer retrieval/decryption needs its own reviewed context.
 - Use independent database instances, credentials, network access, migration privileges,
   backup authorization, monitoring access, and operator accounts.
 - No cross-database joins or identity authentication in submissions. Shared proxies
@@ -107,20 +113,29 @@ Required future local stack:
   match loader and compiler.
 - Vendor assets, publish hashes, use supported SRI, and verify signed WASM manifests
   against independently trusted checkpoints. Same-origin hashes are not independent trust anchors.
-- Admin cookies: Secure, HttpOnly, reviewed SameSite policy, bounded lifetime,
-  no cross-origin/domain sharing.
+- Account/admin cookies: Secure, HttpOnly, host-only, reviewed SameSite policy,
+  bounded lifetime and rotation, no cross-origin/domain sharing. SameSite alone
+  does not isolate sibling origins. Test the anonymous handoff without credentials,
+  account referrers, credential IDs, or personalized link parameters.
 - Explicit trusted proxies. Never trust arbitrary client forwarding headers.
 
 ## Backup, recovery, and retention
 
 - Encrypt identity/ciphertext backups with separate access and keys.
+- Member-key material in identity backups is limited to client-encrypted copies and
+  reviewed metadata under the [vault contract](key-management.md#browser-account-vault),
+  never unlock material. Database backup encryption is an additional layer,
+  not a substitute for browser-side private-key encryption. Include vault deletion,
+  snapshots, old wrapping methods, and account closure in retention exercises.
 - Rehearse isolated restoration with dummy principals. Validate migration versions
   and grants; record evidence without secrets.
 - Recovery must not silently reactivate expired round keys or consumed capabilities,
   or reset issuance slots/counts to allow extra tokens. Review reconciliation and
   trust assumptions before claiming safe recovery.
 - Include backup expiry, snapshots, and signer exports in retention plans.
-- Exclude reviewer keys and decrypted exports from server backups. See
+- Exclude plaintext device keys, all reviewer-key copies by default, and decrypted
+  exports from server backups. Any encrypted reviewer backup requires separate
+  round/retention review before enablement. See
   [key management](key-management.md#retention-and-destruction) for copy limits.
 
 ## AGPL section 13

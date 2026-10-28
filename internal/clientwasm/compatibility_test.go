@@ -25,20 +25,44 @@ import (
 // expected public results. No passwords or private fixtures cross the boundary.
 func TestClientNativeWASMCompatibility(t *testing.T) {
 	type vector struct {
-		Input string  `json:"input"`
-		Want  *string `json:"want"`
+		Input string `json:"input"`
+		// Preserve present empty keys so malformed-key cases use the keyed method.
+		Expected *string `json:"expected,omitzero"`
+		Want     *string `json:"want"`
 	}
 	var vectors []vector
 	for range 3 {
 		der, want := request(t)
-		vectors = append(vectors, vector{hex.EncodeToString(der), new(want)}, vector{strings.ToUpper(hex.EncodeToString(der)), new(want)})
+		encoded := hex.EncodeToString(der)
+		expected := strings.TrimSuffix(strings.TrimPrefix(want, "member:"), "\n")
+		for _, input := range []string{encoded, strings.ToUpper(encoded)} {
+			vectors = append(vectors, vector{Input: input, Want: new(want)})
+			for _, key := range []string{expected, strings.ToUpper(expected)} {
+				vectors = append(vectors, vector{Input: input, Expected: new(key), Want: new(want)})
+			}
+		}
+		public, err := hex.DecodeString(expected)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range public {
+			changed := bytes.Clone(public)
+			changed[i] ^= 1
+			vectors = append(vectors, vector{Input: encoded, Expected: new(hex.EncodeToString(changed))})
+		}
+		for _, key := range []string{"", expected[:len(expected)-1], expected + "00", "member:" + expected, strings.Repeat("z", 64), strings.Repeat("é", 32), " " + expected[1:], expected[:len(expected)-1] + "\n"} {
+			vectors = append(vectors, vector{Input: encoded, Expected: new(key)})
+		}
 		for i := range der {
 			mutated := bytes.Clone(der)
 			mutated[i] ^= 1
-			vectors = append(vectors, vector{Input: hex.EncodeToString(mutated)})
+			vectors = append(vectors,
+				vector{Input: hex.EncodeToString(mutated)},
+				vector{Input: hex.EncodeToString(mutated), Expected: new(expected)},
+			)
 		}
 	}
-	_, private, err := ed25519.GenerateKey(rand.Reader)
+	public, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,10 +74,13 @@ func TestClientNativeWASMCompatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, input := range []string{"", "00", strings.Repeat("0", encodedRequestSize), strings.Repeat("z", encodedRequestSize), hex.EncodeToString(claimed)} {
-		vectors = append(vectors, vector{Input: input})
+		vectors = append(vectors, vector{Input: input}, vector{Input: input, Expected: new(hex.EncodeToString(public))})
 	}
 	for _, v := range vectors {
 		got, err := verifyHex(v.Input)
+		if v.Expected != nil {
+			got, err = verifyHexForKey(v.Input, *v.Expected)
+		}
 		if v.Want == nil && (err == nil || got != "") || v.Want != nil && (err != nil || got != *v.Want) {
 			t.Fatal("native result disagrees with expected profile result")
 		}

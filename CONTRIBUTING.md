@@ -50,8 +50,9 @@ and rendered-shell checks. Go 1.27.3 and tools are pinned in `Makefile`; downloa
 use the Go module proxy/checksum service. See [testing](docs/testing.md) for evidence
 limits and [deployment](docs/deployment.md#local-development) for process flags.
 `make check` also requires Node.js 22.23.3 for public-request WASM compatibility
-checks. No npm install or Node product build is used; `make wasm` builds with Go
-alone. Container and database setup are not available.
+checks and separate local member-session WASM and worker checks. No npm install or
+Node product build is used; `make wasm` and `make member-wasm` build with Go alone. Container
+and database setup are not available.
 
 ## Documentation site
 
@@ -119,6 +120,9 @@ and documentation. Passing checks do not prove security. Ask about unclear
 cryptographic intent. Maintainers may request smaller changes for reliable review.
 
 New clients must reuse device-side Go cryptography and preserve origin separation.
+The [product direction](AGENTS.md#product-direction) is browser-only with automatic
+key management, not CLI-based onboarding. Review browser work against the
+[account and review workflow](docs/ui-design.md#account-and-review-workflow).
 New transports, storage backends, and integrations must retain ciphertext-only
 submission, bounded inputs, atomic spending, and the documented metadata policy.
 Update the threat model, API, and compatibility guidance when those boundaries change.
