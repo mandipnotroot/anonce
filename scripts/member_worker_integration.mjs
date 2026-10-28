@@ -32,10 +32,12 @@ const password = decode(native.password), backup = decode(native.backup), key = 
 const exits = [];
 const workers = [];
 let mode;
-// Node supplies BroadcastChannel, but not a Window lifecycle event target.
+// Node supplies BroadcastChannel, but not Window/Document lifecycle facilities.
 const lifecycle = new EventTarget();
 globalThis.addEventListener = lifecycle.addEventListener.bind(lifecycle);
 globalThis.removeEventListener = lifecycle.removeEventListener.bind(lifecycle);
+globalThis.document = new EventTarget();
+globalThis.document.visibilityState = "visible";
 globalThis.Worker = class {
   constructor(url, options) {
     assert.equal(url.href, pathToFileURL(join(directory, "member-worker.mjs")).href);
@@ -129,6 +131,20 @@ try {
   lifecycle.dispatchEvent(new Event("pagehide"));
   assert.equal(await hiding, null);
   assert.equal(workers.at(-1).terminated, true);
+
+  const background = open();
+  assert.equal(await background.ready, true);
+  const backgroundWorker = workers.at(-1);
+  assert.ok(await background.unlock(password, backup, key));
+  const backgroundPending = background.request();
+  globalThis.document.visibilityState = "hidden";
+  globalThis.document.dispatchEvent(new Event("visibilitychange"));
+  assert.equal(await backgroundPending, null);
+  assert.equal(backgroundWorker.terminated, true);
+  assert.equal(await open().ready, false, "hidden page started a worker");
+  globalThis.document.visibilityState = "visible";
+  globalThis.document.dispatchEvent(new Event("visibilitychange"));
+  assert.equal(await background.request(), null, "visible page revived its old session");
 
   for (const failure of ["fetch-error", "http-error", "bad-wasm", "oversized"]) {
     mode = failure;

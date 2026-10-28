@@ -135,6 +135,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking development member-worker lifecycle change: require a visible owner
+  document, terminate locally on visibility loss, and reject hidden-page startup.
+  Data admission and reply publication recheck visibility. Foregrounding requires
+  explicit restoration through a new owner; peers are not notified by backgrounding.
+  Node failure/lifecycle tests and synthetic Chromium tab-switch/restoration checks
+  cover this behavior. Direct bridge, transport, HTTP, and cryptographic profiles
+  are unchanged; no reliable suspension, user-presence, or memory-erasure claim is added.
 - Document the maintainer rule for PR-number suffixes on squash-merge commit titles.
 - Breaking development worker-owner lifecycle change: BroadcastChannel and page
   event APIs are now required, and explicit lock also notifies participating peers.

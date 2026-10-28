@@ -173,13 +173,18 @@ properties described below.
 - The worker owner's [lock notifications](key-management.md#lock-notifications-and-page-disposal)
   contain no secrets or account/key identifiers. Explicit lock can notify eligible
   same-origin, same-partition peers; all incoming traffic terminates locally without
-  echo. Missing coordination facilities fail startup closed. Pagehide also terminates
-  locally, including back/forward caching. These are development-only controls, not
-  integrated account logout. Notifications are asynchronous, unacknowledged, and
+  echo. Missing coordination facilities fail startup closed. Pagehide and loss of
+  document visibility also terminate locally; hidden pages cannot start an owner.
+  Visibility is checked before data admission and reply publication, not only on
+  events. Foregrounding cannot resume the closed instance. These are development-only
+  controls, not integrated account logout. Notifications are asynchronous, unacknowledged, and
   nondurable; suspended, new, or nonparticipating contexts may miss them. Page events
   are not guaranteed, and same-origin code can observe timing or force locking.
   Neither mechanism supplies a global singleton, durable revocation, hard expiry,
-  or protection from hostile code in the owner realm. Browser evidence is outstanding.
+  or protection from hostile code in the owner realm. Visibility is browser-reported,
+  not user-presence proof; unobserved transitions during suspension can be missed.
+  Synthetic Chromium checks cover tab switching and explicit foreground restoration,
+  not mobile suspension, a supported-browser matrix, or product custody.
 
 ## Browser account and vault risks
 

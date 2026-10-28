@@ -94,6 +94,28 @@ export async function peerLocked() {
 }
 export function notify() { return lockMemberWorkers(); }
 
+let visibilitySession = null, hiddenObserved = false;
+document.addEventListener("visibilitychange", (event) => {
+  if (event.isTrusted && document.visibilityState === "hidden") hiddenObserved = true;
+});
+export async function startVisibility(native) {
+  hiddenObserved = false;
+  visibilitySession = await open();
+  const password = decode(native.password);
+  try {
+    const restored = await visibilitySession.unlock(password, decode(native.backup), decode(native.publicKey));
+    check(restored !== null && encode(restored.csr) === native.csr);
+    return true;
+  } finally { password.fill(0); }
+}
+export async function visibilityLocked() {
+  return hiddenObserved && await visibilitySession.request() === null;
+}
+export async function hiddenStartup() {
+  const session = new MemberWorkerSession();
+  try { return await session.ready === false; } finally { session.close(); }
+}
+
 export async function pendingNavigation() {
   const session = await open();
   const password = Uint8Array.of(7);

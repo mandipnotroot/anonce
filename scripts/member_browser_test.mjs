@@ -117,7 +117,16 @@ async function page() {
   // Enable monitoring before navigating; there is no interception or CSP bypass.
   await send("Page.navigate", { url: origin + "/" }, sessionId);
   await until(async () => await evaluate(sessionId, "document.readyState === 'complete' && document.getElementById('status') !== null"));
+  await activate({ targetId, sessionId });
   return { targetId, sessionId };
+}
+async function activate(page) {
+  await send("Target.activateTarget", { targetId: page.targetId });
+  await until(async () => await evaluate(page.sessionId, "document.visibilityState === 'visible'"));
+}
+const workerIDs = async () => (await send("Target.getTargets")).targetInfos.filter((target) => target.type === "worker").map((target) => target.targetId);
+async function workersGone(workers) {
+  await until(async () => !(await workerIDs()).some((id) => workers.includes(id)));
 }
 const moduleCall = (call) => `import('/browser.mjs').then(m => m.${call})`;
 let output;
@@ -132,11 +141,28 @@ try {
   assert.equal(await evaluate(peer.sessionId, moduleCall("peerLocked()")), true, "same-origin peer remained unlocked");
   await send("Target.closeTarget", { targetId: peer.targetId });
 
+  await activate(main);
+  assert.equal(await evaluate(main.sessionId, moduleCall(`startVisibility(${JSON.stringify(input)})`)), true);
+  const visibleWorkers = await workerIDs();
+  assert.ok(visibleWorkers.length > 0, "no unlocked visibility-test worker observed");
+  const foreground = await page(); // Real tab activation, not a synthetic lifecycle event.
+  await until(async () => await evaluate(main.sessionId, "document.visibilityState === 'hidden'"));
+  await workersGone(visibleWorkers); // Observe event-driven termination before calling the owner again.
+  assert.equal(await evaluate(main.sessionId, moduleCall("visibilityLocked()")), true, "hidden page retained its session");
+  assert.equal(await evaluate(main.sessionId, moduleCall("hiddenStartup()")), true, "hidden page started a worker");
+  assert.equal((await workerIDs()).length, 0, "hidden startup left a worker");
+  await activate(main);
+  assert.equal(await evaluate(main.sessionId, moduleCall("visibilityLocked()")), true, "foregrounding revived old session");
+  // Explicit restoration on a new owner remains available after returning.
+  assert.equal(await evaluate(main.sessionId, moduleCall(`startVisibility(${JSON.stringify(input)})`)), true);
+  await send("Target.closeTarget", { targetId: foreground.targetId });
+  await evaluate(main.sessionId, moduleCall("notify()"));
+
   assert.equal(await evaluate(main.sessionId, moduleCall("pendingNavigation()")), true);
-  const workers = (await send("Target.getTargets")).targetInfos.filter((target) => target.type === "worker").map((target) => target.targetId);
+  const workers = await workerIDs();
   assert.ok(workers.length > 0, "no real browser worker observed");
   await send("Page.navigate", { url: "about:blank" }, main.sessionId);
-  await until(async () => !(await send("Target.getTargets")).targetInfos.some((target) => workers.includes(target.targetId)));
+  await workersGone(workers);
   assert.equal(unexpectedRequest, false, "unexpected page request");
 } finally {
   clearTimeout(lifetime);

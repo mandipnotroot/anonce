@@ -12,12 +12,25 @@ const setup = () => ({ ...enrollment(), backup: new Uint8Array(108) });
 
 function harness(t) {
   const original = { Worker: globalThis.Worker, BroadcastChannel: globalThis.BroadcastChannel,
-    addEventListener: globalThis.addEventListener, removeEventListener: globalThis.removeEventListener, setTimeout, clearTimeout };
+    document: globalThis.document, addEventListener: globalThis.addEventListener,
+    removeEventListener: globalThis.removeEventListener, setTimeout, clearTimeout };
   const timers = new Map();
   const workers = [];
   const channels = [];
   const notifications = [];
   const listeners = new Set();
+  const visibilityListeners = new Set();
+  const document = {
+    visibilityState: "visible",
+    addEventListener(type, listener) {
+      assert.equal(type, "visibilitychange");
+      visibilityListeners.add(listener);
+    },
+    removeEventListener(type, listener) {
+      assert.equal(type, "visibilitychange");
+      visibilityListeners.delete(listener);
+    },
+  };
   class BroadcastChannel {
     closed = false;
     posts = [];
@@ -61,6 +74,7 @@ function harness(t) {
   }
   globalThis.Worker = Worker;
   globalThis.BroadcastChannel = BroadcastChannel;
+  globalThis.document = document;
   globalThis.addEventListener = (type, listener) => {
     assert.equal(type, "pagehide");
     listeners.add(listener);
@@ -81,14 +95,21 @@ function harness(t) {
     Object.assign(globalThis, original);
     assert.equal(timers.size, 0, "timer leaked");
     assert.equal(listeners.size, 0, "page listener leaked");
+    assert.equal(visibilityListeners.size, 0, "visibility listener leaked");
     assert.ok(channels.every((channel) => channel.closed), "lock channel leaked");
   });
   return {
     workers,
     channels,
+    document,
+    visibilityListeners,
     open(Owner = MemberWorkerSession) { const session = new Owner(); sessions.push(session); return session; },
     deliver() { for (const notify of notifications.splice(0)) notify(); },
     pagehide(persisted) { for (const listener of [...listeners]) listener({ persisted }); },
+    visibility(state) {
+      document.visibilityState = state;
+      for (const listener of [...visibilityListeners]) listener();
+    },
     fire(delay) {
       const found = [...timers].find(([, timer]) => timer.delay === delay);
       assert.ok(found, "missing timeout");
@@ -243,6 +264,135 @@ test("member worker local disposal and pagehide close resources without broadcas
     session.lock();
     assert.deepEqual(channel.posts, [], "local disposal broadcast or closed session reused");
   }
+});
+
+test("member worker visibility loss terminates startup, idle, unlocked, and pending sessions locally", async (t) => {
+  const h = harness(t);
+  for (const state of ["startup", "idle", "unlocked", "pending-create", "pending-unlock", "pending-request"]) {
+    const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
+    const visibility = [...h.visibilityListeners][0];
+    const late = worker.onmessage;
+    let pending;
+    if (state !== "startup") {
+      worker.ready();
+      assert.equal(await session.ready, true);
+    }
+    if (state === "unlocked") {
+      pending = session.create(Uint8Array.of(7));
+      worker.answer(setup());
+      assert.ok(await pending);
+      pending = null;
+    }
+    if (state === "pending-create") pending = session.create(Uint8Array.of(7));
+    if (state === "pending-unlock") pending = session.unlock(Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32));
+    if (state === "pending-request") pending = session.request();
+    h.visibility("visible");
+    assert.equal(worker.terminated, false, "visible notification closed session");
+    h.visibility("hidden");
+    assert.equal(worker.terminated, true, state);
+    assert.equal(await session.ready, state !== "startup");
+    if (pending) assert.equal(await pending, null);
+    assert.equal(h.visibilityListeners.size, 0);
+    assert.equal(channel.closed, true);
+    assert.deepEqual(channel.posts, [], "backgrounding notified peers");
+    h.visibility("visible");
+    visibility(); // A queued old event cannot resurrect the instance.
+    late({ data: { version: 1, type: "ready" } });
+    assert.equal(await session.request(), null, "visibility restored old instance");
+    const replacement = h.open();
+    h.workers.at(-1).ready();
+    visibility();
+    assert.equal(await replacement.ready, true, "stale event closed replacement");
+    replacement.close();
+  }
+});
+
+test("member worker rejects hidden or unavailable visibility before starting a worker", async (t) => {
+  const h = harness(t);
+  for (const state of ["hidden", "prerender", "", undefined, null, true, { toString() { assert.fail("state coerced"); } }]) {
+    h.document.visibilityState = state;
+    const session = h.open();
+    assert.equal(await session.ready, false);
+    assert.equal(await session.create(Uint8Array.of(7)), null);
+  }
+  h.document.visibilityState = "visible";
+  const documents = [undefined, null, {}, { visibilityState: "visible" },
+    { ...h.document, addEventListener: undefined }, { ...h.document, removeEventListener: undefined }];
+  const throwing = { ...h.document, get visibilityState() { throw new Error("synthetic visibility failure"); } };
+  documents.push(throwing);
+  for (const document of documents) {
+    globalThis.document = document;
+    assert.equal(await h.open().ready, false);
+  }
+  assert.equal(h.workers.length, 0);
+  assert.equal(h.channels.length, 0, "allocated lock channel for invisible page");
+  globalThis.document = h.document;
+  const visible = h.open();
+  h.workers.at(-1).ready();
+  assert.equal(await visible.ready, true, "failed startup retained admission");
+});
+
+test("member worker visibility registration failures clean up without starting a worker", async (t) => {
+  const h = harness(t);
+  const add = h.document.addEventListener;
+  for (const failure of ["throw", "hidden"]) {
+    h.document.visibilityState = "visible";
+    h.document.addEventListener = (type, listener) => {
+      add(type, listener);
+      if (failure === "throw") throw new Error("synthetic visibility registration failure");
+      h.document.visibilityState = "hidden";
+    };
+    assert.equal(await h.open().ready, false);
+    assert.equal(h.workers.length, 0, "started after visibility registration failed");
+    assert.equal(h.visibilityListeners.size, 0);
+    assert.ok(h.channels.every((channel) => channel.closed));
+  }
+});
+
+test("member worker rechecks visibility before input admission and response publication", async (t) => {
+  const h = harness(t);
+  for (const boundary of ["create", "unlock", "request", "startup-call", "busy", "ready", "result", "read-failure"]) {
+    h.document.visibilityState = "visible";
+    const session = h.open(), worker = h.workers.at(-1);
+    let pending;
+    if (boundary !== "ready" && boundary !== "startup-call") worker.ready();
+    if (boundary === "result" || boundary === "busy") pending = session.create(Uint8Array.of(7));
+    h.document.visibilityState = "hidden"; // No notification delivered yet.
+    const hostile = new Proxy({}, { get() { assert.fail("hidden-page input inspected"); } });
+    if (boundary === "read-failure") Object.defineProperty(h.document, "visibilityState", {
+      configurable: true, get() { throw new Error("synthetic visibility failure"); },
+    });
+    if (boundary === "create") assert.equal(await session.create(hostile), null);
+    if (boundary === "unlock") assert.equal(await session.unlock(hostile, hostile, hostile), null);
+    if (["request", "read-failure", "startup-call", "busy"].includes(boundary)) assert.equal(await session.request(), null);
+    if (boundary === "ready") { worker.ready(); assert.equal(await session.ready, false); }
+    if (boundary === "result") { worker.answer(setup()); assert.equal(await pending, null); }
+    if (boundary === "busy") assert.equal(await pending, null);
+    assert.equal(worker.terminated, true, boundary);
+    assert.equal(worker.posts.length, boundary === "result" || boundary === "busy" ? 1 : 0);
+    Object.defineProperty(h.document, "visibilityState", { configurable: true, writable: true, value: "visible" });
+    assert.equal(await session.request(), null);
+  }
+});
+
+test("member worker pins its owner document and background locking does not notify peers", async (t) => {
+  const h = harness(t);
+  const local = h.open(), localWorker = h.workers.at(-1);
+  const { MemberWorkerSession: Peer } = await import("../internal/memberworker/member-client.mjs?visibility-peer");
+  // A separate visible document models a peer page in another realm.
+  const peerDocument = new EventTarget();
+  peerDocument.visibilityState = "visible";
+  globalThis.document = peerDocument;
+  const peer = h.open(Peer), peerWorker = h.workers.at(-1);
+  localWorker.ready(); peerWorker.ready();
+  h.visibility("hidden");
+  h.deliver();
+  assert.equal(localWorker.terminated, true, "read replacement global document instead of owner");
+  assert.equal(peerWorker.terminated, false, "backgrounding locked visible peer");
+  assert.equal(h.visibilityListeners.size, 0, "removed listener from wrong document");
+  const pending = peer.request();
+  peerWorker.answer(enrollment());
+  assert.ok(await pending);
 });
 
 test("member worker local close isolates peers and queued locks cannot target later owners", async (t) => {

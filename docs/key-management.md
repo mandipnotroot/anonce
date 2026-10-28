@@ -686,9 +686,10 @@ Import `MemberWorkerSession` from `member-client.mjs` in a trusted identity-side
 host. Construction starts one worker with fixed relative assets and omitted
 credentials. At most one live instance is admitted per module realm; a second
 instance resolves `ready` to `false` without starting another worker. This is not
-a cross-tab or cross-realm limit. BroadcastChannel and global page event APIs are
-required before starting a worker; missing or failing facilities reject startup
-without an uncoordinated fallback. The runtime is never loaded into the owner realm.
+a cross-tab or cross-realm limit. BroadcastChannel, global page event APIs, and a
+visible owner document with visibility events are required before starting a worker;
+missing or failing facilities reject startup without an uncoordinated fallback.
+The runtime is never loaded into the owner realm.
 
 | Interface | Behavior |
 | --- | --- |
@@ -742,11 +743,22 @@ is closed immediately after posting, and no lock state is persisted.
 
 Global `pagehide` terminates locally, including when the page enters the back/forward
 cache. Returning to that page does not restart or unlock the old instance. This
-does not detect every freeze, background transition, process kill, or mobile
-shutdown; page events and owner timers can be delayed or absent.
+also applies when the owner document's `visibilityState` stops being `"visible"`.
+The owner listens for `visibilitychange`, rechecks visibility before admitting data
+calls or publishing worker replies, and rejects construction on hidden pages.
+Missing, unknown, or failed visibility reads terminate without fallback. Listeners
+are removed from the same document on every termination path.
+
+Background locking is local, not a peer notification or account logout. Returning
+to the foreground requires a new explicit owner and local restoration. Pending
+operations resolve to `null`; previously returned public material and encrypted
+backups are not retracted. This intentionally interrupts setup/restoration on a tab
+switch or minimization. Future product UX must explain that interruption and request
+local unlock again, not silently resume or generate a replacement key.
 
 This follows the [WHATWG BroadcastChannel model](https://html.spec.whatwg.org/multipage/web-messaging.html#broadcasting-to-other-browsing-contexts)
-and [pagehide event](https://html.spec.whatwg.org/multipage/indices.html#event-pagehide)
+and [pagehide event](https://html.spec.whatwg.org/multipage/indices.html#event-pagehide),
+with [HTML page visibility](https://html.spec.whatwg.org/multipage/interaction.html#page-visibility)
 (Living Standard consulted 2026-10-28). Notifications reach eligible participants
 on the same origin and storage partition, not other origins, profiles, or devices.
 They are asynchronous and not durable or acknowledged: newly opened, suspended,
@@ -754,6 +766,10 @@ or nonparticipating contexts may miss them. A blocked event loop can delay locki
 and another owner can be explicitly constructed afterwards. Same-origin code can
 observe lock timing or cause denial of service by posting; this is not an
 authorization boundary, a cross-tab singleton, or reliable global revocation.
+Visibility is browser-reported, not proof of user presence or focus. Page events
+and timers may be delayed or absent; a hide/show transition not observed before
+suspension can be missed. These controls do not detect every freeze, process kill,
+or mobile shutdown and do not establish hard wall-clock expiry.
 
 Termination discards the worker without waiting for Go cleanup and cannot promise
 buffer clearing or complete erasure. The owner page sees unlock inputs and public

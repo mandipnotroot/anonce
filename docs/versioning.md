@@ -178,6 +178,15 @@ test-binary delivery and external development-tool setup. It changes no product
 HTTP route, shell CSP, worker contract, or cryptographic format, and carries no
 automatic release bump under the test-change policy below.
 
+Requiring a visible owner document with visibility events and terminating on
+backgrounding is a breaking development lifecycle change requiring `semver:major`
+review. Hosts must construct only while visible, handle interrupted operations,
+and explicitly restore through a new owner after returning. There is no automatic
+restart, silent unlock, or replacement key. See the
+[lifecycle contract and limits](key-management.md#lock-notifications-and-page-disposal).
+Direct bridge methods, worker transport, cryptographic profiles, CLI, HTTP, and
+the inert shell remain unchanged.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

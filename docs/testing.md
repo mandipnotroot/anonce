@@ -22,7 +22,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make wasm-test` | Rebuild artifacts, compare native and Node WASM public-request results, exercise the actual bridge, and run adapter unit tests under the Go JS/WASM runner |
 | `make member-wasm` | Separate local member-session module, dedicated-worker/client assets, matching reviewed loader/module notices, manifest, and 8 MiB gate |
 | `make member-wasm-test` | Native race/lifecycle tests, actual Node direct bridge and dedicated-worker setup/restoration, rejection, termination, bidirectional encrypted-backup compatibility, owner lifecycle unit tests, and bounded command fuzzing |
-| `make member-browser-test` | Opt-in pinned headless Chromium, isolated Go test host, native/worker backup compatibility, page CSP probes, event-loop progress, same-origin peer lock, and navigation termination; requires `MEMBER_BROWSER`, not included in `make check` or CI |
+| `make member-browser-test` | Opt-in pinned headless Chromium, isolated Go test host, native/worker backup compatibility, page CSP probes, event-loop progress, same-origin peer lock, background-tab lock/foreground restoration, and navigation termination; requires `MEMBER_BROWSER`, not included in `make check` or CI |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -127,10 +127,11 @@ profile-2 nonce prefix and library composition.
 | Actual member WASM bridge, opaque passwords, native backup restore, WASM backup opened natively, public CSR validation, wrong password/purpose, corruption/key mismatch, byte types/arity/bounds, hostile objects/shadowed getters, shared/detached arrays, input snapshots, public-output ownership, lock/close and namespace collision | `TestMemberNativeWASMCompatibility` with `scripts/member_wasm_test.mjs`, through `make member-wasm-test` |
 | Worker owner single-instance/operation admission, snapshots/transfers, input types/arity/bounds, hostile properties, timeout/termination, late replies, protocol/transport failures, and bounded command fuzzing | Named `node:test` cases in `scripts/member_worker_test.mjs`, through `make member-wasm-test` |
 | Secret-free peer/global lock, startup/pending cancellation, no echo/restart, required coordination APIs, notification failures, local disposal, and cached-pagehide cleanup | Named `node:test` lock, channel failure, global lock, and pagehide cases in `scripts/member_worker_test.mjs`; controlled channels and lifecycle events, not actual browser tabs |
+| Local visibility-loss lock in startup/idle/unlocked/pending states, hidden/missing/failed visibility admission, registration cleanup, pinned owner document, pre-admission/reply checks, no peer notification, no restart, and explicit replacement | Named `node:test` visibility cases in `scripts/member_worker_test.mjs`; actual Node worker termination under synthetic visibility events in `TestMemberNativeWorkerCompatibility` |
 | Actual dedicated worker and owner, native restore, generated backup opened natively, wrong password/corruption/mismatch without replacement, public-output ownership, pending disposal, replay/malformed commands, failed/malformed/oversized runtime loads | `TestMemberNativeWorkerCompatibility` with `scripts/member_worker_integration.mjs` and test-only Node API adapter `scripts/member_worker_node.mjs` |
 | Reviewed loader/notice digest rejection, invalid artifact headers and size bounds | `scripts/test_build_wasm.py` |
 | Test-only browser asset bounds, complete manifest/digests, duplicate/traversal rejection, exact routes, hosts/origins, methods/HEAD, headers, and unread bodies | `TestMemberBrowserAssets`, `TestMemberBrowserDelivery`, `FuzzMemberBrowserManifest` |
-| Actual browser member worker, native backup restore and browser backup opened natively, failed restoration without replacement, snapshots, admission, public output, pending disposal, UI event-loop progress, page CSP probes, same-origin peer lock, and navigation termination | `TestMemberNativeBrowserCompatibility` with `scripts/member_browser_test.mjs`, through the opt-in `make member-browser-test` |
+| Actual browser member worker, native backup restore and browser backup opened natively, failed restoration without replacement, snapshots, admission, public output, pending disposal, UI event-loop progress, page CSP probes, same-origin peer lock, background-tab lock/foreground restoration, and navigation termination | `TestMemberNativeBrowserCompatibility` with `scripts/member_browser_test.mjs`, through the opt-in `make member-browser-test` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
 Web checks validate allowlists/delivery, not full HTML/CSS grammar or browser execution.
@@ -197,8 +198,8 @@ Lock checks additionally model independent owner modules, inspect the exact
 secret-free notification, reject missing/failed channel facilities, and exercise
 local pagehide cleanup, including a synthetic back/forward cache event. The real
 Node worker runner receives native BroadcastChannel notifications and handles a
-synthetic pagehide with pending WASM work. Node does not model browser origin or
-storage partition rules, navigation caching, suspension, or real logout.
+synthetic pagehide and visibility loss with pending operations. Node does not model
+browser origin or storage partition rules, navigation caching, suspension, or real logout.
 Bounded transport fuzzing runs with `member-wasm-test`, not `make fuzz`; retain
 failures as synthetic cases in `scripts/member_worker_test.mjs`, never key fixtures.
 
@@ -254,8 +255,14 @@ checked against a fixed allowlist; this is not a complete browser/worker network
 capture, proxy-log audit, or malicious-site isolation boundary.
 
 These checks cover one headless desktop build and same-origin/same-partition pages.
-Navigation checks observe worker disappearance, not memory erasure or reliable
-global revocation. Event-loop progress is not a mobile latency/memory budget.
+The driver switches real foreground tabs, observes a trusted hidden-state event
+and worker disappearance before calling the owner again, rejects hidden-page startup,
+and checks that returning cannot revive the old owner. Explicit new-owner restoration
+then reuses the same native backup/key. No synthetic visibility dispatch or page
+visibility override is used for these browser checks.
+
+Navigation and tab-switch checks observe worker disappearance, not memory erasure
+or reliable global revocation. Event-loop progress is not a mobile latency/memory budget.
 Other engines, storage partitions, background suspension, back/forward-cache
 restoration, real logout, provider/passkey compatibility, screenshots, keyboard and
 assistive technology, and the complete account/vault journey remain untested.

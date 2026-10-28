@@ -39,6 +39,9 @@ export class MemberWorkerSession {
   #channel = null;
   #pagehide = () => this.#stop();
   #listening = false;
+  #document = null;
+  #visibilitychange = () => this.#checkVisibility();
+  #visibilityListening = false;
 
   constructor() {
     this.#ready = new Promise((resolve) => { this.#resolveReady = resolve; });
@@ -54,12 +57,21 @@ export class MemberWorkerSession {
         this.#stop();
         return;
       }
+      this.#document = globalThis.document;
+      if (typeof this.#document?.addEventListener !== "function" || typeof this.#document?.removeEventListener !== "function" ||
+          !this.#checkVisibility()) {
+        this.#stop();
+        return;
+      }
       this.#channel = new BroadcastChannel(lockChannel);
       // Any traffic, including unknown versions or malformed data, locks locally.
       // Never inspect payloads or echo notifications back to other contexts.
       this.#channel.onmessage = this.#channel.onmessageerror = () => this.#stop();
       this.#listening = true;
       globalThis.addEventListener("pagehide", this.#pagehide);
+      this.#visibilityListening = true;
+      this.#document.addEventListener("visibilitychange", this.#visibilitychange);
+      if (!this.#checkVisibility()) return;
       this.#worker = new Worker(new URL("./member-worker.mjs", import.meta.url), { type: "module", credentials: "omit" });
       this.#worker.onmessage = (event) => this.#message(event.data);
       this.#worker.onerror = (event) => { event.preventDefault(); this.#stop(); };
@@ -91,7 +103,7 @@ export class MemberWorkerSession {
 
   #call(method, inputs) {
     // Busy/not-ready/closed calls retain and post nothing, even transiently.
-    if (this.#closed || !this.#started || this.#pending !== null) return Promise.resolve(null);
+    if (!this.#checkVisibility() || !this.#started || this.#pending !== null) return Promise.resolve(null);
     const views = inputViews(method, inputs);
     if (views === null) return Promise.resolve(null);
     if (this.#next === Number.MAX_SAFE_INTEGER) { this.#stop(); return Promise.resolve(null); }
@@ -109,7 +121,7 @@ export class MemberWorkerSession {
   }
 
   #message(message) {
-    if (this.#closed) return;
+    if (!this.#checkVisibility()) return;
     if (!this.#started && record(message, ["version", "type"]) && message.version === version && message.type === "ready") {
       this.#started = true;
       clearTimeout(this.#startup);
@@ -127,6 +139,17 @@ export class MemberWorkerSession {
     pending.resolve(message.result);
   }
 
+  #checkVisibility() {
+    if (this.#closed) return false;
+    try {
+      if (this.#document?.visibilityState === "visible") return true;
+    } catch {
+      // Missing/failed visibility reads must not allow background key custody.
+    }
+    this.#stop();
+    return false;
+  }
+
   #stop() {
     if (this.#closed) return;
     this.#closed = true;
@@ -137,6 +160,11 @@ export class MemberWorkerSession {
       globalThis.removeEventListener("pagehide", this.#pagehide);
       this.#listening = false;
     }
+    if (this.#visibilityListening) {
+      this.#document.removeEventListener("visibilitychange", this.#visibilitychange);
+      this.#visibilityListening = false;
+    }
+    this.#document = null;
     if (this.#channel !== null) {
       this.#channel.onmessage = this.#channel.onmessageerror = null;
       this.#channel.close();
