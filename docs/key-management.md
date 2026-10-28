@@ -69,8 +69,10 @@ availability must not be presented as proof that vault restoration works.
 
 ### Storage and lifecycle
 
-The internal member-backup store is not a vault endpoint. It trusts an authenticated
-owner selected by its caller, does not enforce recent authentication or rate limits,
+The internal member-backup store is not a vault endpoint. Its
+[session-scoped methods](database.md#session-scoped-member-backup-access) derive the
+owner from a live session and serialize with revocation; owner-ID methods still
+trust their caller. It does not enforce recent authentication or rate limits,
 and has no account UI or browser integration. Its envelope checks cannot authenticate
 ciphertext or prove its declared public binding. Its local tombstone/retention
 contract does not settle product recovery, enrollment binding, or malicious-server

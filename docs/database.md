@@ -81,8 +81,8 @@ commit may leave an unreachable session until expiry, never a safe automatic ret
 
 `StartSession` requires authentication already verified by its trusted caller.
 `Resolve` always joins the account and checks absolute expiry using PostgreSQL's
-clock; it does not refresh expiry or authorize sensitive actions. `Revoke` removes
-one digest. `RevokeAll` and `Disable` serialize with new sessions by locking the
+clock; it does not refresh expiry or authorize sensitive actions. `Revoke` locks
+the account before removing one digest. `RevokeAll` and `Disable` serialize with new sessions by locking the
 account row before deleting sessions in a transaction. After disable commits, a
 new lookup fails and no concurrent session creation can leave a usable session.
 Already-resolved requests are not recalled. Revoke-all does not prevent a later,
@@ -182,6 +182,36 @@ The concurrency contract follows PostgreSQL 18
 [row locks](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS)
 and [transaction isolation](https://www.postgresql.org/docs/18/transaction-iso.html)
 (consulted 2026-10-28).
+
+### Session-scoped member-backup access
+
+`GetForSession`, `PutForSession`, and `DeleteForSession` accept a 32-byte bearer
+session secret instead of an owner ID. Only its existing SHA-256 digest reaches
+PostgreSQL. The owner is derived from the session, never selected by request data;
+all revision, public-binding, envelope, and tombstone rules above still apply.
+Tokens remain caller-owned and must not change until return; clear them after use.
+
+Each operation discovers the session's owner, locks the active account, then checks
+session existence and absolute expiry in a fresh Read Committed statement using
+the database clock. It accesses the slot in that same five-second transaction and
+returns material or a revision only after commit. Individual revocation, revoke-all,
+disable, and all package backup writes use the same account-first lock order.
+An invalidator ordered first denies queued access; an access transaction ordered
+first commits before invalidation. Delivery of its prepared result can race
+invalidation. Expiry is checked at admission after the account lock, not continuously
+during the bounded operation. Already returned data is not recalled.
+Expired-reference cleanup may remove an expired session without this account lock;
+it grants no access or extension of an already admitted operation.
+
+Malformed, unknown, expired, revoked, or disabled sessions and absent read slots
+share `ErrUnavailable`; failed authorization returns no slot data or revision.
+Invalid write envelopes/revisions still fail as `ErrInvalidInput` before SQL.
+Cancelled or failed transactions return no result; uncertain commits must not be
+retried blindly. These internal methods add owner authorization from existing
+sessions, not a login ceremony or recent authentication. A future trusted host must
+enforce recent-authentication policy, CSRF protection, and rate limits before product
+use. Owner-ID methods remain trusted internal operations, not endpoint adapters.
+No HTTP route, browser transport, migration, or grant change is introduced.
 
 ## Submission database
 

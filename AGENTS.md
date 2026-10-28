@@ -77,7 +77,8 @@ Distinguish implemented from planned behavior.
   vault, or HTTP integration.
 - `internal/identity/memberbackup`: development-only account-scoped encrypted
   member-backup slots with fixed public binding, compare-and-swap revisions,
-  deletion tombstones, and disable serialization; no authentication, recent-auth
+  deletion tombstones, and session-derived access serialized with revocation/disable;
+  no authentication ceremony, recent-auth
   enforcement, enrollment, browser/API integration, PRF, or recovery.
 
 ## Product direction

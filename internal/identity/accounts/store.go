@@ -148,6 +148,8 @@ func (s *Store) Resolve(ctx context.Context, token []byte) (Session, error) {
 }
 
 // Revoke is idempotent for a well-sized unknown, expired, or already revoked token.
+// It locks the account before deletion, serializing with session-scoped backup
+// access. Already returned data and previously admitted operations are not recalled.
 func (s *Store) Revoke(ctx context.Context, token []byte) error {
 	digest, ok := tokenDigest(token)
 	if !ok {
@@ -158,8 +160,29 @@ func (s *Store) Revoke(ctx context.Context, token []byte) error {
 	if err := s.ready(ctx); err != nil {
 		return err
 	}
-	if _, err := s.pool.Exec(ctx, "DELETE FROM anonce.account_sessions WHERE token_digest = $1", digest[:]); err != nil {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return failure(ctx, "begin account session revocation")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var rawID []byte
+	err = tx.QueryRow(ctx, "SELECT account_id FROM anonce.account_sessions WHERE token_digest = $1", digest[:]).Scan(&rawID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	var id ID
+	if err != nil || len(rawID) != len(id) {
+		return failure(ctx, "find revoked session account")
+	}
+	copy(id[:], rawID)
+	if err := lockAccount(ctx, tx, id, false); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "DELETE FROM anonce.account_sessions WHERE token_digest = $1", digest[:]); err != nil {
 		return failure(ctx, "revoke account session")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return failure(ctx, "commit account session revocation")
 	}
 	return nil
 }

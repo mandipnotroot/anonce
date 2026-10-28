@@ -51,6 +51,9 @@ Available foundations:
   encrypted envelopes, fixed public binding, revision-checked updates/deletion,
   retained tombstones, and disable serialization. Credentials, product vault access,
   protocol tables, and HTTP persistence remain unavailable.
+  Internal session-scoped backup methods now derive the owner from a live session,
+  recheck expiry after lock waits, and serialize with revocation/disable. Login
+  ceremonies, recent-authentication policy, and browser/API integration remain open.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).

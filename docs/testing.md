@@ -47,6 +47,7 @@ regressions belong in `internal/identity/accounts/testdata/fuzz/FuzzAccountToken
 | Configuration | 8192 bytes before parsing; separate listen/source-URL limits |
 | Migration admission | `FuzzMigrationAdmission`: 1025-byte target and 65-byte credential caps; fixed service/hex admission only, no database or network work |
 | Member-backup storage admission | `FuzzMemberBackupAdmission`: 33-byte public key, 109-byte envelope, and fixed-width revision; independent exact envelope/revision oracle, no KDF, database, or network work |
+| Session-scoped backup admission | `FuzzMemberBackupSessionAdmission`: 33-byte token/public key, 109-byte envelope, fixed-width revision; fail-closed read/write/delete and unchanged token checks, no database or network work |
 | Container bind opt-in | `FuzzContainerListen`: 129-byte listen input cap and one Boolean; only native loopback or explicitly opted-in IPv4 unspecified binding |
 | Backup structure | Maximum backup size plus one byte; allocation-free parser, no Argon2id |
 | Member/reviewer payload | 49-byte input cap, 48-byte ASN.1 profile; no KDF work |
@@ -109,7 +110,7 @@ profile-2 nonce prefix and library composition.
 | Configuration | `TestConfig`, `TestConfigSourceURL`, `TestRunFailures`, `TestContainerNetwork`, `TestContainerNetworkFlag`, `FuzzContainerListen` |
 | Migration service/credential/command bounds, cancelled/concurrent calls, regular-file/symlink/FIFO rejection, separate embedded files, and bounded admission fuzzing | `TestMigrationAdmission`, `TestMigrationCancellation`, `TestMigrationCredentialFiles`, `TestMigrationFiles`, `FuzzMigrationAdmission` |
 | Account lifetime/token/cleanup admission, zero-value failure, concurrent cancelled calls, digest composition and unchanged inputs | `TestAccountAdmission`, `TestAccountUnavailableAndCancellation`, `TestAccountTokenDigest`, `FuzzAccountToken` |
-| Member-backup envelope bounds/profile/purpose, revision/key admission, zero-value failure, concurrent cancelled calls, and unchanged inputs | `TestMemberBackupEnvelope`, `TestMemberBackupAdmission`, `TestMemberBackupUnavailableAndCancellation`, `FuzzMemberBackupAdmission` |
+| Member-backup envelope bounds/profile/purpose, revision/key and session-token admission, zero-value failure, concurrent cancelled calls, and unchanged inputs | `TestMemberBackupEnvelope`, `TestMemberBackupAdmission`, `TestMemberBackupUnavailableAndCancellation`, `TestMemberBackupSessionAdmission`, `FuzzMemberBackupAdmission`, `FuzzMemberBackupSessionAdmission` |
 | Fixed-target local liveness probe, exact bounded body/status, no redirect/credentials, response-header limit, cancellation, and unavailable targets | `TestProbe`, `TestProbeCancellationAndFailures` |
 | No-replace/distinct secret generation, existing-file preservation, directory/file permissions, malformed/missing/duplicate files, symlinks/FIFOs, engine version boundary, and unsafe normalized Compose model rejection | `scripts/test_containers.py`, included in `make policy-test` |
 | Routing and input isolation | `TestInfrastructureRoutes`, `TestInfrastructureMethods`, `TestUnavailableRoutesRespectServiceBoundary`, `TestInfrastructureDoesNotReadOrReflectRequestData`, `TestServeRejectsBodyBeforeContinue` |
@@ -309,6 +310,17 @@ Named subtests cover:
   revision changes; subsequent writes acquire the released locks. Constructor
   cancellation and closed-pool errors fail without driver diagnostics.
 - `revision-exhaustion`: the final positive revision remains readable and cannot wrap.
+- `session-owner-scope`: session-derived owner isolation, revision conflicts,
+  fixed binding, deletion/recreation, and independent result buffers.
+- `session-invalidation`: unknown/expired/revoked/disabled sessions cannot read,
+  write, or delete; individual revocation leaves sibling sessions usable.
+- `session-lock-order-and-cancellation`: individual/all-session revocation and
+  disable wait for admitted access; cancelled invalidation leaves sessions usable.
+  Held account/backup locks cancel access without changing the slot.
+- `session-expiry-after-lock-wait`: a session expiring while queued on the account
+  lock cannot update its backup. The database clock determines expiry.
+- `session-revocation-after-lock-wait`: queued reads, writes, and deletes observe
+  revocation committed while they waited, returning no data or mutation.
 
 The submission run rejects construction; separate SQL checks require all identity
 account/session/member-backup tables to be absent there. These are internal storage

@@ -65,7 +65,7 @@ properties described below.
   delivery. SQL and driver diagnostics are not returned. Read-only digest theft
   does not directly reveal bearer secrets; stolen secrets or application/database
   write compromise still permit impersonation.
-- Session creation, revoke-all, and disabling take the account row lock first.
+- Session creation, individual/all-session revocation, and disabling take the account row lock first.
   Disable atomically removes sessions and prevents new ones. An already-authorized
   in-flight request is not recalled; no distributed revocation or browser logout
   claim is made. Database clock rollback can affect expiry.
@@ -79,11 +79,20 @@ properties described below.
 ### Internal member-backup storage
 
 - The [development store](database.md#local-member-backup-storage-contract) scopes
-  every operation to a trusted caller-supplied owner and checks account status.
+  owner-ID operations to a trusted caller-supplied owner and checks account status.
   Account locks serialize writes with disable; revisions reject stale concurrent
   writes, and tombstones prevent stale creation after deletion. Reads already in
   flight or returned before disable are not recalled. No HTTP owner authorization,
   recent-authentication enforcement, write rate limit, or browser integration exists.
+- [Session-scoped access](database.md#session-scoped-member-backup-access) derives
+  ownership from an existing session and holds the account lock through backup
+  access and commit. A fresh post-lock query rejects expired or revoked sessions,
+  including revocation committed during a lock wait. Individual/all-session
+  revocation and disable serialize with this access; a transaction admitted first
+  commits before invalidation, but its result delivery can race invalidation.
+  Expiry after admission does not recall
+  bounded in-flight work. A stolen live token can access that owner's ciphertext;
+  session ownership alone supplies no recent-authentication or recovery authority.
 - The runtime role can access all identity slots. Package scoping is not RLS and
   cannot contain a compromised identity application. Public bindings are linkable
   metadata, never anonymous-request fields. Stored ciphertext can be guessed

@@ -8,6 +8,8 @@ package memberbackup
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"math"
 	"os"
@@ -16,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -85,6 +88,11 @@ func TestPostgresMemberBackups(t *testing.T) {
 	t.Run("concurrent-disable", testPostgresConcurrentDisable)
 	t.Run("cancellation-and-rollback", testPostgresCancellation)
 	t.Run("revision-exhaustion", testPostgresRevisionExhaustion)
+	t.Run("session-owner-scope", testPostgresSessionScope)
+	t.Run("session-invalidation", testPostgresSessionInvalidation)
+	t.Run("session-lock-order-and-cancellation", testPostgresSessionLocking)
+	t.Run("session-expiry-after-lock-wait", testPostgresSessionExpiryWait)
+	t.Run("session-revocation-after-lock-wait", testPostgresSessionRevocationWait)
 }
 
 func testPostgresLifecycle(t *testing.T) {
@@ -396,5 +404,336 @@ func testPostgresRevisionExhaustion(t *testing.T) {
 	}
 	if record, err := store.Get(t.Context(), owner); err != nil || record.Revision != math.MaxInt64 || record.Backup != nil {
 		t.Fatal("exhausted tombstone changed")
+	}
+}
+
+func sessionToken(t *testing.T, store *accounts.Store, owner accounts.ID) []byte {
+	t.Helper()
+	token, _, err := store.StartSession(t.Context(), owner, time.Minute)
+	if err != nil {
+		t.Fatal("create backup test session")
+	}
+	t.Cleanup(func() { clear(token) })
+	return token
+}
+
+func deniedSession(t *testing.T, store *Store, token []byte) {
+	t.Helper()
+	if record, err := store.GetForSession(t.Context(), token); record.Revision != 0 || record.Backup != nil || record.PublicKey != ([32]byte{}) || !errors.Is(err, ErrUnavailable) {
+		t.Fatal("unavailable session read backup")
+	}
+	if revision, err := store.PutForSession(t.Context(), token, 1, make([]byte, 32), envelope()); revision != 0 || !errors.Is(err, ErrUnavailable) {
+		t.Fatal("unavailable session wrote backup")
+	}
+	if revision, err := store.DeleteForSession(t.Context(), token, 1); revision != 0 || !errors.Is(err, ErrUnavailable) {
+		t.Fatal("unavailable session deleted backup")
+	}
+}
+
+func testPostgresSessionScope(t *testing.T) {
+	store, accountStore, _ := testStores(t)
+	first, second := newOwner(t, accountStore), newOwner(t, accountStore)
+	token, other := sessionToken(t, accountStore, first), sessionToken(t, accountStore, second)
+	before := bytes.Clone(token)
+	defer clear(before)
+	public, backup := make([]byte, 32), envelope()
+	if revision, err := store.PutForSession(t.Context(), token, 0, public, backup); err != nil || revision != 1 {
+		t.Fatal("session slot creation failed")
+	}
+	if _, err := store.GetForSession(t.Context(), other); !errors.Is(err, ErrUnavailable) {
+		t.Fatal("another session read first owner's slot")
+	}
+	if _, err := store.PutForSession(t.Context(), other, 1, public, backup); !errors.Is(err, ErrConflict) {
+		t.Fatal("another session replaced first owner's slot")
+	}
+	if _, err := store.DeleteForSession(t.Context(), other, 1); !errors.Is(err, ErrConflict) {
+		t.Fatal("another session deleted first owner's slot")
+	}
+	if revision, err := store.PutForSession(t.Context(), other, 0, public, backup); err != nil || revision != 1 {
+		t.Fatal("independent session slot creation failed")
+	}
+	for _, expected := range []int64{0, 2} {
+		if _, err := store.PutForSession(t.Context(), token, expected, public, backup); !errors.Is(err, ErrConflict) {
+			t.Fatal("session write ignored revision")
+		}
+	}
+	changed := bytes.Clone(public)
+	changed[0] = 1
+	if _, err := store.PutForSession(t.Context(), token, 1, changed, backup); !errors.Is(err, ErrConflict) {
+		t.Fatal("session write rebound key")
+	}
+	if revision, err := store.PutForSession(t.Context(), token, 1, public, backup); err != nil || revision != 2 {
+		t.Fatal("session replacement failed")
+	}
+	if revision, err := store.DeleteForSession(t.Context(), token, 2); err != nil || revision != 3 {
+		t.Fatal("session deletion failed")
+	}
+	if record, err := store.GetForSession(t.Context(), token); err != nil || record.Revision != 3 || record.Backup != nil || record.PublicKey != ([32]byte{}) {
+		t.Fatal("session tombstone lost")
+	}
+	if _, err := store.PutForSession(t.Context(), token, 0, public, backup); !errors.Is(err, ErrConflict) {
+		t.Fatal("session stale create restored tombstone")
+	}
+	if revision, err := store.PutForSession(t.Context(), token, 3, public, backup); err != nil || revision != 4 {
+		t.Fatal("session same-key restoration failed")
+	}
+	record, err := store.GetForSession(t.Context(), token)
+	if err != nil || record.Revision != 4 || !bytes.Equal(record.Backup, backup) || !bytes.Equal(before, token) {
+		t.Fatal("session data or input ownership differs")
+	}
+	record.Backup[50] ^= 1
+	if fresh, err := store.GetForSession(t.Context(), token); err != nil || !bytes.Equal(fresh.Backup, backup) {
+		t.Fatal("session result aliases storage")
+	}
+	if record, err := store.GetForSession(t.Context(), other); err != nil || record.Revision != 1 {
+		t.Fatal("session writes affected another owner")
+	}
+}
+
+func testPostgresSessionInvalidation(t *testing.T) {
+	store, accountStore, pool := testStores(t)
+	for _, operation := range []string{"revoke", "revoke-all", "disable", "expired", "unknown"} {
+		t.Run(operation, func(t *testing.T) {
+			owner := newOwner(t, accountStore)
+			token, sibling := sessionToken(t, accountStore, owner), sessionToken(t, accountStore, owner)
+			if _, err := store.PutForSession(t.Context(), token, 0, make([]byte, 32), envelope()); err != nil {
+				t.Fatal("prepare session invalidation slot")
+			}
+			var err error
+			switch operation {
+			case "revoke":
+				err = accountStore.Revoke(t.Context(), token)
+			case "revoke-all":
+				err = accountStore.RevokeAll(t.Context(), owner)
+			case "disable":
+				err = accountStore.Disable(t.Context(), owner)
+			case "expired":
+				// Runtime can insert synthetic expired sessions, but cannot extend
+				// or edit a live session's immutable expiry.
+				token = make([]byte, accounts.TokenSize)
+				rand.Read(token)
+				defer clear(token)
+				digest := sha256.Sum256(token)
+				_, err = pool.Exec(t.Context(), `INSERT INTO anonce.account_sessions(token_digest, account_id, created_at, expires_at)
+                    VALUES ($1,$2,statement_timestamp()-interval '2 hours',statement_timestamp()-interval '1 hour')`, digest[:], owner[:])
+			case "unknown":
+				token = make([]byte, accounts.TokenSize)
+				rand.Read(token)
+				defer clear(token)
+			}
+			if err != nil {
+				t.Fatal("invalidate backup session")
+			}
+			deniedSession(t, store, token)
+			if operation == "disable" || operation == "revoke-all" {
+				deniedSession(t, store, sibling)
+			} else if record, err := store.GetForSession(t.Context(), sibling); err != nil || record.Revision != 1 {
+				t.Fatal("invalidation affected sibling or backup")
+			}
+		})
+	}
+	pool.Close()
+	denied := make([]byte, accounts.TokenSize)
+	if record, err := store.GetForSession(t.Context(), denied); err == nil || record.Backup != nil || bytes.Contains([]byte(err.Error()), []byte("postgres")) {
+		t.Fatal("closed session pool admitted or leaked diagnostics")
+	}
+}
+
+func testPostgresSessionLocking(t *testing.T) {
+	store, accountStore, pool := testStores(t)
+	for _, operation := range []string{"revoke", "revoke-all", "disable"} {
+		t.Run(operation, func(t *testing.T) {
+			owner := newOwner(t, accountStore)
+			token := sessionToken(t, accountStore, owner)
+			// The callback runs only after the account lock and session recheck.
+			// Each invalidator must wait for this transaction, then cancel cleanly.
+			err := store.withSession(t.Context(), token, func(ctx context.Context, _ pgx.Tx, _ accounts.ID) error {
+				ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+				defer cancel()
+				var err error
+				switch operation {
+				case "revoke":
+					err = accountStore.Revoke(ctx, token)
+				case "revoke-all":
+					err = accountStore.RevokeAll(ctx, owner)
+				case "disable":
+					err = accountStore.Disable(ctx, owner)
+				}
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Error("invalidation did not wait for authorized operation")
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal("authorized transaction failed")
+			}
+			if revision, err := store.PutForSession(t.Context(), token, 0, make([]byte, 32), envelope()); err != nil || revision != 1 {
+				t.Fatal("cancelled invalidation changed session or retained lock")
+			}
+		})
+	}
+	owner := newOwner(t, accountStore)
+	token := sessionToken(t, accountStore, owner)
+	if _, err := store.PutForSession(t.Context(), token, 0, make([]byte, 32), envelope()); err != nil {
+		t.Fatal("prepare blocked session access")
+	}
+	for _, lock := range []string{
+		"SELECT state FROM anonce.accounts WHERE id=$1 FOR UPDATE",
+		"SELECT revision FROM anonce.member_key_backups WHERE account_id=$1 FOR UPDATE",
+	} {
+		tx, err := pool.Begin(t.Context())
+		if err != nil {
+			t.Fatal("begin session access test lock")
+		}
+		defer func() { _ = tx.Rollback(t.Context()) }()
+		if _, err := tx.Exec(t.Context(), lock, owner[:]); err != nil {
+			t.Fatal("hold session access test lock")
+		}
+		for _, operation := range []string{"read", "put", "delete"} {
+			if operation == "read" && lock != "SELECT state FROM anonce.accounts WHERE id=$1 FOR UPDATE" {
+				continue // Reads do not lock the backup row.
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+			switch operation {
+			case "read":
+				record, readErr := store.GetForSession(ctx, token)
+				err = readErr
+				if record.Revision != 0 || record.Backup != nil {
+					t.Error("cancelled session read returned material")
+				}
+			case "put":
+				_, err = store.PutForSession(ctx, token, 1, make([]byte, 32), envelope())
+			case "delete":
+				_, err = store.DeleteForSession(ctx, token, 1)
+			}
+			cancel()
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatal("session access cancellation lost")
+			}
+		}
+		if err := tx.Rollback(t.Context()); err != nil {
+			t.Fatal("release session access test lock")
+		}
+		if record, err := store.GetForSession(t.Context(), token); err != nil || record.Revision != 1 {
+			t.Fatal("cancelled access changed slot or retained lock")
+		}
+	}
+}
+
+func testPostgresSessionExpiryWait(t *testing.T) {
+	store, accountStore, pool := testStores(t)
+	owner := newOwner(t, accountStore)
+	if _, err := store.Put(t.Context(), owner, 0, make([]byte, 32), envelope()); err != nil {
+		t.Fatal("prepare expiry test slot")
+	}
+	token, session, err := accountStore.StartSession(t.Context(), owner, time.Second)
+	if err != nil {
+		t.Fatal("create short backup session")
+	}
+	defer clear(token)
+	tx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal("begin expiry test lock")
+	}
+	defer func() { _ = tx.Rollback(t.Context()) }()
+	if _, err := tx.Exec(t.Context(), "SELECT state FROM anonce.accounts WHERE id=$1 FOR UPDATE", owner[:]); err != nil {
+		t.Fatal("hold expiry test lock")
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := store.PutForSession(t.Context(), token, 1, make([]byte, 32), envelope())
+		done <- err
+	}()
+	waitForBlockedAccess(t, pool, tx.Conn().PgConn().PID())
+	// Keep the account locked beyond absolute expiry using the database clock.
+	if _, err := pool.Exec(t.Context(), "SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM ($1::timestamptz - clock_timestamp()))) + 0.05)", session.ExpiresAt); err != nil {
+		t.Fatal("wait for database session expiry")
+	}
+	if err := tx.Rollback(t.Context()); err != nil {
+		t.Fatal("release expiry test lock")
+	}
+	if err := <-done; !errors.Is(err, ErrUnavailable) {
+		t.Fatal("session expiring during lock wait wrote backup")
+	}
+	if record, err := store.Get(t.Context(), owner); err != nil || record.Revision != 1 {
+		t.Fatal("expired queued access changed backup")
+	}
+}
+
+func waitForBlockedAccess(t *testing.T, pool *pgxpool.Pool, blocker uint32) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var blocked bool
+		err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+            WHERE usename = current_user AND $1::integer = ANY(pg_blocking_pids(pid)))`, int64(blocker)).Scan(&blocked)
+		if err != nil {
+			t.Fatal("observe blocked session access")
+		}
+		if blocked {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("session access did not reach account lock")
+		case <-ticker.C:
+		}
+	}
+}
+
+func testPostgresSessionRevocationWait(t *testing.T) {
+	store, accountStore, pool := testStores(t)
+	for _, operation := range []string{"read", "put", "delete"} {
+		t.Run(operation, func(t *testing.T) {
+			owner := newOwner(t, accountStore)
+			token := sessionToken(t, accountStore, owner)
+			if _, err := store.PutForSession(t.Context(), token, 0, make([]byte, 32), envelope()); err != nil {
+				t.Fatal("prepare queued revocation slot")
+			}
+			tx, err := pool.Begin(t.Context())
+			if err != nil {
+				t.Fatal("begin test revocation")
+			}
+			defer func() { _ = tx.Rollback(t.Context()) }()
+			if _, err := tx.Exec(t.Context(), "SELECT state FROM anonce.accounts WHERE id=$1 FOR UPDATE", owner[:]); err != nil {
+				t.Fatal("hold test revocation account lock")
+			}
+			done := make(chan error, 1)
+			go func() {
+				var err error
+				switch operation {
+				case "read":
+					record, readErr := store.GetForSession(t.Context(), token)
+					err = readErr
+					if record.Revision != 0 || record.Backup != nil {
+						t.Error("queued revoked read returned material")
+					}
+				case "put":
+					_, err = store.PutForSession(t.Context(), token, 1, make([]byte, 32), envelope())
+				case "delete":
+					_, err = store.DeleteForSession(t.Context(), token, 1)
+				}
+				done <- err
+			}()
+			waitForBlockedAccess(t, pool, tx.Conn().PgConn().PID())
+			// Match Revoke's transaction after proving the access already found
+			// its owner and is waiting. Only a post-lock statement sees deletion.
+			digest := sha256.Sum256(token)
+			if _, err := tx.Exec(t.Context(), "DELETE FROM anonce.account_sessions WHERE token_digest=$1", digest[:]); err != nil {
+				t.Fatal("delete queued session")
+			}
+			if err := tx.Commit(t.Context()); err != nil {
+				t.Fatal("commit queued session revocation")
+			}
+			if err := <-done; !errors.Is(err, ErrUnavailable) {
+				t.Fatal("queued access survived committed revocation")
+			}
+			if record, err := store.Get(t.Context(), owner); err != nil || record.Revision != 1 || record.Backup == nil {
+				t.Fatal("queued revoked access changed backup")
+			}
+		})
 	}
 }

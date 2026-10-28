@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Package memberbackup provides development-only identity-side encrypted member
-// backup persistence. It does not authenticate callers, decrypt, enroll, or recover
-// keys. See docs/database.md for the internal storage and retention contract.
+// backup persistence with trusted-owner or existing-session access. It performs no
+// authentication ceremony, decryption, enrollment, or key recovery. See
+// docs/database.md for the internal storage and retention contract.
 package memberbackup
 
 import (
@@ -41,9 +42,10 @@ type Record struct {
 
 // Store borrows an identity runtime pool without query/parameter tracing. Callers
 // must preserve the checked role/database on every connection. It is concurrency
-// safe; its zero value fails closed. All methods require a trusted authenticated
-// owner ID, not an unchecked request parameter. Recent authentication and rate
-// limits are future host responsibilities. There is no HTTP integration.
+// safe; its zero value fails closed. Owner-ID methods require a trusted
+// authenticated owner, not an unchecked request parameter. ForSession methods
+// derive the owner from a live session. Recent authentication and rate limits
+// are host responsibilities. There is no HTTP integration.
 type Store struct{ pool *pgxpool.Pool }
 
 func New(ctx context.Context, pool *pgxpool.Pool) (*Store, error) {
@@ -74,9 +76,17 @@ func (s *Store) Get(ctx context.Context, owner accounts.ID) (Record, error) {
 	if err := s.ready(ctx); err != nil {
 		return Record{}, err
 	}
+	return read(ctx, s.pool, owner)
+}
+
+type rowQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func read(ctx context.Context, query rowQuerier, owner accounts.ID) (Record, error) {
 	var record Record
 	var public []byte
-	err := s.pool.QueryRow(ctx, `SELECT b.public_key, b.revision, b.backup
+	err := query.QueryRow(ctx, `SELECT b.public_key, b.revision, b.backup
         FROM anonce.member_key_backups b JOIN anonce.accounts a ON a.id = b.account_id
         WHERE b.account_id = $1 AND a.state = 'active'`, owner[:]).Scan(&public, &record.Revision, &record.Backup)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -123,17 +133,36 @@ func (s *Store) write(ctx context.Context, owner accounts.ID, expected int64, pu
 		return 0, failure(ctx, "begin member backup write")
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockOwner(ctx, tx, owner); err != nil {
+		return 0, err
+	}
+	revision, err := writeSlot(ctx, tx, owner, expected, public, backup, deleting)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, failure(ctx, "commit member backup write")
+	}
+	return revision, nil
+}
+
+func lockOwner(ctx context.Context, tx pgx.Tx, owner accounts.ID) error {
 	// Match account/session lock ordering. Recheck state after any lock wait,
 	// before executing a separate statement with a fresh Read Committed snapshot.
 	var state string
-	err = tx.QueryRow(ctx, "SELECT state FROM anonce.accounts WHERE id = $1 FOR UPDATE", owner[:]).Scan(&state)
+	err := tx.QueryRow(ctx, "SELECT state FROM anonce.accounts WHERE id = $1 FOR UPDATE", owner[:]).Scan(&state)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && state != "active" {
-		return 0, ErrUnavailable
+		return ErrUnavailable
 	}
 	if err != nil {
-		return 0, failure(ctx, "lock member backup account")
+		return failure(ctx, "lock member backup account")
 	}
+	return nil
+}
+
+func writeSlot(ctx context.Context, tx pgx.Tx, owner accounts.ID, expected int64, public, backup []byte, deleting bool) (int64, error) {
 	var revision int64
+	var err error
 	switch {
 	case deleting:
 		err = tx.QueryRow(ctx, `UPDATE anonce.member_key_backups SET backup = NULL, revision = revision + 1
@@ -147,9 +176,6 @@ func (s *Store) write(ctx context.Context, owner accounts.ID, expected int64, pu
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ErrConflict
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
 	}
 	if err != nil {
 		return 0, failure(ctx, "write member backup")

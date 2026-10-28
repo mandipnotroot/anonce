@@ -46,6 +46,10 @@ boundary. Passkey verification, cookie encoding/delivery, CSRF, idle expiry,
 rotation, and sensitive-action reauthentication are not implemented by this store.
 Account sessions never unlock device backups or authorize anonymous submissions.
 
+Internal [session-scoped member-backup access](database.md#session-scoped-member-backup-access)
+reuses this exact digest/expiry profile for owner authorization. It neither derives
+an unlock key nor changes encrypted backups, session secrets, or browser formats.
+
 ## Membership and authorization
 
 The development [database bootstrap](database.md#local-container-bootstrap) uses

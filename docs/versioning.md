@@ -40,6 +40,12 @@ owner/revision API and public envelope validation add no vault HTTP format or
 cryptographic profile; published SQL remains immutable. Existing HTTP, CLI key tooling, WASM, and
 device cryptographic profiles are unchanged.
 
+The internal [session-scoped backup methods](database.md#session-scoped-member-backup-access)
+add no public API or automatic release bump. Individual session revocation now uses
+the existing account-first transaction lock order. Migration ranges, grants, HTTP,
+CLI, WASM, and cryptographic formats are unchanged; existing owner-ID storage
+methods retain their trusted-caller contract.
+
 The [browser account/vault direction](key-management.md#browser-account-vault)
 is a documentation requirement, not a new supported API or cryptographic profile.
 Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional

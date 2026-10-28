@@ -151,3 +151,81 @@ func FuzzMemberBackupAdmission(f *testing.F) {
 		}
 	})
 }
+
+func TestMemberBackupSessionAdmission(t *testing.T) {
+	t.Parallel()
+	for _, store := range []*Store{nil, {}} {
+		for _, size := range []int{0, 1, accounts.TokenSize - 1, accounts.TokenSize, accounts.TokenSize + 1, 1024} {
+			for _, cancelled := range []bool{false, true} {
+				ctx, cancel := context.WithCancel(t.Context())
+				if cancelled {
+					cancel()
+				}
+				want := ErrUnavailable
+				if cancelled && size == accounts.TokenSize {
+					want = context.Canceled
+				}
+				token := bytes.Repeat([]byte{42}, size)
+				before := bytes.Clone(token)
+				if record, err := store.GetForSession(ctx, token); record.PublicKey != ([32]byte{}) || record.Revision != 0 || record.Backup != nil || !errors.Is(err, want) {
+					t.Fatal("session read did not fail closed")
+				}
+				if revision, err := store.PutForSession(ctx, token, 0, make([]byte, 32), envelope()); revision != 0 || !errors.Is(err, want) {
+					t.Fatal("session put did not fail closed")
+				}
+				if revision, err := store.DeleteForSession(ctx, token, 1); revision != 0 || !errors.Is(err, want) {
+					t.Fatal("session delete did not fail closed")
+				}
+				if !bytes.Equal(token, before) {
+					t.Fatal("caller token changed")
+				}
+				clear(token)
+				clear(before)
+				cancel()
+			}
+		}
+		for _, revision := range []int64{-1, math.MaxInt64} {
+			if got, err := store.PutForSession(t.Context(), nil, revision, make([]byte, 32), envelope()); got != 0 || !errors.Is(err, ErrInvalidInput) {
+				t.Fatal("invalid session write revision admitted")
+			}
+		}
+		for _, revision := range []int64{-1, 0, math.MaxInt64} {
+			if got, err := store.DeleteForSession(t.Context(), nil, revision); got != 0 || !errors.Is(err, ErrInvalidInput) {
+				t.Fatal("invalid session delete revision admitted")
+			}
+		}
+	}
+}
+
+func FuzzMemberBackupSessionAdmission(f *testing.F) {
+	f.Add(make([]byte, accounts.TokenSize), int64(0), make([]byte, 32), envelope())
+	f.Add([]byte{}, int64(-1), []byte{}, []byte{})
+	f.Fuzz(func(t *testing.T, token []byte, revision int64, public, backup []byte) {
+		if len(token) > accounts.TokenSize+1 || len(public) > 33 || len(backup) > BackupSize+1 {
+			return
+		}
+		before := bytes.Clone(token)
+		defer clear(before)
+		var store Store
+		want := ErrUnavailable
+		if revision < 0 || revision == math.MaxInt64 || len(public) != 32 || !validBackup(backup) {
+			want = ErrInvalidInput
+		}
+		if got, err := store.PutForSession(t.Context(), token, revision, public, backup); got != 0 || !errors.Is(err, want) {
+			t.Fatal("session put admission differs")
+		}
+		want = ErrUnavailable
+		if revision <= 0 || revision == math.MaxInt64 {
+			want = ErrInvalidInput
+		}
+		if got, err := store.DeleteForSession(t.Context(), token, revision); got != 0 || !errors.Is(err, want) {
+			t.Fatal("session delete admission differs")
+		}
+		if got, err := store.GetForSession(t.Context(), token); got.Backup != nil || got.Revision != 0 || !errors.Is(err, ErrUnavailable) {
+			t.Fatal("session read admission differs")
+		}
+		if !bytes.Equal(before, token) {
+			t.Fatal("session token changed")
+		}
+	})
+}
