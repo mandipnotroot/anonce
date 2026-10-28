@@ -24,21 +24,21 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
   setup/export and expected-key restoration. Owned encoding buffers clear before
   return; malformed Unicode and oversized encodings fail without truncation or
   fallback. Immutable strings cannot be erased. Node bounds/cleanup/Unicode checks
-  and native/worker backup checks cover the interface; synthetic browser cases are
-  added but unverified. Byte methods, worker transport, HTTP, CLI, and cryptographic
+  and native/worker backup checks cover the interface; the opt-in synthetic browser
+  checks also pass. Byte methods, worker transport, HTTP, CLI, and cryptographic
   formats are unchanged. No UI, storage, authentication, PRF, or recovery is added.
 - Opt-in confirmed member setup and encrypted-backup export through shared Go
   `CreateConfirmed`/`BackupConfirmed` and development WASM/worker
   `createConfirmed`/`backupConfirmed`. Bounded exact password matching precedes key
   generation, private-key snapshots, and derivation; mismatches return no output
   and preserve session state. Native race/fuzz and Node bridge/worker checks cover
-  confirmation and cancellation. Synthetic browser cases are added but unverified.
+  confirmation and cancellation; the opt-in synthetic browser checks also pass.
   No UI, storage, account authentication, recovery, or cryptographic profile is added.
 - Unlocked member-session encrypted-backup export through shared Go `Backup` and
   development WASM/worker `backup(password)`, preserving the key with fresh profile-2
   encryption and ciphertext-only output. Native race/cancellation, Node compatibility,
-  and worker bounds/fuzz checks cover export; synthetic browser cases are added but
-  unverified. Old backups remain valid. No persistence, account-password change,
+  and worker bounds/fuzz checks cover export; the opt-in synthetic browser checks
+  also pass. Old backups remain valid. No persistence, account-password change,
   key rotation, revocation, recovery, product UI, or new cryptographic profile is added.
 - Optional development member-worker `AbortSignal` ownership for immediate local
   cancellation of startup, unlocked custody, or pending restoration. Cancellation

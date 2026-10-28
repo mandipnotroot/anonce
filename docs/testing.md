@@ -137,9 +137,9 @@ profile-2 nonce prefix and library composition.
 | Member bridge admission, confirmation bounds, cancellation before shared-session entry, cleanup-before-shutdown, repeated lock/close, concurrent lock/admission, and size fuzzing | `TestMemberWASMSizes`, `TestMemberWASMConfirmationSizes`, `TestMemberWASMLifecycle`, `TestMemberWASMConcurrent`, `FuzzMemberWASMSizes` |
 | Actual member WASM bridge, opaque passwords, native backup restore, WASM backup opened natively, public CSR validation, wrong password/purpose, corruption/key mismatch, byte types/arity/bounds, hostile objects/shadowed getters, shared/detached arrays, input snapshots, public-output ownership, lock/close and namespace collision | `TestMemberNativeWASMCompatibility` with `scripts/member_wasm_test.mjs`, through `make member-wasm-test` |
 | Worker owner single-instance/operation admission, snapshots/transfers, input types/arity/bounds, hostile properties, timeout/termination, late replies, protocol/transport failures, and bounded command fuzzing | Named `node:test` cases in `scripts/member_worker_test.mjs`, through `make member-wasm-test` |
-| Ciphertext-only backup export, changed-password restoration, native exact-key/randomness compatibility, input snapshots, locked/invalid rejection, pending disposal/lock, unchanged deadlines, malformed reply rejection, and bounded command fuzzing | `TestMemberNativeWASMCompatibility`, `TestMemberNativeWorkerCompatibility`, named backup/protocol/deadline cases in `scripts/member_worker_test.mjs`; synthetic browser export cases are added but unverified |
-| Actual confirmed bridge/worker setup/export, native key/backup compatibility, mismatch without state change or fallback, dual input snapshots, hostile confirmation getters, invalid types/arity/bounds, terminal cancellation, unchanged deadlines, and bounded transport fuzzing | `TestMemberNativeWASMCompatibility`, `TestMemberNativeWorkerCompatibility`, named confirmed-operation/input/deadline/protocol cases in `scripts/member_worker_test.mjs`; synthetic browser confirmation cases are added but unverified |
-| Worker text UTF-8 preservation, Unicode/byte boundaries, malformed surrogate rejection, no coercion or normalization, shared confirmation, synchronous buffer clearing including partial/failed encoding, missing APIs without fallback, busy/closed rejection, unchanged deadlines, and bounded Unicode generation | Named text passphrase/buffer/API cases in `scripts/member_worker_test.mjs`; actual setup, byte/text restoration, native exact-key export, mismatch state, and cancellation in `TestMemberNativeWorkerCompatibility`; synthetic browser text cases are added but unverified |
+| Ciphertext-only backup export, changed-password restoration, native exact-key/randomness compatibility, input snapshots, locked/invalid rejection, pending disposal/lock, unchanged deadlines, malformed reply rejection, and bounded command fuzzing | `TestMemberNativeWASMCompatibility`, `TestMemberNativeWorkerCompatibility`, named backup/protocol/deadline cases in `scripts/member_worker_test.mjs`, and synthetic export cases in `TestMemberNativeBrowserCompatibility` |
+| Actual confirmed bridge/worker setup/export, native key/backup compatibility, mismatch without state change or fallback, dual input snapshots, hostile confirmation getters, invalid types/arity/bounds, terminal cancellation, unchanged deadlines, and bounded transport fuzzing | `TestMemberNativeWASMCompatibility`, `TestMemberNativeWorkerCompatibility`, named confirmed-operation/input/deadline/protocol cases in `scripts/member_worker_test.mjs`, and synthetic confirmation cases in `TestMemberNativeBrowserCompatibility` |
+| Worker text UTF-8 preservation, Unicode/byte boundaries, malformed surrogate rejection, no coercion or normalization, shared confirmation, synchronous buffer clearing including partial/failed encoding, missing APIs without fallback, busy/closed rejection, unchanged deadlines, and bounded Unicode generation | Named text passphrase/buffer/API cases in `scripts/member_worker_test.mjs`; actual setup, byte/text restoration, native exact-key export, mismatch state, and cancellation in `TestMemberNativeWorkerCompatibility` and synthetic text cases in `TestMemberNativeBrowserCompatibility` |
 | Stable secret-free closure Promise, every terminal path during startup/idle/pending work, failed/denied construction, cleanup before observers, late subscribers, unchanged readiness, no nonterminal settlement, and explicit replacement | Named `node:test` closed Promise cases in `scripts/member_worker_test.mjs`; actual Node worker lock/disposal/failure/expiry observations in `TestMemberNativeWorkerCompatibility` |
 | Optional owner abort signal, pre-aborted/invalid admission without resources, startup/idle/pending cancellation, unchanged settled results, ignored reasons/shadowed properties, suppressed-event state checks, listener cleanup, no peer notification, and explicit replacement | Named `node:test` abort cases in `scripts/member_worker_test.mjs`; actual startup/idle/pending cancellation in `TestMemberNativeWorkerCompatibility` and `TestMemberNativeBrowserCompatibility` |
 | Delayed startup/operation/lifetime deadline checks on each clock, exact boundaries, pre-admission/busy/reply/visibility rejection, unchanged lifetime after successful work, invalid/missing/failed/backward readings, captured clocks, local cleanup and explicit replacement | Named `node:test` deadline, lifetime, and clock cases in `scripts/member_worker_test.mjs`; valid actual-worker replies discarded after synthetic clock advances in `TestMemberNativeWorkerCompatibility` |
@@ -277,8 +277,8 @@ bounds, and synchronous mutable-buffer cleanup. Actual Node workers compare text
 setup with independent byte restoration and export a native member key under a
 synthetic 1024-byte Unicode passphrase, opened and compared natively. These checks
 do not establish independent human entry, DOM cleanup, autofill behavior, or erasure
-of JavaScript strings. The synthetic browser harness includes equivalent text cases;
-they remain unverified until the opt-in browser target runs successfully.
+of JavaScript strings. The synthetic browser harness also exercises text setup,
+byte/text restoration, encrypted export, mismatch handling, and pending cancellation.
 Bounded transport fuzzing runs with `member-wasm-test`, not `make fuzz`; retain
 failures as synthetic cases in `scripts/member_worker_test.mjs`, never key fixtures.
 
@@ -349,10 +349,11 @@ Browser abort-controller checks additionally cancel startup, unlocked custody, a
 pending restoration, reject already-aborted startup, and explicitly restore the
 same native backup/key through a new owner. Worker disappearance is checked after
 the cancellation cases; this is not an erasure or hard cancellation-time guarantee.
-The host-signal, encrypted-export, and password-confirmation browser cases remain
-unverified. On 2026-10-28 the host-signal/export run lacked required Chromium system
-libraries; the confirmation run failed before startup because no reviewed executable
-was supplied through `MEMBER_BROWSER`.
+On 2026-10-28, `make member-browser-test` passed on Linux x86_64 with the pinned
+Chromium 159.0.8129.0 executable and Go/Node runtimes. This includes the host-signal,
+encrypted-export, password-confirmation, and UTF-8 text passphrase cases. The successful
+run supersedes earlier attempts blocked by missing libraries or an unset executable
+path. The driver retained the browser sandbox and CSP checks.
 
 Navigation and tab-switch checks observe worker disappearance, not memory erasure
 or reliable global revocation. Event-loop progress is not a mobile latency/memory budget.
