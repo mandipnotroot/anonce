@@ -40,10 +40,11 @@ const backup = decode(native.backup);
 const publicKey = decode(native.publicKey);
 const first = await start();
 const api = globalThis.anonceMember;
-assert.deepEqual(Object.keys(api).sort(), ["backup", "close", "create", "lock", "request", "unlock"]);
+assert.deepEqual(Object.keys(api).sort(), ["backup", "backupConfirmed", "close", "create", "createConfirmed", "lock", "request", "unlock"]);
 assert.equal(globalThis.anonce, undefined, "member module must not install the public verifier");
 assert.equal(await api.request(), null, "initial session must be locked");
 assert.equal(await api.backup(password), null, "locked export admitted");
+assert.equal(await api.backupConfirmed(password, password), null, "locked confirmed export admitted");
 const hostile = new Proxy({}, { get() { assert.fail("object input inspected"); }, getPrototypeOf() { assert.fail("object prototype inspected"); } });
 const revoked = Proxy.revocable({}, {});
 revoked.revoke();
@@ -58,6 +59,10 @@ const detached = new Uint8Array(32);
 structuredClone(detached.buffer, { transfer: [detached.buffer] });
 invalid.push(detached);
 for (const value of invalid) {
+  for (const method of ["createConfirmed", "backupConfirmed"]) {
+    assert.equal(await api[method](value, password), null, "invalid confirmed password accepted");
+    assert.equal(await api[method](password, value), null, "invalid confirmation accepted");
+  }
   assert.equal(await api.create(value), null, "invalid password type/size accepted");
   assert.equal(await api.backup(value), null, "invalid export password accepted");
   assert.equal(await api.unlock(value, backup, publicKey), null);
@@ -66,12 +71,20 @@ for (const value of invalid) {
 }
 for (const args of [[], [password, "extra"]]) assert.equal(await api.create(...args), null);
 for (const args of [[], [password, "extra"]]) assert.equal(await api.backup(...args), null);
+for (const method of ["createConfirmed", "backupConfirmed"]) {
+  for (const args of [[], [password], [password, password, password]]) assert.equal(await api[method](...args), null);
+}
 for (const args of [[], [password], [password, backup], [password, backup, publicKey, "extra"]]) assert.equal(await api.unlock(...args), null);
 for (const size of [0, 107, 109, 1024, 1025]) assert.equal(await api.unlock(password, new Uint8Array(size), publicKey), null);
 for (const size of [0, 31, 33, 1024, 1025]) assert.equal(await api.unlock(password, backup, new Uint8Array(size)), null);
 assert.equal(api.close("extra"), null);
 assert.equal(api.lock("extra"), null);
 assert.equal(await api.request("extra"), null);
+const unconfirmed = password.slice(); unconfirmed[unconfirmed.length - 1] ^= 1;
+assert.equal(await api.createConfirmed(password, unconfirmed), null, "mismatched setup admitted");
+assert.equal(await api.createConfirmed(password, password.subarray(1)), null, "unequal lengths admitted");
+assert.equal(await api.request(), null, "failed confirmation created a key");
+unconfirmed.fill(0);
 
 // Restore a native backup, including non-UTF-8/NUL password bytes. Shadowed
 // properties must not be inspected, including on a valid nonzero-offset view.
@@ -98,9 +111,15 @@ assert.equal(encode((await api.request()).csr), native.csr, "public output alias
 // Re-export the restored key under a different synthetic password. This is not
 // key rotation or deletion of the original backup.
 const replacement = password.slice(); replacement[0] ^= 1;
+assert.equal(await api.backupConfirmed(replacement, password), null, "mismatched export admitted");
+assert.equal(encode((await api.request()).csr), native.csr, "mismatch changed retained key");
 const exportInput = replacement.slice();
-const exporting = api.backup(exportInput);
-exportInput.fill(0);
+const exportConfirmation = replacement.slice();
+for (const name of ["buffer", "byteLength", "byteOffset", "length", "constructor"]) {
+  Object.defineProperty(exportConfirmation, name, { get() { assert.fail("shadowed confirmation inspected"); } });
+}
+const exporting = api.backupConfirmed(exportInput, exportConfirmation);
+exportInput.fill(0); exportConfirmation.fill(0);
 // The direct WASM call may finish before returning its Promise. Deterministic
 // pending admission is checked natively and through the dedicated worker owner.
 const rebackup = await exporting;
@@ -135,8 +154,9 @@ for (const args of [[wrong, backup, publicKey], [password, backup, mismatch], [p
 // Setup snapshots caller bytes before returning. Generated backup opens both in
 // WASM and natively, without a raw-private-key or arbitrary-signing interface.
 const ownedPassword = password.slice();
-const creating = api.create(ownedPassword);
-ownedPassword.fill(0);
+const ownedConfirmation = password.slice();
+const creating = api.createConfirmed(ownedPassword, ownedConfirmation);
+ownedPassword.fill(0); ownedConfirmation.fill(0);
 const setup = await creating;
 assert.deepEqual(Object.keys(setup).sort(), ["backup", "csr", "publicKey"]);
 assert.ok(setup.backup instanceof Uint8Array && setup.backup.length === 108);

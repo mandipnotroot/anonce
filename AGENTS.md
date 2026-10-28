@@ -40,14 +40,15 @@ Distinguish implemented from planned behavior.
   profile validation; no identity claims, certificate issuance, or transport.
 - `internal/client/membersession`: in-memory member setup, required expected-key
   restoration, fixed CSR requests, unlocked encrypted-backup export, and explicit
-  lock/cancellation; public-only results and encrypted backups, no account binding
+  lock/cancellation, with opt-in confirmed setup/export passwords;
+  public-only results and encrypted backups, no account binding
   or persistence.
 - `cmd/wasm`, `internal/clientwasm`: public-only member request verification using
   the shared parser, with opt-in expected-public-key matching; local WASM artifacts
   and Node compatibility checks, no page integration, device-key access, or enrollment.
 - `cmd/memberwasm`, `internal/memberwasm`: separate development-only WASM member
   setup/restoration, fixed requests, encrypted-backup export, and lock/shutdown
-  using shared sessions;
+  using shared sessions, including two-input confirmed setup/export;
   bounded byte inputs, public/encrypted outputs, native/Node backup checks;
   no page integration, account binding, storage, passkeys, or enrollment.
 - `internal/memberworker`: development-only dedicated-worker owner for that bridge,

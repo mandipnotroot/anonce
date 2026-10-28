@@ -62,6 +62,7 @@ try {
   assert.equal(globalThis.anonceMember, undefined, "private session loaded into owner realm");
   assert.equal(await session.request(), null);
   assert.equal(await session.backup(password), null, "locked export admitted");
+  assert.equal(await session.backupConfirmed(password, password), null, "locked confirmed export admitted");
   const snapshot = password.slice();
   const restoring = session.unlock(snapshot, backup, key);
   snapshot.fill(0);
@@ -73,9 +74,12 @@ try {
   restored.csr.fill(0); restored.publicKey.fill(0);
   assert.equal(encode((await session.request()).csr), native.csr);
   const replacement = password.slice(); replacement[0] ^= 1;
+  assert.equal(await session.backupConfirmed(replacement, password), null, "mismatched export admitted");
+  assert.equal(encode((await session.request()).csr), native.csr, "mismatch changed retained key");
   const exportInput = replacement.slice();
-  const exporting = session.backup(exportInput);
-  exportInput.fill(0);
+  const exportConfirmation = replacement.slice();
+  const exporting = session.backupConfirmed(exportInput, exportConfirmation);
+  exportInput.fill(0); exportConfirmation.fill(0);
   assert.equal(await session.backup(password), null, "concurrent export admitted");
   const rebackup = await exporting;
   assert.deepEqual(Object.keys(rebackup), ["backup"]);
@@ -106,8 +110,14 @@ try {
     assert.equal(await fresh.unlock(...inputs), null);
     assert.equal(await fresh.request(), null, "restoration failure created replacement key");
   }
+  assert.equal(await fresh.createConfirmed(password, wrong), null, "mismatched setup admitted");
+  assert.equal(await fresh.createConfirmed(password, password.subarray(1)), null, "unequal lengths admitted");
+  assert.equal(await fresh.request(), null, "failed confirmation created a key");
   wrong.fill(0);
-  const setup = await fresh.create(password);
+  const createInput = password.slice(), createConfirmation = password.slice();
+  const creating = fresh.createConfirmed(createInput, createConfirmation);
+  createInput.fill(0); createConfirmation.fill(0);
+  const setup = await creating;
   assert.notEqual(encode(setup.publicKey), native.publicKey);
   exported = { backup: encode(setup.backup), csr: encode(setup.csr), publicKey: encode(setup.publicKey), backupExport };
   fresh.close();
@@ -238,6 +248,8 @@ try {
   mode = undefined;
   // Exercise the real worker's replay and malformed-command fail-closed paths.
   for (const malformed of [{ version: 2, id: 1, method: "request", inputs: [] },
+    { version: 1, id: 2, method: "createConfirmed", inputs: [password] },
+    { version: 1, id: 2, method: "backupConfirmed", inputs: [password, new Uint8Array(1025)] },
     { version: 1, id: 1, method: "unlock", inputs: [password] },
     { version: 1, id: 1, method: "close", inputs: [] },
     { version: 1, id: 1, method: "request", inputs: [] }]) {

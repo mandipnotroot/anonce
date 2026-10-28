@@ -155,6 +155,13 @@ properties described below.
 
 ### Local WASM member bridge
 
+- Optional [confirmed setup/export](key-management.md#in-memory-member-sessions)
+  rejects mismatched bounded password bytes in shared Go before key generation,
+  private-key snapshot, or derivation. Both bridge/worker input copies are bounded;
+  accessible owned copies are cleared on normal completion. A mismatch returns no
+  output and leaves the session unchanged. Confirmation does not establish password
+  strength, persistence, independent user entry, authentication, or recovery. The
+  trusted host still sees both inputs, and runtime copies prevent complete erasure.
 - The [separate adapter](key-management.md#local-wasm-member-sessions) retains one
   shared session, snapshots bounded nonshared byte inputs, and returns only public
   enrollment material and encrypted backups. Invalid or busy calls start no operation;

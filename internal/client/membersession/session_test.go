@@ -353,7 +353,7 @@ func (c *cancelOnCheck) Err() error {
 func TestMemberSessionPendingLock(t *testing.T) {
 	s, setup, password := testSetup(t)
 	s.Lock()
-	for _, action := range []string{"create", "unlock"} {
+	for _, action := range []string{"create", "createConfirmed", "unlock"} {
 		t.Run(action, func(t *testing.T) {
 			// Hold the shared derivation slot before Argon2id. No session call
 			// can finish cryptographic work until this barrier is released.
@@ -377,8 +377,14 @@ func TestMemberSessionPendingLock(t *testing.T) {
 			started := &notifyContext{Context: t.Context(), entered: make(chan struct{})}
 			done := make(chan error, 1)
 			go func() {
-				if action == "create" {
-					result, err := s.Create(started, password)
+				if action == "create" || action == "createConfirmed" {
+					var result *Setup
+					var err error
+					if action == "createConfirmed" {
+						result, err = s.CreateConfirmed(started, password, password)
+					} else {
+						result, err = s.Create(started, password)
+					}
 					if result != nil {
 						t.Error("locked pending setup returned public output")
 					}

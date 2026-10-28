@@ -124,6 +124,14 @@ ciphertext. It neither changes the session's key nor revokes existing backups.
 Lock cancels pending export without waiting for Argon2id; owned temporary key
 copies and discarded ciphertext are cleared before admission is released.
 
+Opt-in `CreateConfirmed` and `BackupConfirmed` validate two independent password
+bounds and use [Go 1.27.3 `crypto/subtle.ConstantTimeCompare`](https://pkg.go.dev/crypto/subtle@go1.27.3#ConstantTimeCompare)
+before delegating to those same compositions (consulted 2026-10-28). Equal-length
+comparison is independent of byte contents; differing lengths reject immediately.
+No padding copies, text normalization, JavaScript comparison, or new cryptographic
+profile is introduced. This is a local confirmation check, not a universal browser
+timing guarantee or proof that two independent entries were collected.
+
 Only public enrollment material and encrypted backups leave the session API.
 Lock clears its owned private buffer and cancels pending setup/restoration/export; a
 cancelled operation cannot install a key. One pending setup/restoration/export per

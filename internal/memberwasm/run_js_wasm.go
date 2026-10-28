@@ -38,9 +38,12 @@ func Run() {
 	rejected := func() any { return promise.Call("resolve", js.Null()) }
 	work := func(args []js.Value, method string) any {
 		unlock := method == "unlock"
+		confirmed := method == "createConfirmed" || method == "backupConfirmed"
 		count := 1
 		if unlock {
 			count = 3
+		} else if confirmed {
+			count = 2
 		}
 		if len(args) != count {
 			return rejected()
@@ -54,7 +57,11 @@ func Run() {
 			}
 			views[i], sizes[i] = view, size
 		}
-		if !validSizes(sizes[0], sizes[1], sizes[2], unlock) {
+		valid := validSizes(sizes[0], sizes[1], sizes[2], unlock)
+		if confirmed {
+			valid = validConfirmationSizes(sizes[0], sizes[1])
+		}
+		if !valid {
 			return rejected()
 		}
 		op := h.begin()
@@ -76,11 +83,17 @@ func Run() {
 				switch method {
 				case "backup":
 					backup, err = h.session.Backup(op.ctx, inputs[0])
+				case "backupConfirmed":
+					backup, err = h.session.BackupConfirmed(op.ctx, inputs[0], inputs[1])
 				case "unlock":
 					enrollment, err = h.session.Unlock(op.ctx, inputs[0], inputs[1], inputs[2])
-				case "create":
+				case "create", "createConfirmed":
 					var setup *membersession.Setup
-					setup, err = h.session.Create(op.ctx, inputs[0])
+					if confirmed {
+						setup, err = h.session.CreateConfirmed(op.ctx, inputs[0], inputs[1])
+					} else {
+						setup, err = h.session.Create(op.ctx, inputs[0])
+					}
 					if err == nil {
 						enrollment, backup = &setup.Enrollment, setup.Backup
 					}
@@ -111,8 +124,10 @@ func Run() {
 		return promise.New(executor)
 	}
 	create := bind(func(args []js.Value) any { return work(args, "create") })
+	createConfirmed := bind(func(args []js.Value) any { return work(args, "createConfirmed") })
 	unlock := bind(func(args []js.Value) any { return work(args, "unlock") })
 	backup := bind(func(args []js.Value) any { return work(args, "backup") })
+	backupConfirmed := bind(func(args []js.Value) any { return work(args, "backupConfirmed") })
 	request := bind(func(args []js.Value) any {
 		if len(args) != 0 {
 			return rejected()
@@ -142,6 +157,7 @@ func Run() {
 	})
 	global.Set("anonceMember", map[string]any{
 		"create": create, "unlock": unlock, "backup": backup, "request": request, "lock": lock, "close": closeBridge,
+		"createConfirmed": createConfirmed, "backupConfirmed": backupConfirmed,
 	})
 	defer global.Delete("anonceMember")
 	<-h.done

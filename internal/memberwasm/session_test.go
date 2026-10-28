@@ -38,6 +38,17 @@ func TestMemberWASMSizes(t *testing.T) {
 	}
 }
 
+func TestMemberWASMConfirmationSizes(t *testing.T) {
+	for _, password := range []int{-1, 0, 1, 1024, 1025} {
+		for _, confirmation := range []int{-1, 0, 1, 1024, 1025} {
+			want := password >= 1 && password <= 1024 && confirmation >= 1 && confirmation <= 1024
+			if validConfirmationSizes(password, confirmation) != want {
+				t.Fatal("incorrect confirmation input bounds")
+			}
+		}
+	}
+}
+
 func TestMemberWASMLifecycle(t *testing.T) {
 	for _, closePending := range []bool{false, true} {
 		t.Run(map[bool]string{false: "lock", true: "close"}[closePending], func(t *testing.T) {
@@ -108,6 +119,9 @@ func FuzzMemberWASMSizes(f *testing.F) {
 	f.Add(uint16(1), uint16(108), uint8(32), true)
 	f.Add(uint16(1024), uint16(0), uint8(0), false)
 	f.Fuzz(func(t *testing.T, password, backup uint16, expected uint8, unlock bool) {
+		if validConfirmationSizes(int(password), int(backup)) != (password >= 1 && password <= 1024 && backup >= 1 && backup <= 1024) {
+			t.Fatal("invalid confirmation admission decision")
+		}
 		want := password >= 1 && password <= 1024
 		if unlock {
 			want = want && backup == 108 && expected == 32

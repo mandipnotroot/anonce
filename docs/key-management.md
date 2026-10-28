@@ -171,9 +171,11 @@ I/O. It uses the existing [profiles](cryptography.md#in-memory-member-session-co
 | Method | Behavior |
 | --- | --- |
 | `Create(ctx, password)` | From locked/idle state, generate a key, encrypt its backup, and prepare a CSR; retain the key only on success; return encrypted backup and public enrollment material |
+| `CreateConfirmed(ctx, password, confirmation)` | Require matching bounded password bytes before calling `Create`; mismatch creates no key or backup |
 | `Unlock(ctx, password, backup, expected)` | From locked/idle state, validate a backup and require its full public key to match the supplied 32-byte expected key before preparing a CSR or retaining the key; return public enrollment material only |
 | `Request(ctx)` | Prepare the same fixed, identity-free CSR for the unlocked key; fail while locked |
 | `Backup(ctx, password)` | From unlocked/idle state, encrypt the same member key into a fresh profile-2 backup; return ciphertext only, without retaining the password or changing existing backups |
+| `BackupConfirmed(ctx, password, confirmation)` | Require matching bounded replacement passwords before calling `Backup`; mismatch leaves the unlocked key unchanged and returns no ciphertext |
 | `Lock()` | Clear the owned private buffer and cancel pending setup/restoration/export; safe to repeat |
 
 Public enrollment material contains an independently owned 32-byte Ed25519 public
@@ -185,10 +187,25 @@ successful local setup does not mean a backup was stored or enrollment completed
 
 Backup export supports future browser local-passphrase changes without exporting
 private bytes or opening an old backup again. It returns a caller-owned 108-byte
-encrypted backup. Confirm the local password and arrange safe persistence in the
-future host interface; neither is supplied here. This is not an account-password
-change, key rotation, recovery, or revocation. Existing backups and passwords remain
-valid for their copies. No server update or deletion occurs.
+encrypted backup. The confirmed methods below support matching local passwords;
+safe persistence and a user interface remain host responsibilities. This is not
+an account-password change, key rotation, recovery, or revocation. Existing backups
+and passwords remain valid for their copies. No server update or deletion occurs.
+
+The confirmed methods accept two independently supplied 1–1024-byte passwords.
+They validate both bounds and compare exact opaque bytes through Go's
+`crypto/subtle.ConstantTimeCompare` before key generation, private-key snapshot,
+or derivation. There is no trimming, normalization, text encoding, or password-strength
+check. Invalid sizes return `keystore.ErrInvalidInput`; a mismatch returns
+`ErrPasswordMismatch`, without reflecting inputs or changing session state.
+Both buffers remain caller-owned and must not change until return; clear both
+after use. Matching inputs can alias. Existing single-password methods remain
+available for callers that already provide confirmation separately.
+
+Confirmation prevents accidental mismatched setup/export, not a hostile host,
+weak passwords, loss of backup, account takeover, or old-backup use. Hosts must
+obtain both entries independently; passing the same entry twice supplies no user
+confirmation. Browser text-entry encoding and accessible prompts still need review.
 
 Unlock requires an independently trusted expected key. Copying that key from the
 backup's server metadata alone does not establish substitution protection against
@@ -637,9 +654,11 @@ After a trusted host starts this module with the matching `Go.run`,
 | Method | Contract |
 | --- | --- |
 | `create(password)` | One `Uint8Array` of 1–1024 opaque password bytes; automatically generate a member key and return a Promise of `{publicKey, csr, backup}` |
+| `createConfirmed(password, confirmation)` | Two `Uint8Array` passwords with the same independent bounds; use shared Go confirmation before setup; same result as `create`, or `null` on mismatch |
 | `unlock(password, backup, expected)` | Three `Uint8Array` inputs: password as above, exactly 108 backup bytes, and an independently trusted 32-byte expected public key; return a Promise of `{publicKey, csr}` only after typed validation and matching |
 | `request()` | No arguments; Promise of `{publicKey, csr}` for the unlocked session |
 | `backup(password)` | One password `Uint8Array` with the same bounds as creation; from an unlocked session, Promise of `{backup}` containing only a fresh 108-byte encrypted backup of the retained key |
+| `backupConfirmed(password, confirmation)` | Two bounded `Uint8Array` passwords; use shared Go confirmation before encrypted export; same result as `backup`, or `null` on mismatch |
 | `lock()` | No arguments; clear the owned key and cancel pending work; return `null`; safe to repeat |
 | `close()` | No arguments; lock, cancel, wait for pending input cleanup and Promise settlement, remove the namespace, release callbacks, and let `Go.run` finish; return `null` |
 
@@ -656,6 +675,10 @@ Intrinsic typed-array getters ignore shadowed caller properties. Accepted bytes
 are snapshotted synchronously before returning the Promise. Clear caller password
 buffers after invocation; the adapter clears its owned copies before settlement.
 It does not modify caller inputs or retain passwords/backups after completion.
+The confirmed methods bound both inputs before copying either, snapshot both in
+the invoking event turn, and clear both owned Go buffers before settlement. They
+do not compare password contents in JavaScript. Mismatch returns only `null`,
+leaves the session state unchanged, and never falls back to a single-password call.
 
 Only one data operation is admitted at a time, before input copying or goroutine
 creation. Setup/restoration also reject an unlocked session without replacing its
@@ -712,6 +735,7 @@ The runtime is never loaded into the owner realm.
 | `closed` | Stable Promise resolving once to `undefined` after terminal local cleanup, including failed construction; never rejects or exposes a reason |
 | `create(password)`, `unlock(password, backup, expected)`, `request()` | Same byte sizes, arity, public/encrypted results, and Promise/null failures as the direct bridge; one operation admitted before copying/posting |
 | `backup(password)` | Same bounded password and ciphertext-only result as the direct bridge; existing operation/lifetime deadlines and terminal cancellation apply without extending unlocked lifetime |
+| `createConfirmed(password, confirmation)`, `backupConfirmed(password, confirmation)` | Same two-input bounds, shared Go confirmation, and public/encrypted results as the direct bridge; both inputs snapshotted/transferred only after admission; mismatch is a nonterminal `null` |
 | `lock()` | No arguments; notify participating peers, then synchronously terminate locally and resolve pending work to `null`, even if posting fails; repeated calls are safe; extra arguments do nothing |
 | `close()` | No arguments; synchronously detach listeners, terminate locally, and resolve pending work to `null`, without notifying peers; repeated calls are safe; extra arguments do nothing |
 | `lockMemberWorkers()` | Separate module export, no arguments; post a lock even without a live local owner, close any local owner and the temporary channel; return `true` if posting succeeded, otherwise `false`; extra arguments return `false` without acting |

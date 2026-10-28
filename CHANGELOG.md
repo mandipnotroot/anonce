@@ -10,6 +10,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Opt-in confirmed member setup and encrypted-backup export through shared Go
+  `CreateConfirmed`/`BackupConfirmed` and development WASM/worker
+  `createConfirmed`/`backupConfirmed`. Bounded exact password matching precedes key
+  generation, private-key snapshots, and derivation; mismatches return no output
+  and preserve session state. Native race/fuzz and Node bridge/worker checks cover
+  confirmation and cancellation. Synthetic browser cases are added but unverified.
+  No UI, storage, account authentication, recovery, or cryptographic profile is added.
 - Unlocked member-session encrypted-backup export through shared Go `Backup` and
   development WASM/worker `backup(password)`, preserving the key with fresh profile-2
   encryption and ciphertext-only output. Native race/cancellation, Node compatibility,
@@ -151,6 +158,10 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking development bridge/worker method-set expansion for opt-in password
+  confirmation. Rebuild and deploy all member assets together; mixed method sets
+  fail closed. Existing methods, command envelopes, HTTP, CLI, and backup formats
+  are unchanged; confirmed calls never fall back to unconfirmed operations.
 - Breaking development bridge/worker method-set expansion for encrypted-backup
   export. Rebuild and deploy all member WASM/worker assets together; incompatible
   bridge method sets fail closed. Existing command envelopes, HTTP, CLI, and backup

@@ -20,6 +20,8 @@ also uses only an in-process interface. It adds no HTTP endpoint or OpenAPI sche
 the services still handle no passwords, private keys, or encrypted member backups.
 Its unlocked `backup(password)` method returns only local encrypted bytes; it is
 not a vault upload or password-change HTTP operation.
+Local `createConfirmed` and `backupConfirmed` add password confirmation in shared
+Go only; neither introduces a request, server password handling, or OpenAPI change.
 Its [worker lock notifications](key-management.md#lock-notifications-and-page-disposal)
 are local browser messages, not a logout endpoint or server revocation API. HTTP
 behavior and OpenAPI schemas remain unchanged.

@@ -90,16 +90,20 @@ func TestMemberSessionBackupState(t *testing.T) {
 	}
 	defer s.end(op)
 	defer clear(key)
-	for _, action := range []string{"create", "unlock", "backup"} {
+	for _, action := range []string{"create", "createConfirmed", "unlock", "backup", "backupConfirmed"} {
 		t.Run(action, func(t *testing.T) {
 			var err error
 			switch action {
 			case "create":
 				_, err = s.Create(t.Context(), password)
+			case "createConfirmed":
+				_, err = s.CreateConfirmed(t.Context(), password, password)
 			case "unlock":
 				_, err = s.Unlock(t.Context(), password, setup.Backup, setup.PublicKey)
 			case "backup":
 				_, err = s.Backup(t.Context(), password)
+			case "backupConfirmed":
+				_, err = s.BackupConfirmed(t.Context(), password, password)
 			}
 			if !errors.Is(err, ErrState) {
 				t.Fatalf("busy export admitted another operation: %v", err)
@@ -126,10 +130,25 @@ func TestMemberSessionBackupState(t *testing.T) {
 }
 
 func TestMemberSessionBackupCancellation(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "ordinary", true: "confirmed"}[confirmed], func(t *testing.T) {
+			testMemberSessionBackupCancellation(t, confirmed)
+		})
+	}
+}
+
+func testMemberSessionBackupCancellation(t *testing.T, confirmed bool) {
+	t.Helper()
 	s, setup, password := testSetup(t)
+	export := s.Backup
+	if confirmed {
+		export = func(ctx context.Context, password []byte) ([]byte, error) {
+			return s.BackupConfirmed(ctx, password, password)
+		}
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if backup, err := s.Backup(ctx, password); backup != nil || !errors.Is(err, context.Canceled) {
+	if backup, err := export(ctx, password); backup != nil || !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled export returned output or wrong error: %v", err)
 	}
 	for _, action := range []string{"cancel", "lock"} {
@@ -153,7 +172,7 @@ func TestMemberSessionBackupCancellation(t *testing.T) {
 			started := &notifyContext{Context: ctx, entered: make(chan struct{})}
 			done := make(chan error, 1)
 			go func() {
-				backup, err := s.Backup(started, password)
+				backup, err := export(started, password)
 				if backup != nil {
 					t.Error("cancelled export returned ciphertext")
 				}

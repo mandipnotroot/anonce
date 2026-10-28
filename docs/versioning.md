@@ -219,6 +219,14 @@ envelope and existing commands are unchanged, but older workers reject `backup`
 without fallback. HTTP, CLI, and cryptographic formats are unchanged. Export does
 not invalidate old backups or change server vault state.
 
+`CreateConfirmed`/`BackupConfirmed` and bridge/worker `createConfirmed`/
+`backupConfirmed` add opt-in password confirmation without changing existing method
+arity or results. The expanded fixed bridge method set and command allowlist still
+require `semver:major` review under the same mixed-build rule above: rebuild and
+deploy every member artifact together. Older workers reject the new commands;
+there is no fallback to an unconfirmed operation. Version-1 envelopes, existing
+methods, HTTP, CLI, and cryptographic formats are unchanged.
+
 ## Change classification
 
 Use the official SemVer definitions for stable releases. During `0.y.z`, apply

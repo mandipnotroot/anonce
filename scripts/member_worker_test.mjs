@@ -445,6 +445,10 @@ test("member worker rejects input types, arity, bounds, and hostile properties b
   invalid.push(new Uint8Array(forged));
   const password = Uint8Array.of(1), backup = new Uint8Array(108), key = new Uint8Array(32);
   for (const value of invalid) {
+    for (const method of ["createConfirmed", "backupConfirmed"]) {
+      assert.equal(await session[method](value, password), null);
+      assert.equal(await session[method](password, value), null);
+    }
     assert.equal(await session.create(value), null);
     assert.equal(await session.backup(value), null);
     assert.equal(await session.unlock(value, backup, key), null);
@@ -453,6 +457,9 @@ test("member worker rejects input types, arity, bounds, and hostile properties b
   }
   for (const args of [[], [password, password]]) assert.equal(await session.create(...args), null);
   for (const args of [[], [password, password]]) assert.equal(await session.backup(...args), null);
+  for (const method of ["createConfirmed", "backupConfirmed"]) {
+    for (const args of [[], [password], [password, password, password]]) assert.equal(await session[method](...args), null);
+  }
   for (const args of [[], [password], [password, backup], [password, backup, key, key]]) assert.equal(await session.unlock(...args), null);
   assert.equal(await session.request(1), null);
   for (const size of [1, 107, 109, 1024]) assert.equal(await session.unlock(password, new Uint8Array(size), key), null);
@@ -468,6 +475,58 @@ test("member worker rejects input types, arity, bounds, and hostile properties b
   assert.deepEqual([...storage], [9, 7, 8, 9]);
   worker.answer(setup());
   assert.ok(await pending);
+});
+
+test("member worker confirmed operations snapshot both inputs and preserve terminal cancellation", async (t) => {
+  const h = harness(t);
+  for (const method of ["createConfirmed", "backupConfirmed"]) {
+    for (const terminal of ["close", "lock", "abort", "peer", "visibility", "timeout"]) {
+      const controller = new AbortController();
+      const session = h.open(MemberWorkerSession, controller.signal), worker = h.workers.at(-1);
+      const channel = h.channels.at(-1);
+      assert.equal(await session[method](Uint8Array.of(1), Uint8Array.of(1)), null);
+      worker.ready();
+      const storage = Uint8Array.of(9, 0, 255, 9), password = storage.subarray(1, 3);
+      const confirmation = Uint8Array.of(0, 255);
+      for (const name of ["buffer", "byteLength", "byteOffset", "length", "constructor", Symbol.iterator]) {
+        Object.defineProperty(confirmation, name, { get() { assert.fail("shadowed confirmation inspected"); } });
+      }
+      const pending = session[method](password, confirmation);
+      assert.deepEqual([...storage], [9, 0, 255, 9], "caller input changed or detached");
+      password.fill(0); confirmation.fill(0);
+      assert.deepEqual(worker.posts.at(-1).inputs.map((view) => [...view]), [[0, 255], [0, 255]]);
+      assert.equal(worker.posts.at(-1).method, method);
+      assert.equal(await session[method](password, password), null, "busy confirmation admitted");
+      worker.answer(null); // Mismatch is a normal failure, not a terminal transport error.
+      assert.equal(await pending, null);
+      const value = method === "createConfirmed" ? setup() : encrypted();
+      const success = session[method](password, password);
+      worker.answer(value);
+      assert.deepEqual(await success, value);
+      const cancelled = session[method](password, password), late = worker.onmessage, id = worker.posts.at(-1).id;
+      if (terminal === "close") session.close();
+      if (terminal === "lock") session.lock();
+      if (terminal === "abort") controller.abort();
+      if (terminal === "peer") channel.onmessage({ data: "lock" });
+      if (terminal === "visibility") h.visibility("hidden");
+      if (terminal === "timeout") h.fire(120_000);
+      assert.equal(await cancelled, null);
+      assert.equal(await session.closed, undefined);
+      assert.equal(worker.terminated, true);
+      late({ data: { version: 1, id, result: value } });
+      assert.equal(await session[method](password, password), null);
+      h.document.visibilityState = "visible";
+    }
+    for (const malformed of [method === "createConfirmed" ? encrypted() : setup(), {},
+      method === "createConfirmed" ? { ...setup(), csr: new Uint8Array(130) } : { backup: new Uint8Array(109) }]) {
+      const session = h.open(), worker = h.workers.at(-1);
+      worker.ready();
+      const pending = session[method](Uint8Array.of(1), Uint8Array.of(1));
+      worker.answer(malformed);
+      assert.equal(await pending, null);
+      assert.equal(worker.terminated, true, "invalid confirmed result admitted");
+    }
+  }
 });
 
 test("member worker timeouts terminate startup, operations, and total lifetime", async (t) => {
@@ -516,20 +575,22 @@ test("member worker rejects delayed startup at either clock deadline without wai
 test("member worker enforces delayed operation deadlines before replies and busy calls", async (t) => {
   const h = harness(t);
   for (const clock of ["monotonic", "wall"]) {
-    for (const method of ["create", "unlock", "backup", "request"]) {
+    for (const method of ["create", "createConfirmed", "unlock", "backup", "backupConfirmed", "request"]) {
       for (const elapsed of [119_999, 120_000, 120_001]) {
         for (const boundary of ["reply", "busy", "visibility"]) {
           const session = h.open(), worker = h.workers.at(-1), channel = h.channels.at(-1);
           worker.ready();
           // Operation budgets start on admission, not at owner construction.
           h.time[clock] += 15_000;
-          const inputs = { create: [Uint8Array.of(7)], unlock: [Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32)], backup: [Uint8Array.of(7)], request: [] };
+          const inputs = { create: [Uint8Array.of(7)], createConfirmed: [Uint8Array.of(7), Uint8Array.of(7)],
+            unlock: [Uint8Array.of(7), new Uint8Array(108), new Uint8Array(32)], backup: [Uint8Array.of(7)],
+            backupConfirmed: [Uint8Array.of(7), Uint8Array.of(7)], request: [] };
           const pending = session[method](...inputs[method]);
           const late = worker.onmessage, id = worker.posts.at(-1).id;
           h.time[clock] += elapsed;
           if (boundary === "busy") assert.equal(await session.create(Uint8Array.of(7)), null);
           if (boundary === "visibility") h.visibility("visible");
-          const value = method === "create" ? setup() : method === "backup" ? encrypted() : enrollment();
+          const value = method.startsWith("create") ? setup() : method.startsWith("backup") ? encrypted() : enrollment();
           worker.answer(value);
           const expired = elapsed >= 120_000;
           assert.deepEqual(await pending, expired ? null : value, `${clock}/${method}/${elapsed}/${boundary}`);
@@ -1015,12 +1076,20 @@ test("member worker bounded protocol parser regression corpus", () => {
     const bytes = new Uint8Array(size);
     assert.equal(inputViews("create", [bytes]) !== null, size >= 1 && size <= 1024);
     assert.equal(inputViews("backup", [bytes]) !== null, size >= 1 && size <= 1024);
+    for (const method of ["createConfirmed", "backupConfirmed"]) {
+      assert.equal(inputViews(method, [bytes, password]) !== null, size >= 1 && size <= 1024);
+      assert.equal(inputViews(method, [password, bytes]) !== null, size >= 1 && size <= 1024);
+    }
     assert.equal(command({ ...valid, inputs: [password, bytes, key] }), size === 108);
     assert.equal(command({ ...valid, inputs: [password, backup, bytes] }), size === 32);
     assert.equal(byteView(bytes, 32) !== null, size === 32);
   }
   assert.equal(result(null, "create"), true);
   assert.equal(result(setup(), "create"), true);
+  assert.equal(result(setup(), "createConfirmed"), true);
+  assert.equal(result(encrypted(), "backupConfirmed"), true);
+  assert.equal(result(enrollment(), "createConfirmed"), false);
+  assert.equal(result(setup(), "backupConfirmed"), false);
   assert.equal(result(enrollment(), "unlock"), true);
   assert.equal(result(encrypted(), "backup"), true);
   assert.equal(result(null, "backup"), true);
@@ -1036,7 +1105,7 @@ test("member worker bounded command fuzzing", () => {
   // has at most four views of at most 1025 elements; no KDF or I/O occurs.
   const choose = (values) => values[randomInt(values.length)];
   for (let iteration = 0; iteration < 2048; iteration++) {
-    const method = choose(["create", "unlock", "backup", "request", "close", "__proto__", "", null]);
+    const method = choose(["create", "createConfirmed", "unlock", "backup", "backupConfirmed", "request", "close", "__proto__", "", null]);
     const version = randomInt(3), id = choose([-1, 0, 1, 2, 1.5, Number.MAX_SAFE_INTEGER + 1]);
     const metadata = Array.from({ length: randomInt(5) }, () => ({
       size: choose([0, 1, 31, 32, 33, 107, 108, 109, 1024, 1025]), type: randomInt(3),
@@ -1049,6 +1118,8 @@ test("member worker bounded command fuzzing", () => {
     if (!extra && version === 1 && (id === 1 || id === 2)) {
       if (method === "request") expected = metadata.length === 0;
       if (method === "create" || method === "backup") expected = metadata.length === 1 && metadata[0].type === 0 && metadata[0].size >= 1 && metadata[0].size <= 1024;
+      if (method === "createConfirmed" || method === "backupConfirmed") expected = metadata.length === 2 &&
+        metadata.every(({ type, size }) => type === 0 && size >= 1 && size <= 1024);
       if (method === "unlock") expected = metadata.length === 3 && metadata.every(({ type }) => type === 0) &&
         metadata[0].size >= 1 && metadata[0].size <= 1024 && metadata[1].size === 108 && metadata[2].size === 32;
     }

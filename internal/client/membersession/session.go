@@ -25,6 +25,8 @@ var (
 	ErrState = errors.New("member session unavailable")
 	// ErrKeyMismatch reports a validated backup for a different expected key.
 	ErrKeyMismatch = errors.New("member session key mismatch")
+	// ErrPasswordMismatch reports different bounded password and confirmation bytes.
+	ErrPasswordMismatch = errors.New("member session password confirmation mismatch")
 )
 
 // Enrollment contains independently owned public, linkable enrollment material.
@@ -84,6 +86,16 @@ func (s *Session) Create(ctx context.Context, password []byte) (*Setup, error) {
 		return nil, fmt.Errorf("create member session: %w", err)
 	}
 	return &Setup{Enrollment: *enrollment, Backup: backup}, nil
+}
+
+// CreateConfirmed requires two matching passwords before creating a session.
+// Both inputs are caller-owned opaque bytes, subject to Create's bounds and
+// ownership rules. Confirmation does not establish password strength or storage.
+func (s *Session) CreateConfirmed(ctx context.Context, password, confirmation []byte) (*Setup, error) {
+	if err := confirmPassword(ctx, password, confirmation); err != nil {
+		return nil, fmt.Errorf("confirm member setup: %w", err)
+	}
+	return s.Create(ctx, password)
 }
 
 // Unlock restores a member backup only if its validated public key matches the
@@ -162,6 +174,29 @@ func (s *Session) Backup(ctx context.Context, password []byte) ([]byte, error) {
 		return nil, fmt.Errorf("backup member session: %w", err)
 	}
 	return backup, nil
+}
+
+// BackupConfirmed requires matching replacement passwords before snapshotting
+// the unlocked key or deriving a backup key. Backup's other rules are unchanged;
+// a failed confirmation leaves the retained member key and old backups unchanged.
+func (s *Session) BackupConfirmed(ctx context.Context, password, confirmation []byte) ([]byte, error) {
+	if err := confirmPassword(ctx, password, confirmation); err != nil {
+		return nil, fmt.Errorf("confirm member backup: %w", err)
+	}
+	return s.Backup(ctx, password)
+}
+
+func confirmPassword(ctx context.Context, password, confirmation []byte) error {
+	if err := validatePassword(ctx, password); err != nil {
+		return err
+	}
+	if err := validatePassword(ctx, confirmation); err != nil {
+		return err
+	}
+	if subtle.ConstantTimeCompare(password, confirmation) != 1 {
+		return ErrPasswordMismatch
+	}
+	return nil
 }
 
 func (s *Session) publishBackup(op *operation, backup []byte) ([]byte, error) {

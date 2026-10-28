@@ -116,8 +116,10 @@ export class MemberWorkerSession {
   get closed() { return this.#closure; }
 
   create(...inputs) { return this.#call("create", inputs); }
+  createConfirmed(...inputs) { return this.#call("createConfirmed", inputs); }
   unlock(...inputs) { return this.#call("unlock", inputs); }
   backup(...inputs) { return this.#call("backup", inputs); }
+  backupConfirmed(...inputs) { return this.#call("backupConfirmed", inputs); }
   request(...inputs) { return this.#call("request", inputs); }
   lock(...args) {
     if (args.length !== 0 || this.#closed) return null;

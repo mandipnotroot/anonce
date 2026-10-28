@@ -27,6 +27,7 @@ export async function run(native) {
     const session = await open();
     check(await session.request() === null);
     check(await session.backup(password) === null);
+    check(await session.backupConfirmed(password, password) === null);
     const denied = new MemberWorkerSession();
     check(await denied.ready === false);
     check(await denied.closed === undefined);
@@ -41,9 +42,12 @@ export async function run(native) {
     const replacement = password.slice(); replacement[0] ^= 1;
     let rebackup;
     try {
+      check(await session.backupConfirmed(replacement, password) === null);
+      check(encode((await session.request()).csr) === native.csr);
       const snapshot = replacement.slice();
-      const exporting = session.backup(snapshot);
-      snapshot.fill(0);
+      const confirmation = replacement.slice();
+      const exporting = session.backupConfirmed(snapshot, confirmation);
+      snapshot.fill(0); confirmation.fill(0);
       check(await session.backup(password) === null);
       rebackup = await exporting;
       check(rebackup !== null && Object.keys(rebackup).join() === "backup" && rebackup.backup.length === 108);
@@ -62,9 +66,14 @@ export async function run(native) {
         check(await fresh.unlock(...inputs) === null);
         check(await fresh.request() === null); // Never create a replacement on failure.
       }
+      check(await fresh.createConfirmed(password, wrong) === null);
+      check(await fresh.request() === null);
     } finally { wrong.fill(0); }
     const before = heartbeat;
-    const setup = await fresh.create(password);
+    const createInput = password.slice(), confirmation = password.slice();
+    const creating = fresh.createConfirmed(createInput, confirmation);
+    createInput.fill(0); confirmation.fill(0);
+    const setup = await creating;
     check(setup !== null && encode(setup.publicKey) !== native.publicKey);
     check(heartbeat > before); // UI event loop progressed during full-cost WASM work.
     const exported = { backup: encode(setup.backup), publicKey: encode(setup.publicKey), csr: encode(setup.csr), backupExport };
