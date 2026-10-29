@@ -96,15 +96,15 @@ try{
    // actual reviewer worker still decrypts the later valid stored answer.
    await click(reviewer,"cancel");
    const isolated=await evaluate(reviewer,`(async()=>{
-     const {ReviewWorker}=await import('/assets/review-client.mjs');const {readReviewRecords}=await import('/assets/review-records.mjs');const m=await import('/assets/common.mjs');
+     const {ReviewWorker}=await import('/assets/review-client.mjs');const {readReviewRecords,reviewOwnerActive}=await import('/assets/review-records.mjs');const m=await import('/assets/common.mjs');
      const w=new ReviewWorker(true);try{if(!await w.ready)throw new Error('worker unavailable');const r=(await m.api('/api/browser/rounds')).find(r=>r.id===${JSON.stringify(round)});const stored=await m.localRecord('review:reviewer_one:'+r.id);const config=await m.api('/api/browser/config');const password=m.textBytes(${JSON.stringify(passphrase)});
        let unlocked;try{unlocked=await w.call('reviewerUnlock',password,m.decode(stored.backup,108),m.decode(r.bulletin,564,1587),m.decode(config.bulletin_key,32));}finally{password.fill(0);}if(!unlocked)throw new Error('unlock failed');
        const challenge=await m.api('/api/browser/review/challenge',{round:r.id,cursor:m.encode(new Uint8Array(16))},config.submission_origin);const proof=await w.call('proof',m.decode(challenge.challenge,81));let page;try{page=await m.api('/api/browser/review/read',{round:r.id,proof:m.encode(proof.bytes)},config.submission_origin);}finally{proof.bytes.fill(0);}
        const valid=page.records[0],changed=m.decode(valid.envelope,4145);changed[changed.length-1]^=1;const output=document.querySelector('.plaintext');output.replaceChildren();
-       const rejected=await readReviewRecords(w,[{envelope:m.encode(changed)},valid],()=>document.visibilityState==='visible'&&!w.closed,text=>{const p=document.createElement('p');p.textContent=text??'Encrypted answer unavailable';output.append(p);});
-       return {rejected,text:output.textContent};
+       const rejected=await readReviewRecords(w,[{envelope:m.encode(changed)},valid],()=>reviewOwnerActive(w,w,document.visibilityState,Date.parse(r.review_until)),text=>{const p=document.createElement('p');p.textContent=text??'Encrypted answer unavailable';output.append(p);});
+       const expired=reviewOwnerActive(w,w,document.visibilityState,Date.now());return {rejected,text:output.textContent,expired,closed:w.closed};
      }finally{w.close();}
-   })()`);assert.equal(isolated.rejected,1);assert.ok(isolated.text.includes('Encrypted answer unavailable'));assert.ok(isolated.text.includes(answer),'corrupted ciphertext must not suppress a later valid answer');
+   })()`);assert.equal(isolated.rejected,1);assert.ok(isolated.text.includes('Encrypted answer unavailable'));assert.ok(isolated.text.includes(answer),'corrupted ciphertext must not suppress a later valid answer');assert.equal(isolated.expired,false);assert.equal(isolated.closed,true,'review expiry must terminate the owner rather than reject an individual answer');
   assert.deepEqual([...leaks],[],"no passphrases, plaintext answers, credential cookies or external requests crossed the boundary");
   const cookies=(await send("Storage.getCookies",{browserContextId:memberContext})).cookies.filter(c=>c.name==="__Host-anonce-session");assert.equal(cookies.length,1);assert.equal(cookies[0].domain,"identity.localhost");assert.equal(cookies[0].secure,true);assert.equal(cookies[0].httpOnly,true);assert.equal(cookies[0].sameSite,"Strict");
   // Separate browser contexts may have independently visible windows. Open a
