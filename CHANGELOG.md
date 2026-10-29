@@ -10,6 +10,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Identity version-2 account/session migration and an internal pgx runtime-role
+  store with random digest-only session secrets, bounded absolute expiry,
+  revocation, transactional account disabling, and bounded expired-reference
+  cleanup. Opt-in `make db-account-test` runs real PostgreSQL persistence,
+  concurrency, cancellation, and grant checks with a race-enabled test binary.
+  No authentication ceremony, HTTP integration, membership binding, vault storage,
+  or anonymous authorization is added; submission storage remains unchanged.
 - Separate embedded identity/submission Goose SQL migration histories and a
   development-only pgx operator runner, with owner-created boundary markers,
   runtime read-only marker access, bounded session locking, and fail-closed history

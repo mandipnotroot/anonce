@@ -138,6 +138,14 @@ func TestMigrationFiles(t *testing.T) {
 		if _, err := fs.ReadFile(files, "../"+side+"/00001_storage_boundary.sql"); err == nil {
 			t.Fatal("history traversal accepted")
 		}
+		accounts, err := fs.ReadFile(files, "00002_accounts.sql")
+		if side == "submission" {
+			if !errors.Is(err, fs.ErrNotExist) {
+				t.Fatal("submission history contains account migration")
+			}
+		} else if err != nil || !bytes.Contains(accounts, []byte("CREATE TABLE anonce.accounts")) || !bytes.Contains(accounts, []byte("CREATE TABLE anonce.account_sessions")) {
+			t.Fatal("identity account migration missing")
+		}
 	}
 }
 

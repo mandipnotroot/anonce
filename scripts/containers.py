@@ -228,8 +228,9 @@ PGPASSFILE="$passfile" PGCONNECT_TIMEOUT=3 psql -XwqAt -v ON_ERROR_STOP=1 -v VER
             require(result.stdout.strip() == f"anonce_runtime|{side}|f|f|f".encode(), "runtime database privileges differ")
         return instances
 
-    def migration_image(self):
-        image = self.run(["docker", "build", "--target", "migration", "--quiet", "."], timeout=600).stdout.decode().strip()
+    def migration_image(self, target="migration"):
+        require(target in ("migration", "account-test"), "invalid database image target")
+        image = self.run(["docker", "build", "--target", target, "--quiet", "."], timeout=600).stdout.decode().strip()
         require(re.fullmatch(r"sha256:[0-9a-f]{64}", image) is not None, "invalid migration image identity")
         return image
 
@@ -291,6 +292,14 @@ def migration_checks(stack):
         result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table};")
         require(result.stdout.strip() == b"0", "failed migration advanced history")
         stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP TABLE anonce.storage_boundary;")
+        if side == "identity":
+            # Version 1 may already be published. A version-2 failure must leave
+            # its history intact and roll back all new application objects.
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; CREATE TABLE anonce.account_sessions(id integer);")
+            stack.migrate(side, image, allowed=False)
+            result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id; SELECT to_regclass('anonce.accounts') IS NULL;")
+            require(result.stdout.strip() == b"0\n1\nt", "failed account migration changed published state")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP TABLE anonce.account_sessions;")
         # Simultaneous first applications exercise the actual locked Go runner.
         with ThreadPoolExecutor(max_workers=2) as pool:
             list(pool.map(lambda _: stack.migrate(side, image), range(2)))
@@ -298,7 +307,8 @@ def migration_checks(stack):
         result = stack.sql(side, "runtime", "SELECT service FROM anonce.storage_boundary;")
         require(result.stdout.strip() == side.encode(), "wrong storage boundary")
         result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id;")
-        require(result.stdout.strip() == b"0\n1", "unexpected migration history")
+        latest = 2 if side == "identity" else 1
+        require(result.stdout.strip() == (b"0\n1\n2" if side == "identity" else b"0\n1"), "unexpected migration history")
         result = stack.sql(side, "migrator", "SET ROLE anonce_owner; SELECT bool_and(tableowner = 'anonce_owner') FROM pg_tables WHERE schemaname = 'anonce';")
         require(result.stdout.strip() == b"t", "migration objects have the wrong owner")
         for query in (f"SELECT * FROM {table};", f"DELETE FROM {table};", "DELETE FROM anonce.storage_boundary;",
@@ -311,7 +321,7 @@ def migration_checks(stack):
         stack.migrate(other, image, allowed=False, database_side=side)
         # Reject future, duplicate, missing-baseline, and down-version records.
         for change, repair in (
-            (f"INSERT INTO {table}(version_id, is_applied) VALUES (2, true)", f"DELETE FROM {table} WHERE version_id = 2"),
+            (f"INSERT INTO {table}(version_id, is_applied) VALUES ({latest + 1}, true)", f"DELETE FROM {table} WHERE version_id = {latest + 1}"),
             (f"INSERT INTO {table}(version_id, is_applied) VALUES (1, true)", f"DELETE FROM {table} WHERE id = (SELECT max(id) FROM {table})"),
             (f"UPDATE {table} SET is_applied = false WHERE version_id = 1", f"UPDATE {table} SET is_applied = true WHERE version_id = 1"),
             (f"UPDATE {table} SET version_id = -1 WHERE version_id = 0", f"UPDATE {table} SET version_id = 0 WHERE version_id = -1"),
@@ -319,15 +329,42 @@ def migration_checks(stack):
             stack.sql(side, "migrator", "SET ROLE anonce_owner; " + change + ";")
             stack.migrate(side, image, allowed=False)
             stack.sql(side, "migrator", "SET ROLE anonce_owner; " + repair + ";")
+        if side == "identity":
+            swap = f"UPDATE {table} SET version_id = 3 - version_id WHERE version_id IN (1, 2);"
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; " + swap)
+            stack.migrate(side, image, allowed=False)
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; " + swap)
+            stack.sql(side, "migrator", f"SET ROLE anonce_owner; UPDATE {table} SET version_id = 2 WHERE version_id = 1;")
+            stack.migrate(side, image, allowed=False)
+            stack.sql(side, "migrator", f"SET ROLE anonce_owner; UPDATE {table} SET version_id = 1 WHERE version_id = 2 AND id = (SELECT min(id) FROM {table} WHERE version_id = 2);")
         stack.sql(side, "migrator", "SET ROLE anonce_owner; DELETE FROM anonce.storage_boundary;")
         stack.migrate(side, image, allowed=False)
         stack.sql(side, "migrator", f"SET ROLE anonce_owner; INSERT INTO anonce.storage_boundary VALUES (true, '{side}');")
         stack.migrate(side, image)
 
 
+def account_checks(stack):
+    image = stack.migration_image("account-test")
+    config = stack.config()
+    for side in ("identity", "submission"):
+        secret = config["secrets"][f"{side}_runtime"]["file"]
+        name = "anonce-accounts-" + secrets.token_hex(6)
+        args = ["docker", "run", "--rm", "--name", name, "--network", config["networks"][side]["name"],
+                "--read-only", "--user", "65532:65532", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
+                "--log-driver", "none", "--cpus", "1", "--memory", "512m", "--memory-swap", "512m", "--pids-limit", "128",
+                "--env", f"ANONCE_TEST_SIDE={side}",
+                "--mount", f"type=bind,src={secret},dst=/run/secrets/runtime_password,readonly", image]
+        try:
+            stack.run(args, timeout=120, stream=True)
+        finally:
+            stack.run(["docker", "rm", "--force", name], success=False)
+    result = stack.sql("submission", "migrator", "SET ROLE anonce_owner; SELECT to_regclass('anonce.accounts') IS NULL AND to_regclass('anonce.account_sessions') IS NULL;")
+    require(result.stdout.strip() == b"t", "identity account tables entered submission storage")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("secrets", "config", "up", "down", "smoke", "test", "migration-test", "migrate-identity", "migrate-submission"))
+    parser.add_argument("action", choices=("secrets", "config", "up", "down", "smoke", "test", "migration-test", "account-test", "migrate-identity", "migrate-submission"))
     action = parser.parse_args().action
     directory = Path(os.environ.get("ANONCE_SECRETS_DIR", ROOT / ".secrets"))
     if action == "secrets":
@@ -340,7 +377,7 @@ def main():
         print("Compose configuration checks passed; no container execution.")
         return
     check_engine_version(stack.run(["docker", "info", "--format", "{{.ServerVersion}}"]).stdout.decode())
-    if action in ("test", "migration-test"):
+    if action in ("test", "migration-test", "account-test"):
         scratch = ROOT / ".cache/tests"
         scratch.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="containers-", dir=scratch) as temporary:
@@ -353,14 +390,18 @@ def main():
             try:
                 isolated.compose("up", "--build", "--wait", "--wait-timeout", "120", timeout=600)
                 database_checks(isolated, isolated.smoke())
-                if action == "migration-test":
+                if action in ("migration-test", "account-test"):
                     migration_checks(isolated)
+                if action == "account-test":
+                    account_checks(isolated)
             finally:
                 # Remove only this invocation's fresh disposable project and volumes.
                 isolated.compose("down", "--volumes", "--remove-orphans")
         print("Real container liveness, isolation, PostgreSQL authentication and privilege checks passed.")
-        if action == "migration-test":
+        if action in ("migration-test", "account-test"):
             print("Separate database migration, concurrency, failure, version and grant checks passed; full db-test remains unavailable.")
+        if action == "account-test":
+            print("Account/session persistence, expiry, revocation, concurrent disable, cancellation and runtime grant checks passed; browser authentication remains unavailable.")
         return
     if action.startswith("migrate-"):
         prepare_secrets(directory)

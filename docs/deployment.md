@@ -153,7 +153,7 @@ docker compose down --volumes
 ```
 
 This does not delete `.secrets`. Never use volume deletion as recovery for real data.
-Account/vault/protocol tables, encrypted backup/restore exercises, container scanning,
+Credential/vault/protocol tables, encrypted backup/restore exercises, container scanning,
 SBOMs, and production deployment remain Next work. Kubernetes/Helm stays optional.
 
 ### Local database migrations
@@ -186,6 +186,13 @@ locking, supported versions, timeouts, and immutable SQL. Repeated runs are safe
 an unchanged valid history; corruption or unsupported versions fail rather than
 repairing, downgrading, or deleting data. Use `make db-migration-test` for disposable
 [real-PostgreSQL checks](testing.md#database-migration-checks), never normal volumes.
+
+Identity version 2 creates the [internal account/session tables](database.md#implemented-account-storage).
+No HTTP service receives runtime credentials or exposes login as a result. Use
+`make db-account-test` for the separate, disposable runtime-role persistence checks;
+its development-only `account-test` image runs a race-enabled compiled test binary,
+with only one network and runtime secret at a time. Do not deploy this test image
+as an application or admit real account data into the local stack.
 
 ## Production separation
 

@@ -7,7 +7,8 @@ Audience: cryptographic reviewers and client implementers.
 
 Status: device-backup encryption, local member/reviewer-key generation/import/export,
 and identity-free member certificate requests are implemented as shared Go packages.
-Submission, enrollment, and public-proof protocols remain prospective.
+Identity-side session references also use the storage profile below. Submission,
+enrollment, and public-proof protocols remain prospective.
 
 ## Chosen implementation boundaries
 
@@ -20,6 +21,30 @@ Submission, enrollment, and public-proof protocols remain prospective.
 | Password hashing and keystore derivation | `golang.org/x/crypto/argon2`, Argon2id |
 | Log tree and proofs | `golang.org/x/mod/sumdb/tlog` and signed notes; C2SP checkpoint conventions |
 | Randomness | `crypto/rand` through library interfaces |
+
+## Account session storage profile
+
+The internal account store generates independent 16-byte account IDs and 32-byte
+opaque session secrets with Go `crypto/rand`. Session secrets contain no identity
+or claims. Store only `crypto/sha256.Sum256(secret)` as the indexed verifier;
+the raw secret is returned once in caller-owned mutable bytes, never sent to SQL.
+Hash lookup does not require a secret-byte comparison in application code. This
+is not password hashing, a JWT, a blind token, or a browser wire format.
+
+Accept exactly 32 raw bytes before hashing. Session lifetimes are integral seconds
+from one second through 12 hours, with no sliding renewal. PostgreSQL supplies
+creation/expiry times and checks expiry on each resolution. These are development
+storage limits, not a reviewed product authentication or reauthentication policy.
+Raw secrets must be cleared after protected delivery; runtime/transport copies
+cannot be guaranteed erased. SQL traces must not collect parameters or results.
+
+This follows the [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
+on random opaque secrets, one-way server storage, and server-side expiry
+(consulted 2026-10-28). Read-only theft of digests alone does not yield bearer
+secrets, but application compromise, write access, or a stolen secret defeats this
+boundary. Passkey verification, cookie encoding/delivery, CSRF, idle expiry,
+rotation, and sensitive-action reauthentication are not implemented by this store.
+Account sessions never unlock device backups or authorize anonymous submissions.
 
 ## Membership and authorization
 

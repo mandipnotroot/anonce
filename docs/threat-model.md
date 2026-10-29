@@ -50,11 +50,31 @@ properties described below.
 - The [local migration runner](database.md#local-migration-runner) is a separate
   operator image with only one database network and migration credential. It
   explicitly assumes ownership, serializes application with a bounded session lock,
-  and rejects unsupported histories. Runtime can read only the boundary marker,
-  not migration state. The runner has schema-owner authority; its SQL and image are
+  and rejects unsupported histories. Runtime can read the boundary marker and has
+  explicit identity account/session grants, never migration-state access. The runner
+  has schema-owner authority; its SQL and image are
   trusted operator inputs. Version records are not tamper evidence or checksums.
   Password buffers are cleared where owned, but driver/runtime copies remain.
   Plaintext database TCP is local-only, with no hostile-host or production TLS claim.
+
+### Identity account storage
+
+- The [internal store](database.md#implemented-account-storage) stores random session
+  secrets only as SHA-256 digests, with absolute expiry and account-status checks
+  on each lookup. Raw secrets are caller-owned and must be cleared after protected
+  delivery. SQL and driver diagnostics are not returned. Read-only digest theft
+  does not directly reveal bearer secrets; stolen secrets or application/database
+  write compromise still permit impersonation.
+- Session creation, revoke-all, and disabling take the account row lock first.
+  Disable atomically removes sessions and prevents new ones. An already-authorized
+  in-flight request is not recalled; no distributed revocation or browser logout
+  claim is made. Database clock rollback can affect expiry.
+- This package trusts its caller to verify authentication and authorize changes.
+  No login route, credentials, CSRF/cookie handling, rate limiting, session cap,
+  recent-authentication policy, recovery, vault access, or membership binding is
+  supplied. It must not be exposed directly to requests. Its pool must remain on
+  the checked runtime role/database, without parameter tracing. Storage tests do
+  not establish a secure account workflow or authorize anonymous submissions.
 
 ### Device keys and backups
 

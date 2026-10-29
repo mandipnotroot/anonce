@@ -67,7 +67,9 @@ working submission product.
 Separate [local database migrations](docs/deployment.md#local-database-migrations)
 are opt-in through `make migrate-identity` and `make migrate-submission`.
 `make db-migration-test` checks their histories and grants on disposable PostgreSQL;
-account/vault tables and HTTP persistence remain unavailable.
+identity version 2 adds internal account/session tables. `make db-account-test`
+checks persistence, expiry, revocation, concurrency, and grants as the runtime role.
+Account authentication, vault tables, and HTTP persistence remain unavailable.
 
 To run the HTTP demonstration natively instead:
 
