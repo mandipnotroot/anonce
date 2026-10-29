@@ -280,6 +280,9 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- PR title, description, and label edits no longer trigger CI. Code updates and
+  existing lifecycle, default-branch, and manual triggers retain all checks.
+
 - Consolidate key-backup contract tests and CLI destination-preservation checks.
   Wrapper cancellation tests cover observed checkpoints without fixed nested call
   counts. Algorithm-specific cases, runtime behavior, and formats are unchanged.
