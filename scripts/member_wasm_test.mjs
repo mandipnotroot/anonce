@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 const config = readFileSync(new URL("./wasm.toml", import.meta.url), "utf8");
 assert.equal(process.version, /^node_version = "([^"]+)"$/m.exec(config)?.[1], "use the pinned development Node runtime");
 const directory = resolve(process.argv[2]);
-const expectedFiles = ["LICENSE", "LICENSE.anonce", "LICENSE.x-crypto", "LICENSE.x-sys", "PATENTS", "PATENTS.x-crypto", "PATENTS.x-sys", "client.wasm", "member-client.mjs", "member-worker.mjs", "protocol.mjs", "wasm_exec.js"].sort();
+const expectedFiles = ["LICENSE", "LICENSE.anonce", "LICENSE.circl", "LICENSE.x-crypto", "LICENSE.x-sys", "PATENTS", "PATENTS.x-crypto", "PATENTS.x-sys", "client.wasm", "member-client.mjs", "member-worker.mjs", "protocol.mjs", "wasm_exec.js"].sort();
 const lines = readFileSync(join(directory, "SHA256SUMS"), "utf8").trimEnd().split("\n");
 const names = [];
 for (const line of lines) {
@@ -40,7 +40,7 @@ const backup = decode(native.backup);
 const publicKey = decode(native.publicKey);
 const first = await start();
 const api = globalThis.anonceMember;
-assert.deepEqual(Object.keys(api).sort(), ["backup", "backupConfirmed", "close", "create", "createConfirmed", "lock", "request", "unlock"]);
+assert.deepEqual(Object.keys(api).sort(), ["authorize", "backup", "backupConfirmed", "close", "create", "createConfirmed", "lock", "request", "unlock"]);
 assert.equal(globalThis.anonce, undefined, "member module must not install the public verifier");
 assert.equal(await api.request(), null, "initial session must be locked");
 assert.equal(await api.backup(password), null, "locked export admitted");

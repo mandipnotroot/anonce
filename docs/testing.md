@@ -7,8 +7,49 @@ Audience: contributors and security reviewers.
 
 ## Current executable checks
 
+### Connected browser MVP checks
+
+`make browser-test` builds the commands and both matched WASM artifacts, then runs
+`TestBrowserMVP` with real Chromium WebAuthn ceremonies, two fresh real PostgreSQL
+instances, owner-applied migrations and actual runtime roles. It is opt-in, not
+part of `make check`, and fails rather than skips missing prerequisites. Supply
+the reviewed `MEMBER_BROWSER` executable, Node.js 22.23.3 on `PATH`, and
+`BROWSER_TEST_PG` pointing to PostgreSQL 18.6's `bin` directory.
+
+Run it inside an OS sandbox with isolated loopback networking, an empty allowlisted
+environment, read-only source/toolchains, scratch-only writes and explicit CPU,
+memory, process, disk/file and wall-clock limits. Never use existing databases.
+Trust authentication applies only to its disposable synthetic clusters; application
+startup uses independent SCRAM runtime credentials. Test TLS trust pins the fresh
+test certificate public keys, never disabling verification globally. Browser
+sandboxing, CSP, WebAuthn verification, protected cookies and CSRF remain enabled.
+
+The driver uses Chromium's standard virtual-authenticator interface for real
+registration/assertion verification. There is no test login endpoint or server
+success bypass. It exercises administrator publication, member worker/vault and
+enrollment, exact-origin handoff, blind finalization, anonymous encryption and
+signed acceptance, concurrent exact retries, conflicting spending and authorized
+local reviewer decryption. Wire inspection rejects passphrases, plaintext answers,
+account cookies/referrers and unexpected origins. PostgreSQL subtests cover
+persistence, isolation, grants, enrollment races and quota persistence across sessions.
+
+Native `TestProfileJourney`, `TestEnvelopeIsolation`, `TestBulletinBounds`,
+`FuzzProfileRejection`, `TestIdentityGate`, `TestCookieEncoding` and
+`TestAuthenticationLimiter` cover composition/admission. Existing member worker and
+session checks cover cancellation, wrong expected keys and invalid backups. These
+checks are not independent review, a supported-browser/provider matrix, mobile
+costs, manual accessibility, protected signer custody, safe database restoration
+or public transparency-log evidence.
+
+`TestSignedTimestampBounds` rejects correctly signed out-of-profile dates before
+integer conversion. `TestStateFileAdmission` and `TestInitializationDoesNotReplace`
+cover scoped state files, owner-only permissions, rejected symlinks and no-replace
+initialization. `TestBoundedTLSMetadata` checks that connection limiting preserves
+the TLS metadata required by the HTTP gate. Embedded page tests check strict
+runtime manifests, entry-asset integrity and origin-specific content policies.
+
 See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
-**No current check tests a working submission protocol.**
+The original foundation targets below do not test the connected browser protocol.
 
 | Target | Current checks |
 | --- | --- |

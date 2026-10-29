@@ -13,6 +13,15 @@ Unstable `0.y.z` changes still require compatibility review.
 
 ## Public API boundary
 
+The opt-in browser MVP introduces unreleased `/api/browser/` routes,
+[browser profile 1](cryptography.md#browser-mvp-profile-1), identity migration 5 and
+submission migration 3. These are not replacements for the proposed `/api/v1/`
+schemas. Existing demonstration routes and key-backup bytes remain unchanged.
+The additive fixed-profile worker `authorize` method requires matched
+loader/worker/WASM rebuilds, with no mixed-artifact fallback. Changes to signed
+encodings, bindings, limits or schemas are breaking unless an explicit reviewed
+compatibility mechanism exists. No stable release exists.
+
 Public contracts include:
 
 - CLI commands, flags, exits; HTTP paths, statuses, schemas.

@@ -15,12 +15,15 @@ The intended experience is entirely web-based: sign in, open a shared review lin
 or choose an available round, complete the form, and submit. Members, reviewers,
 and administrators need no installed app or CLI. The browser manages cryptographic
 keys automatically, with encrypted member-key backups on the identity side.
-This account and vault experience is planned, not implemented. See
+The separate opt-in local browser MVP implements this path for one free-text
+question, one reviewer and an explicitly selected one-response limit. See
+[browser startup](docs/deployment.md#browser-mvp-local-startup),
 [the user flow](docs/ui-design.md#account-and-review-workflow) and
 [key custody and recovery](docs/key-management.md#browser-account-vault).
 
-> **Development only.** Local Go services expose infrastructure endpoints, not a
-> working submission protocol. Do not collect sensitive information or run an election.
+> **Development only.** The browser MVP is for synthetic data and has no independent
+> security approval. Original demonstration services remain inert. Do not collect
+> sensitive information or run an election.
 
 ## Planned capabilities
 
@@ -57,6 +60,15 @@ for repository rules. The [roadmap](docs/roadmap.md) tracks implementation and
 local deployment.
 
 ## Run the local infrastructure
+
+For the connected workflow, use the separate
+[browser MVP startup](docs/deployment.md#browser-mvp-local-startup) and
+[real-browser/PostgreSQL checks](docs/testing.md#connected-browser-mvp-checks).
+It has signed storage acceptance, not public-log inclusion or rollback protection.
+Recovery, protected signers and reviewer server backups are excluded.
+
+The commands and foundation limitations below describe the original demonstration
+services, not the opt-in browser hosts.
 
 For containerized development, follow the [Compose setup](docs/deployment.md#container-stack):
 prepare `.env` and local secret files, then use `make up`, `make smoke`, and

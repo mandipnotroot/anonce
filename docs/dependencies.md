@@ -43,6 +43,36 @@ advisories before further imports.
 
 ### Admitted Go modules
 
+#### Browser MVP admission
+
+Pinned module licenses and the selected APIs were inspected 2026-10-29. The
+identity host uses go-webauthn 0.18.2 for complete WebAuthn verification, not
+handwritten attestation/assertion checking. CIRCL 1.6.5 supplies the exact RFC 9474
+randomized SHA-384/PSS composition. Go 1.27.3 supplies RFC 9180 HPKE. This is source
+composition review, not independent cryptographic approval. `go.mod` and `go.sum`
+pin the graph. Updates require advisory, source, license and interoperability
+review together, with no algorithm fallback.
+
+| Newly imported module | Version | License and purpose |
+| --- | --- | --- |
+| `github.com/go-webauthn/webauthn` | 0.18.2 | BSD-3-Clause; relying-party verification |
+| `github.com/cloudflare/circl` | 1.6.5 | BSD-3-Clause with original Go notices; blind RSA |
+| `github.com/go-webauthn/x` | 0.3.1 | BSD-3-Clause; library support |
+| `github.com/fxamacker/cbor/v2` | 2.9.4 | MIT; library CBOR processing |
+| `github.com/go-viper/mapstructure/v2` | 2.5.0 | MIT; library data decoding |
+| `github.com/golang-jwt/jwt/v5` | 5.3.1 | MIT; upstream attestation support, not application session JWTs |
+| `github.com/google/go-tpm` | 0.9.8 | Apache-2.0; upstream TPM attestation support |
+| `github.com/google/uuid` | 1.6.0 | BSD-3-Clause; authenticator metadata |
+| `github.com/philhofer/fwd` | 1.2.0 | MIT; upstream codec support |
+| `github.com/tinylib/msgp` | 1.6.4 | MIT with original Go notices; upstream codec support |
+| `github.com/x448/float16` | 0.8.4 | MIT; CBOR support |
+
+No upstream source is copied or relicensed. `make browser-build` preserves linked
+module/runtime notices in `bin/browser-notices`; both WASM manifests retain the
+original CIRCL/Go/x-crypto/x-sys notices. Redistribute those with generated binaries.
+Existing inert application images do not link authentication packages. No npm
+build, third-party browser library, CDN or authentication fallback is introduced.
+
 x/crypto and x/sys are maintained Go project libraries that avoid a custom KDF
 or AEAD. Admission for device-backup profile 2 includes Argon2id, BLAKE2b,
 ChaCha20-Poly1305, its ChaCha20/Poly1305 and alias helpers, and CPU-feature detection.

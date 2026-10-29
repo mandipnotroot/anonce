@@ -5,11 +5,16 @@
 
 Audience: protocol implementers and security reviewers.
 
-Status: design only, not a frozen wire format. An internal
+Status: the opt-in browser hosts implement
+[browser MVP profile 1](cryptography.md#browser-mvp-profile-1), not a stable released
+wire format. Its single-text, single-reviewer, explicit-one-response contract
+supersedes the broader proposals below only for `/api/browser/`.
+The original demonstration commands still reject their reserved protocol routes.
+The internal
 [submission record store](database.md#implemented-submission-record-storage) provides
 atomic persistence and exact-ciphertext retries for already verified inputs, not
-protocol verification. All protocol APIs remain unimplemented and must reject
-requests rather than simulate success.
+protocol verification. Proposed `/api/v1/` operations still reject requests rather
+than simulate success; only the explicit browser namespace is connected.
 
 ## Enrollment and authentication
 
@@ -161,6 +166,38 @@ stateDiagram-v2
   round keys; device exports remain an operator/reviewer limitation.
 
 ## Cryptographic and wire decisions
+
+### Browser MVP decisions
+
+The [profile](cryptography.md#browser-mvp-profile-1) fixes encodings, purposes,
+bindings, lengths and failure behavior before wire processing. Eligibility is an
+administrator-delivered, 24-hour, single-use invitation, verified CSR possession,
+fixed encrypted-backup public binding and a current online membership record.
+Registration alone grants neither membership nor reviewer assignment.
+
+The MVP has one common eligibility scope: every active verified membership may
+authorize each open round. Cohort-specific eligibility and revocation administration
+remain excluded. Administrators must privately deliver at most one invitation per
+eligible person; account registration does not verify a real-world person.
+
+One published common bulletin binds one UTF-8 question, one round reviewer key,
+the explicit response limit of one, schedule, review expiry, blind-RSA key and
+receipt key. Published values cannot be edited. The identity ledger's unique
+membership/round reservation commits before signing. Failure or loss after that
+point consumes the allowance. There is no issuance replay/refund/re-sign endpoint.
+Enrollment, another login and backup restoration cannot reset that ledger.
+
+Anonymous acceptance verifies the complete blind token and envelope syntax before
+calling the existing atomic record store. It cannot verify encrypted answer
+contents; the reviewer rejects invalid authenticated plaintext locally. Exact
+open-round retries receive the same signed acceptance. Different envelopes conflict,
+and closure/cancellation denies even exact retries. There is no post-close recovery
+endpoint. A signed acceptance attests committed storage, not public-log inclusion.
+
+Reviewer reads prove possession of a round key by returning a decrypted random
+challenge. Each proof is short-lived, one-use and cursor-bound; reads return at most
+50 records without member/account/session metadata or precise acceptance times.
+There is no server decryption endpoint. Replies and release thresholds are excluded.
 
 See [cryptography](cryptography.md) for profiles and [API](api.md) for HTTP behavior.
 Review and fix profile IDs, maximum lengths, canonical encoding, domain separation,

@@ -5,8 +5,10 @@
 
 Audience: contributors choosing work and reviewers assessing scope.
 
-No working submission product yet. Now / Next / Later indicate focus, not delivery
-promises. Track tasks in issues and requirements in the linked references.
+An opt-in, synthetic-only browser MVP now connects publication, anonymous encrypted
+acceptance and local review. This is not production readiness. Now / Next / Later
+indicate focus, not delivery promises. Track tasks and requirements in their
+canonical references.
 
 The required product is browser-only: **sign in, open a shared review link or an
 available round, complete the form, submit**. Keys and encrypted member-key backup
@@ -16,23 +18,21 @@ See the [user flow](ui-design.md#account-and-review-workflow) and
 
 ## Now
 
-- Resolve the browser account/vault design before implementation: passkey sign-in,
-  PRF-assisted unlock on tested setups, explicit local-passphrase compatibility,
-  new-device access, separate account/key recovery, and the anonymous handoff.
-  Fix wrapping profiles and supported browser/provider evidence, not a promise of
-  universal passkey decryption. Keep reviewer server backup excluded pending review.
-- Build the identity-side foundation for a complete browser workflow: separate
-  PostgreSQL application integration, account authentication over the local session
-  store, owner-scoped encrypted member-key backup storage, enrollment, protected CA signing, and
-  revocation. Preserve [service boundaries](architecture.md#account-and-anonymous-flow).
-- Connect shared Go member-key and backup composition to reviewed browser interfaces
-  with automatic key/CSR preparation and local restoration. The existing CLI stays
-  optional; additional CLI conveniences must not displace browser integration.
-- Add real database and browser targets and the
+- Review the connected [browser MVP](deployment.md#browser-mvp-local-startup) and
+  [profile 1](cryptography.md#browser-mvp-profile-1) independently before real-data
+  use. Its local-passphrase path does not implement PRF or recovery. Resolve
+  supported browser/provider evidence, independent publication checkpoints,
+  protected signer custody, revocation administration and retention/restoration.
+  Keep reviewer server backup excluded pending separate policy review.
+- Extend the real `make browser-test` evidence with the remaining
   [account/vault acceptance cases](testing.md#browser-account-and-vault-acceptance).
   Measure mobile costs, test negative/recovery paths, and collect actual browser,
   screenshot, and manual accessibility evidence. Keep unimplemented UI visibly
   unavailable and accept no real secrets in the current demonstration.
+
+Available foundations below describe the reusable packages and original inert
+commands. Their earlier lack of HTTP/browser integration does not apply to the
+separate opt-in browser hosts.
 
 Available foundations:
 

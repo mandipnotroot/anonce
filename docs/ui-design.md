@@ -5,9 +5,10 @@
 
 Audience: front-end contributors, accessibility reviewers, and product reviewers.
 
-Status: read-only local shell implemented; product UI is design only. The isolated
-test harness has synthetic member forms, not a product account/vault interface.
-Product screenshots and manual accessibility results remain outstanding.
+Status: the original read-only shell and separate connected browser MVP forms are
+implemented. The isolated member harness remains synthetic, not the account UI.
+Broader product screens, product screenshots and manual accessibility evidence
+remain outstanding.
 
 ## Account and review workflow
 
@@ -54,6 +55,24 @@ enable remember-device storage. Browser compatibility and these UX paths require
 [real browser evidence](testing.md#browser-account-and-vault-acceptance).
 
 ## Current local shell
+
+### Connected browser MVP pages
+
+The opt-in [browser hosts](deployment.md#browser-mvp-local-startup) add account,
+local unlocking, enrollment, round/publication, anonymous free-text submission and
+local reviewer forms. They are separate from the original read-only shell.
+
+The anonymous origin collects and encrypts answers. Reviewer plaintext renders
+locally with `textContent`, never HTML interpolation or a plaintext server API.
+Labels, live status, disabled startup controls, independent passphrase confirmation,
+explicit lock/cancel/sign-out, published limits, issuance-loss warnings and the
+receipt-contract limitation are visible. Ordinary users do not handle keys, CSRs
+or files. Reviewers are warned that their encrypted key stays in this browser.
+
+Replies, charts, generalized forms, credential/recovery management and advanced
+administration remain excluded. Product screenshots, manual assistive-device,
+contrast, mobile and autofill-provider review remain outstanding. The synthetic
+screenshot below is not evidence of these connected pages.
 
 - **Pages:** submission-only `/` and `/about`; `/dev/styleguide` requires
   `-dev-styleguide`. The guide has a synthetic draft, unavailable publication button,

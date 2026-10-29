@@ -5,11 +5,42 @@
 
 Audience: storage implementers, database reviewers, and operators.
 
-Status: local PostgreSQL 18.6 bootstrap plus separate Goose migration histories and
-an operator-only pgx runner. Identity version 2 adds account/session persistence
-and version 3 adds an internal encrypted member-backup slot.
-Submission version 2 adds internal round admission and atomic submission records. Product vault,
-credential, membership, and protocol integration remain proposed; HTTP persistence is not implemented.
+Status: PostgreSQL 18.6 bootstrap, independent Goose histories and an operator-only
+pgx runner. Identity versions 2–4 provide accounts, sessions and member backups;
+submission version 2 provides atomic records. The opt-in browser hosts connect
+these through identity migration 5 and submission migration 3. The original
+demonstration commands still perform no application persistence.
+
+## Browser MVP persistence
+
+Identity migration 5 adds bounded WebAuthn public credential metadata, short-lived
+single-use ceremonies, invitation/membership bindings, draft/published rounds,
+issuance challenges and a unique membership/round reservation ledger. It retains
+no unblinded tokens, answers, receipts, reviewer private keys or encrypted reviewer
+backups. Dedicated round RSA signing keys are server-side identity signing
+material; the local MVP stores them in this database, not a protected signing
+service or encrypted-at-rest key store. This limitation prohibits real-data use.
+
+Session-authorized workflow transactions lock the account first and recheck
+session expiry/status after lock waits. Sensitive writes also require creation
+within five minutes. Invitation consumption binds a verified CSR to the fixed
+member-backup public key in the same transaction. Quota reservations use immutable
+membership IDs, not sessions or certificate serials, and commit before blind signing.
+Published round content and keys are never replaced through the workflow API.
+
+Submission migration 3 adds signed public bulletins and digest-only reviewer read
+challenges with round/cursor binding. It adds no identity tables. Public provisioning
+can recover an interrupted insertion only against the existing exact signed
+bulletin digest and immutable schedule. Existing atomic spending and ciphertext
+storage are unchanged. Reviewer proofs are consumed transactionally before bounded
+record retrieval. Reads expose neither precise acceptance times nor spend digests.
+
+Runtime roles receive narrow table/column grants, not ownership or migration-state
+access. Apply these additive migrations before starting browser hosts. Supported
+histories now extend through identity 5 and submission 3; earlier published SQL is
+unchanged. SQL immutability/grants do not constrain a compromised runtime process
+that can use its granted writes directly. PostgreSQL backups and rollback remain
+outside the MVP receipt guarantee.
 
 ## Storage boundary
 
@@ -577,7 +608,7 @@ must reacquire the lock and repeat preflight. Each SQL migration and its version
 entry use Goose's transaction. No down/reset or out-of-order option is exposed.
 
 Supported histories are an absent ledger or a contiguous, ordered applied version
-0 baseline through at most identity version 4 or submission version 2. Existing
+0 baseline through at most identity version 5 or submission version 3. Existing
 version-1/version-2/version-3 identity databases upgrade additively without editing published SQL.
 Future, negative, duplicate, out-of-order, gapped, unapplied, or missing-baseline
 records fail before migration. Already-current runs also require the correct

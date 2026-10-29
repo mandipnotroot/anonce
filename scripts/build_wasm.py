@@ -61,6 +61,7 @@ def build(go, component="verifier"):
     command, relative = {
         "verifier": ("./cmd/wasm", "bin/wasm"),
         "member": ("./cmd/memberwasm", "bin/memberwasm"),
+        "review": ("./cmd/reviewwasm", "bin/reviewwasm"),
     }[component]
     destination = ROOT / relative
     destination.mkdir(parents=True, exist_ok=True)
@@ -79,6 +80,12 @@ def build(go, component="verifier"):
             materials.update(member_notices(go, env, config))
             for name in ("member-client.mjs", "member-worker.mjs", "protocol.mjs"):
                 materials[name] = (ROOT / "internal/memberworker" / name).read_bytes()
+        if component in ("member", "review"):
+            materials.update(member_notices(go, env, config))
+            module = json.loads(subprocess.check_output([go, "list", "-m", "-json", "github.com/cloudflare/circl"], cwd=ROOT, env=env))
+            if module.get("Replace") or module.get("Version") != "v1.6.5":
+                raise ValueError("unreviewed blind-signature module")
+            materials["LICENSE.circl"] = (Path(module["Dir"]) / "LICENSE").read_bytes()
         materials["client.wasm"] = data
         sums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in sorted(materials.items()))
         materials["SHA256SUMS"] = sums.encode()
@@ -94,7 +101,7 @@ def build(go, component="verifier"):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--go", default="go")
-    parser.add_argument("--component", choices=("verifier", "member"), default="verifier")
+    parser.add_argument("--component", choices=("verifier", "member", "review"), default="verifier")
     args = parser.parse_args()
     try:
         build(args.go, args.component)

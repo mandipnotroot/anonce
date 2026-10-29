@@ -10,6 +10,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Opt-in browser account, member-vault, enrollment, round publication, blind-token
+  authorization, anonymous encrypted response, signed acceptance and local reviewer
+  workflow. Added separate TLS hosts, explicit one-response/free-text scope,
+  additive migrations and a real-browser/PostgreSQL journey target. The receipt
+  attests storage, not transparency-log inclusion. Recovery, reviewer server
+  backups, production operation and independent approval are excluded.
+
 - Submission version-2 round and append-only record tables with an internal
   runtime-role store for atomic spend/ciphertext persistence, exact-payload retries,
   immutable round bindings, database-clock windows, and ordered cancellation.
