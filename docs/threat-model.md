@@ -70,7 +70,15 @@ properties described below.
   in-flight request is not recalled; no distributed revocation or browser logout
   claim is made. Database clock rollback can affect expiry.
 - This package trusts its caller to verify authentication and authorize changes.
-  No login route, credentials, CSRF/cookie handling, rate limiting, session cap,
+  Session starts admit at most 16 unexpired references per account, rechecking
+  committed state and database-clock expiry after the account lock. Denial does
+  not evict existing sessions; rotation at capacity preserves absolute expiry.
+  `session-limit`, `concurrent-session-limit`, and `session-limit-after-lock-wait`
+  check capacity, cross-pool races, expiry/revocation, and cancellation against real
+  PostgreSQL. Direct SQL, older writers, restored data, or clock rollback can exceed
+  this package-only bound. It limits neither total accounts nor expired rows and
+  does not replace cleanup or abuse controls.
+  No login route, credentials, CSRF/cookie handling, rate limiting,
   authentication ceremony, recovery, browser vault access, or membership binding is
   supplied. It must not be exposed directly to requests. Its pool must remain on
   the checked runtime role/database, without parameter tracing. Storage tests do

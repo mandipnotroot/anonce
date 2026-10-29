@@ -10,6 +10,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Internal per-account session admission limit of 16 unexpired sessions, checked
+  after account-lock waits without evicting existing sessions. Expiry/revocation
+  frees capacity, and reauthentication rotation remains available at capacity.
+  Bounded native admission fuzzing and opt-in real PostgreSQL concurrency,
+  post-lock expiry/revocation, and cancellation checks cover the contract.
+  No authentication ceremony, browser/API, migration, grant, or cryptographic
+  format is added; total-resource limits and production policy remain host work.
 - Internal session rotation after caller-verified reauthentication, bound to the
   same account, with fresh digest-only tokens, atomic old-token invalidation, and
   unchanged absolute expiry. Session-scoped member-backup mutations now require

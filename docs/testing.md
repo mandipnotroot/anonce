@@ -28,7 +28,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make up`, `make smoke`, `make down` | Start/build/wait and check the demo stack, inspect the running stack, or stop without deleting database volumes; requires local Docker access |
 | `make container-test` | Opt-in fresh Compose project with actual app containers and PostgreSQL: liveness/unavailable readiness, live isolation/hardening, authenticated runtime access, denied escalation/DDL/default function access, explicit table grants, and cross-instance TCP rejection; disposable synthetic volumes only |
 | `make db-migration-test` | Container checks plus separate embedded Goose histories on real PostgreSQL: failed and repeated/concurrent application, owner/runtime grants, wrong-target rejection, invalid/future histories, and missing boundary marker; disposable synthetic volumes only |
-| `make db-account-test` | Migration/container checks plus race-enabled runtime-role account/session persistence, digest-only storage, expiry/cleanup, cross-account revocation isolation, concurrent disable, cancellation, SQL constraints/grants, and submission-store rejection |
+| `make db-account-test` | Migration/container checks plus race-enabled runtime-role account/session persistence, digest-only storage, expiry/cleanup, per-account session limits and concurrent admission, cross-account revocation isolation, concurrent disable, cancellation, SQL constraints/grants, and submission-store rejection |
 | `make db-member-backup-test` | Account/migration/container checks plus race-enabled runtime-role member-backup persistence, owner scoping, revision/binding conflicts, tombstones, concurrent writes/disable, cancellation/rollback, constraints/grants, and submission-store rejection |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
@@ -41,6 +41,9 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 `make fuzz` also runs `FuzzAccountToken`, bounded to 33 raw bytes, checking exact
 32-byte admission and SHA-256 composition without database/network work. Synthetic
 regressions belong in `internal/identity/accounts/testdata/fuzz/FuzzAccountToken`.
+`FuzzAccountSessionAdmission` additionally bounds account input to 16 bytes and
+exercises fixed-width lifetime validation, zero-value failure, and unchanged inputs
+without database work. Capacity itself is checked against real PostgreSQL below.
 
 | Parser | Input/work bounds |
 | --- | --- |
@@ -109,7 +112,7 @@ profile-2 nonce prefix and library composition.
 | --- | --- |
 | Configuration | `TestConfig`, `TestConfigSourceURL`, `TestRunFailures`, `TestContainerNetwork`, `TestContainerNetworkFlag`, `FuzzContainerListen` |
 | Migration service/credential/command bounds, cancelled/concurrent calls, regular-file/symlink/FIFO rejection, separate embedded files, and bounded admission fuzzing | `TestMigrationAdmission`, `TestMigrationCancellation`, `TestMigrationCredentialFiles`, `TestMigrationFiles`, `FuzzMigrationAdmission` |
-| Account lifetime/token/cleanup admission, zero-value failure, concurrent cancelled calls, digest composition and unchanged inputs | `TestAccountAdmission`, `TestAccountUnavailableAndCancellation`, `TestAccountTokenDigest`, `FuzzAccountToken` |
+| Account lifetime/token/cleanup admission, zero-value failure, concurrent cancelled calls, digest composition and unchanged inputs | `TestAccountAdmission`, `TestAccountUnavailableAndCancellation`, `TestAccountTokenDigest`, `FuzzAccountToken`, `FuzzAccountSessionAdmission` |
 | Member-backup envelope bounds/profile/purpose, revision/key and session-token admission, zero-value failure, concurrent cancelled calls, and unchanged inputs | `TestMemberBackupEnvelope`, `TestMemberBackupAdmission`, `TestMemberBackupUnavailableAndCancellation`, `TestMemberBackupSessionAdmission`, `FuzzMemberBackupAdmission`, `FuzzMemberBackupSessionAdmission` |
 | Fixed-target local liveness probe, exact bounded body/status, no redirect/credentials, response-header limit, cancellation, and unavailable targets | `TestProbe`, `TestProbeCancellationAndFailures` |
 | No-replace/distinct secret generation, existing-file preservation, directory/file permissions, malformed/missing/duplicate files, symlinks/FIFOs, engine version boundary, and unsafe normalized Compose model rejection | `scripts/test_containers.py`, included in `make policy-test` |
@@ -281,6 +284,13 @@ Named subtests cover:
   revoke-all/disable races leave no live successor.
 - `rotation-cancellation-and-rollback`: held account/session-row locks cancel
   rotation without changing the old session; closed pools expose no driver data.
+- `session-limit`: exact capacity, no material or eviction on denial, rotation and
+  revocation at capacity, cross-account isolation, excess-row rejection, and disable.
+- `concurrent-session-limit`: competing starts through independent pools admit
+  exactly the fixed capacity with no evicted or unreachable successful tokens.
+- `session-limit-after-lock-wait`: queued admission observes committed insertion,
+  revocation, disable, and database-clock expiry; cancellation returns no material
+  and leaves capacity unchanged.
 
 The submission run must reject store construction, and SQL checks verify that
 neither account table exists there. This is persistence evidence only, not passkey

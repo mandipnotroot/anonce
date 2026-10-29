@@ -52,6 +52,13 @@ live sessions can read but must reauthenticate before mutations; there is no
 bearer-only refresh. No public wire/parameter, migration, grant, or device profile
 changes and no automatic release bump are introduced.
 
+The fixed 16-unexpired-session account admission limit changes only unstable Go
+storage behavior. `StartSession` can now return `ErrSessionLimit` without evicting
+existing sessions; rotation remains available at capacity. No public API, parameter,
+migration, grant, or cryptographic format changes or automatic release bump are
+introduced. Existing excess rows are retained and deny new starts until capacity
+is available. See the [storage contract](database.md#implemented-account-storage).
+
 The [browser account/vault direction](key-management.md#browser-account-vault)
 is a documentation requirement, not a new supported API or cryptographic profile.
 Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional

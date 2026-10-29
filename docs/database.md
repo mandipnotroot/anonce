@@ -80,6 +80,27 @@ context and cancellation. Failed session creation returns no token; an uncertain
 commit may leave an unreachable session until expiry, never a safe automatic retry.
 
 `StartSession` requires authentication already verified by its trusted caller.
+It admits at most `MaxSessionsPerAccount` (16) unexpired sessions per account.
+After locking the active account, a fresh Read Committed statement counts up to
+the limit using the database clock. Concurrent starts across pools serialize on
+that lock; committed starts, revocation, and expiry during a lock wait are observed
+before admission. At or above capacity, `ErrSessionLimit` returns no token or session
+and leaves existing sessions unchanged. Missing/disabled accounts still return
+`ErrUnavailable`. Expired rows do not count and are not deleted by admission.
+Revocation or expiry frees capacity; rotation replaces one row and remains available
+at capacity without extending expiry. No automatic eviction or retry is performed.
+
+This fixed development bound follows the application-policy approach in
+[OWASP simultaneous-session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#simultaneous-session-logons)
+and PostgreSQL 18's
+[Read Committed semantics](https://www.postgresql.org/docs/18/transaction-iso.html#XACT-READ-COMMITTED)
+(consulted 2026-10-28). It is a package admission rule, not a database constraint:
+direct runtime SQL, older application versions, restored data, or clock rollback
+can exceed it. Existing excess sessions are not recalled; new starts fail until
+capacity is available. It does not bound expired-reference growth, account counts,
+authentication attempts, or total database resources. Hosts still need cleanup,
+rate limits, reviewed product policy, and a safe session-management UX.
+
 `Resolve` always joins the account and checks absolute expiry using PostgreSQL's
 clock; it does not refresh expiry or authorize sensitive actions. `Revoke` locks
 the account before removing one digest. `RevokeAll` and `Disable` serialize with new sessions by locking the
@@ -106,8 +127,8 @@ Require fresh sign-in rather than retrying that operation automatically.
 Revocation removes live session references immediately. Expired references remain
 until `PurgeExpired` is called, bounded to 1–1000 rows per call. No cleanup scheduler,
 account deletion, production retention policy, backup restoration, authentication
-ceremony, per-account session admission limit, or HTTP integration exists. Product
-retention and recovery must be reviewed before real data is admitted. See the
+ceremony or HTTP integration exists. Product retention and recovery must be reviewed
+before real data is admitted. See the
 [real PostgreSQL account checks](testing.md#account-storage-checks).
 
 ### Proposed identity relations

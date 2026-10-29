@@ -73,6 +73,228 @@ func TestPostgresAccounts(t *testing.T) {
 	t.Run("session-rotation", testPostgresRotation)
 	t.Run("concurrent-session-rotation", testPostgresConcurrentRotation)
 	t.Run("rotation-cancellation-and-rollback", testPostgresRotationCancellation)
+	t.Run("session-limit", testPostgresSessionLimit)
+	t.Run("concurrent-session-limit", testPostgresConcurrentSessionLimit)
+	t.Run("session-limit-after-lock-wait", testPostgresSessionLimitWait)
+}
+
+func testPostgresSessionLimit(t *testing.T) {
+	store, pool := testStore(t)
+	id := newAccount(t, store)
+	var tokens [][]byte
+	for range MaxSessionsPerAccount {
+		token, _ := startSession(t, store, id)
+		tokens = append(tokens, token)
+	}
+	for range 2 {
+		if token, session, err := store.StartSession(t.Context(), id, time.Minute); token != nil || session != (Session{}) || !errors.Is(err, ErrSessionLimit) {
+			t.Fatal("full account admitted a session or returned material")
+		}
+	}
+	for _, token := range tokens {
+		if _, err := store.Resolve(t.Context(), token); err != nil {
+			t.Fatal("limit denial evicted an existing session")
+		}
+	}
+	other := newAccount(t, store)
+	otherToken, _ := startSession(t, store, other)
+	// Rotation replaces one row, so it must remain available at capacity.
+	fresh, _, err := store.RotateSession(t.Context(), id, tokens[0])
+	if err != nil || len(fresh) != TokenSize {
+		t.Fatal("rotation denied at capacity")
+	}
+	defer clear(fresh)
+	if err := store.Revoke(t.Context(), fresh); err != nil {
+		t.Fatal("revoke at capacity")
+	}
+	startSession(t, store, id)
+	if err := store.RevokeAll(t.Context(), id); err != nil {
+		t.Fatal("revoke-all at capacity")
+	}
+	startSession(t, store, id)
+	if _, err := store.Resolve(t.Context(), otherToken); err != nil {
+		t.Fatal("session admission changed another account")
+	}
+	// Runtime SQL can bypass this package policy. Existing excess rows must deny
+	// new starts without eviction; the policy is not a schema constraint.
+	for range MaxSessionsPerAccount {
+		token := make([]byte, TokenSize)
+		rand.Read(token)
+		digest, _ := tokenDigest(token)
+		clear(token)
+		if _, err := pool.Exec(t.Context(), `INSERT INTO anonce.account_sessions(token_digest, account_id, expires_at)
+            VALUES ($1,$2,statement_timestamp()+interval '1 hour')`, digest[:], id[:]); err != nil {
+			t.Fatal("insert synthetic excess session")
+		}
+	}
+	if token, session, err := store.StartSession(t.Context(), id, time.Minute); token != nil || session != (Session{}) || !errors.Is(err, ErrSessionLimit) {
+		t.Fatal("over-capacity account admitted a new session")
+	}
+	var count int
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM anonce.account_sessions WHERE account_id=$1", id[:]).Scan(&count); err != nil || count != MaxSessionsPerAccount+1 {
+		t.Fatal("over-capacity denial changed existing sessions")
+	}
+	if err := store.Disable(t.Context(), id); err != nil {
+		t.Fatal("disable over-capacity account")
+	}
+	if token, session, err := store.StartSession(t.Context(), id, time.Minute); token != nil || session != (Session{}) || !errors.Is(err, ErrUnavailable) {
+		t.Fatal("disabled account exposed admission state")
+	}
+}
+
+func testPostgresConcurrentSessionLimit(t *testing.T) {
+	store, pool := testStore(t)
+	peer, _ := testStore(t)
+	id := newAccount(t, store)
+	gate := make(chan struct{})
+	results := make(chan []byte, 2*MaxSessionsPerAccount)
+	var wg sync.WaitGroup
+	for i := range 2 * MaxSessionsPerAccount {
+		caller := store
+		if i%2 != 0 {
+			caller = peer
+		}
+		wg.Go(func() {
+			<-gate
+			token, session, err := caller.StartSession(t.Context(), id, MaxLifetime)
+			if err == nil {
+				if len(token) != TokenSize || session.AccountID != id {
+					t.Error("concurrent start returned invalid material")
+				}
+				results <- token
+			} else if !errors.Is(err, ErrSessionLimit) || token != nil || session != (Session{}) {
+				t.Error("concurrent start failed unexpectedly")
+			}
+		})
+	}
+	close(gate)
+	wg.Wait()
+	close(results)
+	successes := 0
+	for token := range results {
+		if _, err := store.Resolve(t.Context(), token); err != nil {
+			t.Error("admitted session unavailable after competing starts")
+		}
+		clear(token)
+		successes++
+	}
+	var count int
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM anonce.account_sessions WHERE account_id=$1", id[:]).Scan(&count); err != nil || count != MaxSessionsPerAccount || successes != MaxSessionsPerAccount {
+		t.Fatal("concurrent starts exceeded or underfilled account capacity")
+	}
+}
+
+func testPostgresSessionLimitWait(t *testing.T) {
+	store, pool := testStore(t)
+	for _, operation := range []string{"expiry", "revocation", "insertion", "disable", "cancellation"} {
+		t.Run(operation, func(t *testing.T) {
+			id := newAccount(t, store)
+			for range MaxSessionsPerAccount - 1 {
+				startSession(t, store, id)
+			}
+			var token []byte
+			var session Session
+			if operation != "insertion" {
+				lifetime := MaxLifetime
+				if operation == "expiry" {
+					lifetime = time.Second
+				}
+				var err error
+				token, session, err = store.StartSession(t.Context(), id, lifetime)
+				if err != nil {
+					t.Fatal("prepare session limit wait")
+				}
+				defer clear(token)
+			}
+			tx, err := pool.Begin(t.Context())
+			if err != nil {
+				t.Fatal("begin session limit lock")
+			}
+			defer func() { _ = tx.Rollback(t.Context()) }()
+			if err := lockAccount(t.Context(), tx, id, true); err != nil {
+				t.Fatal("hold session limit lock")
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() {
+				fresh, result, err := store.StartSession(ctx, id, MaxLifetime)
+				defer clear(fresh)
+				if err != nil && (fresh != nil || result != (Session{})) {
+					t.Error("denied queued session returned material")
+				}
+				done <- err
+			}()
+			waitForBlockedStart(t, pool, tx.Conn().PgConn().PID())
+			want := error(nil)
+			count := MaxSessionsPerAccount
+			switch operation {
+			case "expiry":
+				_, err = pool.Exec(t.Context(), "SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM ($1::timestamptz - clock_timestamp()))) + 0.05)", session.ExpiresAt)
+			case "revocation":
+				digest, _ := tokenDigest(token)
+				_, err = tx.Exec(t.Context(), "DELETE FROM anonce.account_sessions WHERE token_digest=$1", digest[:])
+			case "insertion":
+				secret := make([]byte, TokenSize)
+				rand.Read(secret)
+				digest, _ := tokenDigest(secret)
+				clear(secret)
+				_, err = tx.Exec(t.Context(), `INSERT INTO anonce.account_sessions(token_digest, account_id, expires_at)
+                    VALUES ($1,$2,statement_timestamp()+interval '1 hour')`, digest[:], id[:])
+				want = ErrSessionLimit
+			case "disable":
+				_, err = tx.Exec(t.Context(), "UPDATE anonce.accounts SET state='disabled', disabled_at=statement_timestamp() WHERE id=$1", id[:])
+				if err == nil {
+					_, err = tx.Exec(t.Context(), "DELETE FROM anonce.account_sessions WHERE account_id=$1", id[:])
+				}
+				want, count = ErrUnavailable, 0
+			case "cancellation":
+				cancel()
+				if err := <-done; !errors.Is(err, context.Canceled) {
+					t.Fatal("blocked limit check lost cancellation")
+				}
+			}
+			if err != nil {
+				t.Fatal("prepare committed session limit change")
+			}
+			if err := tx.Commit(t.Context()); err != nil {
+				t.Fatal("release session limit lock")
+			}
+			if operation != "cancellation" {
+				if err := <-done; !errors.Is(err, want) {
+					t.Fatal("session admission did not observe post-lock state")
+				}
+			}
+			var got int
+			if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM anonce.account_sessions
+                WHERE account_id=$1 AND expires_at>statement_timestamp()`, id[:]).Scan(&got); err != nil || got != count {
+				t.Fatal("queued admission left unexpected live sessions")
+			}
+		})
+	}
+}
+
+func waitForBlockedStart(t *testing.T, pool *pgxpool.Pool, blocker uint32) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var blocked bool
+		if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+            WHERE usename=current_user AND $1::integer=ANY(pg_blocking_pids(pid)))`, int64(blocker)).Scan(&blocked); err != nil {
+			t.Fatal("observe queued session start")
+		}
+		if blocked {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("session start did not reach account lock")
+		case <-ticker.C:
+		}
+	}
 }
 
 func testPostgresRotation(t *testing.T) {
@@ -106,7 +328,8 @@ func testPostgresRotation(t *testing.T) {
 		t.Run(state, func(t *testing.T) {
 			owner := id
 			candidate := token
-			if state == "unknown" || state == "expired" || state == "future" {
+			switch state {
+			case "unknown", "expired", "future":
 				candidate = make([]byte, TokenSize)
 				rand.Read(candidate)
 				defer clear(candidate)
@@ -122,7 +345,7 @@ func testPostgresRotation(t *testing.T) {
 						t.Fatal("insert synthetic rotation session")
 					}
 				}
-			} else if state == "revoked" || state == "disabled" {
+			case "revoked", "disabled":
 				owner = newAccount(t, store)
 				candidate, _ = startSession(t, store, owner)
 				var err error

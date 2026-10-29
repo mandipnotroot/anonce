@@ -47,6 +47,11 @@ encoding/delivery, CSRF, idle expiry,
 and authentication ceremonies are not implemented by this store.
 Account sessions never unlock device backups or authorize anonymous submissions.
 
+The account store also enforces a fixed development limit of 16 unexpired sessions
+per account under its existing account lock. This is a
+[storage admission policy](database.md#implemented-account-storage), not a change
+to randomness, digest composition, lifetime, or any cryptographic format.
+
 Internal [session-scoped member-backup access](database.md#session-scoped-member-backup-access)
 reuses this exact digest/expiry profile for owner authorization. It neither derives
 an unlock key nor changes encrypted backups, session secrets, or browser formats.

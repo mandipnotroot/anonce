@@ -56,6 +56,10 @@ Available foundations:
   require authentication admission within five minutes. Caller-verified
   reauthentication can rotate one token without extending absolute expiry. Login
   ceremonies, product authentication policy, and browser/API integration remain open.
+  Session starts now enforce a fixed 16-unexpired-session account limit under the
+  same lock, without eviction. Expiry/revocation frees capacity, and rotation remains
+  available at capacity. This internal admission bound does not replace rate limits
+  or expired-reference cleanup.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).

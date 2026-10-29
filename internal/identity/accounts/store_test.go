@@ -146,3 +146,27 @@ func FuzzAccountToken(f *testing.F) {
 		}
 	})
 }
+
+func FuzzAccountSessionAdmission(f *testing.F) {
+	for _, lifetime := range []time.Duration{-1, 0, time.Second - 1, time.Second, time.Second + 1, MaxLifetime, MaxLifetime + 1} {
+		f.Add([]byte{1}, int64(lifetime))
+	}
+	f.Add([]byte{}, int64(time.Second))
+	f.Fuzz(func(t *testing.T, rawID []byte, nanos int64) {
+		if len(rawID) > len(ID{}) {
+			return
+		}
+		before := bytes.Clone(rawID)
+		var id ID
+		copy(id[:], rawID)
+		lifetime := time.Duration(nanos)
+		want := ErrUnavailable
+		if id == (ID{}) || lifetime < time.Second || lifetime > MaxLifetime || lifetime%time.Second != 0 {
+			want = ErrInvalidInput
+		}
+		var store Store
+		if token, session, err := store.StartSession(t.Context(), id, lifetime); token != nil || session != (Session{}) || !errors.Is(err, want) || !bytes.Equal(before, rawID) {
+			t.Fatal("session admission did not fail closed or changed input")
+		}
+	})
+}
