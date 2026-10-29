@@ -24,6 +24,11 @@ jobs:
           persist-credentials: false
       - name: Harden runner defaults
         run: sh scripts/harden-runner.sh
+      - name: Install metadata inspector
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libimage-exiftool-perl
+          exiftool -ver
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'

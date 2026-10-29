@@ -7,10 +7,83 @@ Audience: cryptographic reviewers and client implementers.
 
 Status: device-backup encryption, local member/reviewer-key generation/import/export,
 and identity-free member certificate requests are implemented as shared Go packages.
-Identity-side session references also use the storage profile below. Submission,
-enrollment, and public-proof protocols remain prospective.
+Identity-side session references use the storage profile below. The opt-in browser
+hosts use MVP profile 1 for enrollment, blind authorization, encryption and signed
+storage acceptance. Broader public-proof protocols remain prospective.
 
 ## Chosen implementation boundaries
+
+### Browser MVP profile 1
+
+This unreleased, opt-in composition uses the primary RFC 9474 and RFC 9180
+references below, consulted 2026-10-29, CIRCL 1.6.5 `blindrsa`, and Go 1.27.3
+`crypto/hpke`, `crypto/ed25519`, and `crypto/x509`. It is not independently approved
+or Privacy Pass wire-compatible. Unknown versions and lengths fail closed. No
+fallback algorithm is allowed. All integer fields below are unsigned big-endian;
+byte strings are concatenated in the stated order, without delimiters.
+
+- Bulletin: ASCII `ANONCER1`, random round ID (16), opening, closing and review
+  expiry Unix seconds (8 each), explicit response limit (1, must equal one), fresh
+  round reviewer X25519 public key (32), dedicated round RSA modulus (384), receipt
+  Ed25519 public key (32), question byte length (2), well-formed UTF-8 question
+  (1–1024). RSA is exactly 3072 bits, odd modulus, exponent 65537. Times are within
+  2026–2100 with integral-second precision, opening precedes closing, and review expires after closing within 30
+  days. The publication signature is pure Ed25519 over ASCII
+  `anonce/bulletin/v1` followed by NUL and these bytes. Append its 64 bytes.
+  The bulletin digest is SHA-256 of the complete signed bulletin. The publication
+  verification key is operator-configured, not accepted from the bulletin.
+- Token input: ASCII `ANONCET1`, round ID (16), bulletin digest (32), fresh random
+  nonce (32). CIRCL prepares this with its own fresh 32-byte random prefix and
+  uses `SHA384PSSRandomized`, including the 48-byte PSS salt. The token is the
+  resulting prepared message (120) followed by its finalized signature (384).
+  Verify exact context and signature before storage. Spend identity is SHA-256
+  of ASCII `anonce/spend/v1`, NUL, and the prepared message, never signature bytes.
+- Issuance challenge: version byte one, round ID (16), bulletin digest (32), fresh
+  random nonce (32), SHA-256 of blinded request (32). The member signs only these
+  113 bytes prefixed by ASCII `anonce/issuance/v1` and NUL. Challenges expire after
+  two minutes, are session/member-bound, and are consumed before quota reservation.
+  The identity ledger retains membership/round reservation only, not transcripts.
+  Lost signing/delivery consumes the sole allowance without refund or re-signing.
+- Answers: HPKE base mode, DHKEM(X25519, HKDF-SHA256), HKDF-SHA256,
+  ChaCha20-Poly1305, one fresh sender context per answer. `info` is ASCII
+  `anonce/answer/v1`, NUL, bulletin digest; AAD is empty. Plaintext is exactly 4096
+  bytes: a two-byte text length (1–4000), well-formed UTF-8 text, and zero padding.
+  Envelope is byte one followed by `enc || ciphertext`; exactly 4145 bytes.
+  Decryption validates length, UTF-8 and every padding byte before exposing text.
+- Reviewer read authorization: the server generates 32 random bytes, retains only
+  their SHA-256 digest bound to round and pagination cursor for two minutes, and
+  HPKE-encrypts them to the bulletin reviewer key. `info` is ASCII
+  `anonce/review/v1`, NUL, bulletin digest. Envelope is byte two followed by
+  `enc || ciphertext`, exactly 81 bytes. Returning the decrypted 32 bytes consumes
+  that challenge atomically before a bounded ciphertext read. No account cookie,
+  member credential or identity identifier is accepted by this interface. This
+  online proof of decryption adds no signing primitive and cannot decrypt answers
+  for the server. Compromise of the reviewer key grants both read and decrypt access.
+- Acceptance: ASCII `ANONCEA1`, round ID (16), bulletin digest (32), durable record
+  ID (16), spend digest (32), SHA-256 of the exact envelope (32), followed by a pure
+  Ed25519 signature (64). Sign only after the atomic record store commits. Verify
+  all fields and the bulletin's receipt key locally. Exact-payload open-round
+  retries reproduce acceptance; changed payloads and closed-round retries fail.
+  This is a signed storage attestation, not inclusion, append-only consistency,
+  external anchoring, or a guarantee against database rollback. The broader
+  transparency-log contract remains Next work, not a property of this MVP.
+
+Enrollment reuses CSR profile 1. A dedicated Ed25519 CA issues an empty-subject
+X.509 leaf with random positive 16-byte serial, digital-signature usage, no CA
+authority, and one-year validity. Only the exact stored certificate/public binding
+for an active membership is eligible. Issuance checks the signature, validity and
+current membership state online inside the identity boundary; it does not rely on
+an absent CRL endpoint. An authorized administrator delivers a random 32-byte,
+expiring, single-use enrollment code. Only its SHA-256 digest is stored. Consuming
+it and binding the verified CSR to the account's fixed backup key is atomic.
+
+WebAuthn authentication follows the selected Level 3 reference in
+[key management](key-management.md#authentication-and-unlocking), verified by
+go-webauthn 0.18.2 with exact HTTPS origin/RP ID, user presence and user verification
+required, no cross-origin ceremonies, no attestation identity requirement, and no
+PRF extension. Two-minute ceremonies are cookie-bound and single-use, including
+failed verification. One credential per account and no account recovery are the
+initial compatibility limits. Login does not unlock a device key.
 
 | Purpose | Proposed implementation/profile |
 | --- | --- |
@@ -39,16 +112,55 @@ Raw secrets must be cleared after protected delivery; runtime/transport copies
 cannot be guaranteed erased. SQL traces must not collect parameters or results.
 
 This follows the [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
-on random opaque secrets, one-way server storage, and server-side expiry
-(consulted 2026-10-28). Read-only theft of digests alone does not yield bearer
-secrets, but application compromise, write access, or a stolen secret defeats this
-boundary. Passkey verification, cookie encoding/delivery, CSRF, idle expiry,
-rotation, and sensitive-action reauthentication are not implemented by this store.
+on random opaque secrets, one-way server storage, server-side expiry, and token
+replacement after reauthentication (consulted 2026-10-28). Read-only theft of digests
+alone does not yield bearer secrets, but application compromise, write access,
+or a stolen secret defeats this boundary. Passkey verification, cookie
+encoding/delivery, CSRF, idle expiry,
+and authentication ceremonies are not implemented by this store.
 Account sessions never unlock device backups or authorize anonymous submissions.
+
+The account store also enforces a fixed development limit of 16 unexpired sessions
+per account under its existing account lock. This is a
+[storage admission policy](database.md#implemented-account-storage), not a change
+to randomness, digest composition, lifetime, or any cryptographic format.
+
+The internal [session inventory](database.md#session-scoped-session-inventory)
+reuses this same digest and account-lock authorization, returning timestamps, a
+current-session marker, and an independent non-secret row selector. Identity
+migration 4 uses PostgreSQL 18's random UUID generator for selectors, not a hash
+or truncation of bearer material. A selector is never accepted as a credential.
+Rotation replaces it. Neither bearer secrets nor stored digests are returned;
+device cryptographic profiles and session secret generation are unchanged.
 
 Internal [session-scoped member-backup access](database.md#session-scoped-member-backup-access)
 reuses this exact digest/expiry profile for owner authorization. It neither derives
 an unlock key nor changes encrypted backups, session secrets, or browser formats.
+
+After independently verifying fresh authentication for the same account, a trusted
+caller may use `RotateSession` to atomically replace one live token with a fresh
+random token. The new row's creation time records that authentication admission;
+its absolute expiry is copied unchanged. No bearer-only renewal is permitted.
+Session-scoped backup writes and
+[sibling-session revocation](database.md#session-scoped-sibling-revocation) require
+creation within the preceding five minutes, using the same shared admission window
+checked with the database clock after the account lock. Sibling revocation neither
+rotates the retained token nor changes its timestamps or device keys. This is a
+development storage policy, not proof of a verified ceremony or a product assurance level.
+The same gate applies to [selected sibling removal](database.md#session-scoped-selected-revocation).
+Its non-secret selector only locates a row after bearer authorization; it is not a
+credential and adds no cryptographic profile.
+See the [transaction contract](database.md#session-scoped-member-backup-access).
+
+[Session-scoped sign-out everywhere](database.md#session-scoped-sign-out-everywhere)
+uses the same bearer digest and recent-admission check, deleting the current token
+as well as siblings. It adds no cryptographic operation or profile and does not
+lock or revoke device keys.
+
+[Session-scoped account disabling](database.md#session-scoped-account-disabling)
+also uses this unchanged digest and recent-admission policy. Account status and
+session references change atomically; encrypted backups and device keys do not.
+It adds no cryptographic profile, key revocation, or key recovery mechanism.
 
 ## Membership and authorization
 
@@ -189,6 +301,13 @@ This is an explicit text-to-byte adapter over profile 2, not a new backup format
 the existing opaque-byte methods remain unchanged.
 
 ## Encryption and public proofs
+
+The internal [submission record store](database.md#implemented-submission-record-storage)
+adds no cryptographic primitive or wire profile. Its caller must verify tokens and
+derive canonical spend digests before storage. Byte-identical ciphertext comparison
+binds retries without a new public hash construction. Storage references and
+timestamps are not signed receipts, commitments, or inclusion proofs. The 64 KiB
+storage ceiling does not admit an HPKE encoding or replace envelope validation.
 
 - HPKE base mode avoids identifying sender keys; token verification authorizes submission.
 - Bind protocol version, round ID, bulletin/form digest, and purpose through the
@@ -382,6 +501,10 @@ without guaranteeing cleanup or complete memory erasure.
 The opt-in [synthetic browser checks](testing.md#member-worker-browser-checks)
 exercise native/worker compatibility under isolated test CSP without changing
 these profiles. They do not establish supported-device costs or product custody.
+The harness's [synthetic forms](ui-design.md#synthetic-member-forms) use the existing
+confirmed setup and required expected-key restoration text methods only.
+They add no JavaScript cryptography,
+password-strength policy, storage format, or account unlock profile.
 
 The [browser account vault](key-management.md#browser-account-vault) is planned.
 WebAuthn Level 3 is the selected authentication design reference; its PRF extension

@@ -5,8 +5,10 @@
 
 Audience: contributors choosing work and reviewers assessing scope.
 
-No working submission product yet. Now / Next / Later indicate focus, not delivery
-promises. Track tasks in issues and requirements in the linked references.
+An opt-in, synthetic-only browser MVP now connects publication, anonymous encrypted
+acceptance and local review. This is not production readiness. Now / Next / Later
+indicate focus, not delivery promises. Track tasks and requirements in their
+canonical references.
 
 The required product is browser-only: **sign in, open a shared review link or an
 available round, complete the form, submit**. Keys and encrypted member-key backup
@@ -16,26 +18,31 @@ See the [user flow](ui-design.md#account-and-review-workflow) and
 
 ## Now
 
-- Resolve the browser account/vault design before implementation: passkey sign-in,
-  PRF-assisted unlock on tested setups, explicit local-passphrase compatibility,
-  new-device access, separate account/key recovery, and the anonymous handoff.
-  Fix wrapping profiles and supported browser/provider evidence, not a promise of
-  universal passkey decryption. Keep reviewer server backup excluded pending review.
-- Build the identity-side foundation for a complete browser workflow: separate
-  PostgreSQL application integration, account authentication over the local session
-  store, owner-scoped encrypted member-key backup storage, enrollment, protected CA signing, and
-  revocation. Preserve [service boundaries](architecture.md#account-and-anonymous-flow).
-- Connect shared Go member-key and backup composition to reviewed browser interfaces
-  with automatic key/CSR preparation and local restoration. The existing CLI stays
-  optional; additional CLI conveniences must not displace browser integration.
-- Add real database and browser targets and the
+- Review the connected [browser MVP](deployment.md#browser-mvp-local-startup) and
+  [profile 1](cryptography.md#browser-mvp-profile-1) independently before real-data
+  use. Its local-passphrase path does not implement PRF or recovery. Resolve
+  supported browser/provider evidence, independent publication checkpoints,
+  protected signer custody, revocation administration and retention/restoration.
+  Keep reviewer server backup excluded pending separate policy review.
+- Extend the real `make browser-test` evidence with the remaining
   [account/vault acceptance cases](testing.md#browser-account-and-vault-acceptance).
   Measure mobile costs, test negative/recovery paths, and collect actual browser,
   screenshot, and manual accessibility evidence. Keep unimplemented UI visibly
   unavailable and accept no real secrets in the current demonstration.
 
+Available foundations below describe the reusable packages and original inert
+commands. Their earlier lack of HTTP/browser integration does not apply to the
+separate opt-in browser hosts.
+
 Available foundations:
 
+- **Submission persistence:** separate submission version-2 round/record tables and
+  an [internal atomic store](database.md#implemented-submission-record-storage) with
+  unique round/spend binding, immutable ciphertext, exact-payload retries, and
+  database-clock admission serialized with cancellation. The opt-in
+  `make db-submission-record-test` checks real runtime-role races, lock waits,
+  rollback, constraints, and service isolation. Token/envelope verification, log
+  outbox, public receipts, reviewer retrieval, and HTTP integration remain unavailable.
 - **Container infrastructure:** [local Compose stack](deployment.md#container-stack)
   for non-root Go services and independent PostgreSQL 18.6 instances, with separate
   volumes/credentials, owner/migration/runtime bootstrap roles, loopback publication,
@@ -50,10 +57,34 @@ Available foundations:
   [member-backup slot](database.md#local-member-backup-storage-contract) with bounded
   encrypted envelopes, fixed public binding, revision-checked updates/deletion,
   retained tombstones, and disable serialization. Credentials, product vault access,
-  protocol tables, and HTTP persistence remain unavailable.
+  protocol verification, and HTTP persistence remain unavailable.
   Internal session-scoped backup methods now derive the owner from a live session,
-  recheck expiry after lock waits, and serialize with revocation/disable. Login
-  ceremonies, recent-authentication policy, and browser/API integration remain open.
+  recheck expiry after lock waits, and serialize with revocation/disable. Mutations
+  require authentication admission within five minutes. Caller-verified
+  reauthentication can rotate one token without extending absolute expiry. Login
+  ceremonies, product authentication policy, and browser/API integration remain open.
+  Session starts now enforce a fixed 16-unexpired-session account limit under the
+  same lock, without eviction. Expiry/revocation frees capacity, and rotation remains
+  available at capacity. This internal admission bound does not replace rate limits
+  or expired-reference cleanup.
+  A session-scoped active-session inventory now returns bounded creation/expiry
+  metadata and a current-session marker without exposing tokens/digests or tracking
+  devices. Authorization is rechecked after account-lock waits; excess sessions
+  fail without a partial list. Recently authenticated bearers can also remove
+  sibling sessions without an owner override, preserving their own absolute expiry.
+  Product session-management UI and browser logout integration remain unavailable.
+  Identity version 4 adds independent non-secret session selectors to that inventory,
+  backfilling existing rows without changing tokens or expiry. Rotation replaces
+  the selector rather than creating a stable device-tracking handle.
+  Recently authenticated bearers can remove one selected sibling without touching
+  their own session. Stale selectors do not follow rotation, and foreign selectors
+  do not reveal or modify another account's references.
+  Recently authenticated bearers can also remove every account session, including
+  their own, without an owner override. A later independently verified login remains
+  possible; local keys and encrypted backups are unchanged. Browser logout remains open.
+  The same bearer-derived authorization now supports atomic account disabling and
+  removal of all sessions after recent admission. No re-enable or deletion exists;
+  encrypted backups are retained. Product confirmation/recovery policy remains open.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).
@@ -105,6 +136,12 @@ Available foundations:
   explicit foreground restoration, and navigation termination in pinned headless
   Chromium. Product delivery, partition/suspension coverage, and account binding/logout
   integration remain unavailable.
+  Test-binary-only confirmed setup and expected-key restoration forms now compose
+  the existing worker with independent setup passphrase fields, safe progress/errors,
+  and lock/cancellation. Failed restoration never generates a replacement key. Only
+  encrypted/public material remains in page memory. Keyboard and accessible-name
+  checks plus a real harness screenshot do not establish product onboarding or
+  durable account backup. See [synthetic forms](ui-design.md#synthetic-member-forms).
 
 These foundations do not establish protocol or storage security. Browser custody,
 enrollment, signing-service integration, reviewer round binding, expiry, submission

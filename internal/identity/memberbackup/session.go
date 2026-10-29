@@ -8,18 +8,26 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/mandipnotroot/anonce/internal/identity/accounts"
 )
 
+// RecentAuthenticationWindow is the fixed development admission window for
+// session-scoped backup mutations, not a product authentication assurance claim.
+const RecentAuthenticationWindow = accounts.RecentAuthenticationWindow
+
+// ErrReauthenticationRequired denotes a live session too old for backup mutation.
+var ErrReauthenticationRequired = errors.New("member backup requires recent authentication")
+
 // GetForSession reads only the live session owner's slot. It accepts no owner
 // override. Invalid, missing, expired, revoked, or disabled sessions and missing
 // slots share ErrUnavailable. Tokens remain caller-owned; clear after use.
 func (s *Store) GetForSession(ctx context.Context, token []byte) (Record, error) {
 	var record Record
-	err := s.withSession(ctx, token, func(ctx context.Context, tx pgx.Tx, owner accounts.ID) error {
+	err := s.withSession(ctx, token, false, func(ctx context.Context, tx pgx.Tx, owner accounts.ID) error {
 		var err error
 		record, err = read(ctx, tx, owner)
 		return err
@@ -31,8 +39,8 @@ func (s *Store) GetForSession(ctx context.Context, token []byte) (Record, error)
 }
 
 // PutForSession applies Put's revision/binding rules to the live session owner.
-// Session validity alone is not recent authentication. A trusted host must enforce
-// that additional policy before using this internal method for sensitive writes.
+// The session must have been created by verified authentication or rotated after
+// verified reauthentication within RecentAuthenticationWindow.
 // Inputs remain caller-owned and must not change until return. Commit errors
 // return no revision and must not be retried without reading current state.
 func (s *Store) PutForSession(ctx context.Context, token []byte, expected int64, public, backup []byte) (int64, error) {
@@ -40,7 +48,7 @@ func (s *Store) PutForSession(ctx context.Context, token []byte, expected int64,
 		return 0, ErrInvalidInput
 	}
 	var revision int64
-	err := s.withSession(ctx, token, func(ctx context.Context, tx pgx.Tx, owner accounts.ID) error {
+	err := s.withSession(ctx, token, true, func(ctx context.Context, tx pgx.Tx, owner accounts.ID) error {
 		var err error
 		revision, err = writeSlot(ctx, tx, owner, expected, public, backup, false)
 		return err
@@ -52,13 +60,13 @@ func (s *Store) PutForSession(ctx context.Context, token []byte, expected int64,
 }
 
 // DeleteForSession applies Delete's tombstone rules to the live session owner.
-// The same host-side recent-authentication and uncertain-commit rules apply.
+// The same recent-authentication and uncertain-commit rules apply.
 func (s *Store) DeleteForSession(ctx context.Context, token []byte, expected int64) (int64, error) {
 	if expected == 0 || !validRevision(expected) {
 		return 0, ErrInvalidInput
 	}
 	var revision int64
-	err := s.withSession(ctx, token, func(ctx context.Context, tx pgx.Tx, owner accounts.ID) error {
+	err := s.withSession(ctx, token, true, func(ctx context.Context, tx pgx.Tx, owner accounts.ID) error {
 		var err error
 		revision, err = writeSlot(ctx, tx, owner, expected, nil, nil, true)
 		return err
@@ -69,7 +77,7 @@ func (s *Store) DeleteForSession(ctx context.Context, token []byte, expected int
 	return revision, nil
 }
 
-func (s *Store) withSession(ctx context.Context, token []byte, apply func(context.Context, pgx.Tx, accounts.ID) error) error {
+func (s *Store) withSession(ctx context.Context, token []byte, requireRecent bool, apply func(context.Context, pgx.Tx, accounts.ID) error) error {
 	if len(token) != accounts.TokenSize {
 		return ErrUnavailable
 	}
@@ -85,7 +93,7 @@ func (s *Store) withSession(ctx context.Context, token []byte, apply func(contex
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	// Discover the owner without trusting it as authorization. Lock the account
-	// first, like StartSession, Revoke, RevokeAll, Disable, and owner-ID writes.
+	// first, like StartSession, RotateSession, revocation, disable, and owner-ID writes.
 	var id []byte
 	err = tx.QueryRow(ctx, "SELECT account_id FROM anonce.account_sessions WHERE token_digest = $1", digest[:]).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -100,15 +108,20 @@ func (s *Store) withSession(ctx context.Context, token []byte, apply func(contex
 		return err
 	}
 	// A fresh statement after the lock wait observes committed revocations and
-	// uses the database clock, not transaction-start time, to check expiry.
-	var live bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM anonce.account_sessions
-        WHERE token_digest = $1 AND account_id = $2 AND expires_at > statement_timestamp())`, digest[:], owner[:]).Scan(&live)
+	// uses the database clock, not transaction-start time, to check expiry/age.
+	var recent bool
+	err = tx.QueryRow(ctx, `SELECT created_at > statement_timestamp() - $3 * interval '1 second'
+        FROM anonce.account_sessions WHERE token_digest = $1 AND account_id = $2
+        AND created_at <= statement_timestamp() AND expires_at > statement_timestamp()`,
+		digest[:], owner[:], int64(RecentAuthenticationWindow/time.Second)).Scan(&recent)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrUnavailable
+	}
 	if err != nil {
 		return failure(ctx, "check member backup session")
 	}
-	if !live {
-		return ErrUnavailable
+	if requireRecent && !recent {
+		return ErrReauthenticationRequired
 	}
 	if err := apply(ctx, tx, owner); err != nil {
 		return err

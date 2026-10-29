@@ -13,6 +13,15 @@ Unstable `0.y.z` changes still require compatibility review.
 
 ## Public API boundary
 
+The opt-in browser MVP introduces unreleased `/api/browser/` routes,
+[browser profile 1](cryptography.md#browser-mvp-profile-1), identity migration 5 and
+submission migration 3. These are not replacements for the proposed `/api/v1/`
+schemas. Existing demonstration routes and key-backup bytes remain unchanged.
+The additive fixed-profile worker `authorize` method requires matched
+loader/worker/WASM rebuilds, with no mixed-artifact fallback. Changes to signed
+encodings, bindings, limits or schemas are breaking unless an explicit reviewed
+compatibility mechanism exists. No stable release exists.
+
 Public contracts include:
 
 - CLI commands, flags, exits; HTTP paths, statuses, schemas.
@@ -30,7 +39,7 @@ explicit breaking review.
 
 The opt-in [local migration commands](deployment.md#local-database-migrations) are
 additive development interfaces requiring `semver:minor` review. The independent
-histories support contiguous versions 0 through identity 3 or submission 1 and reject
+histories support contiguous versions 0 through identity 4 or submission 2 and reject
 unsupported state; published SQL is immutable. Identity version 2 is an additive
 account/session migration over version 1, with no automatic downgrade. The internal
 account store and its session storage profile add no browser wire format, credentials,
@@ -38,13 +47,65 @@ or membership authority. Identity version 3 additively creates a development-onl
 member-backup slot over version 2, requiring `semver:minor` review. Its internal
 owner/revision API and public envelope validation add no vault HTTP format or
 cryptographic profile; published SQL remains immutable. Existing HTTP, CLI key tooling, WASM, and
-device cryptographic profiles are unchanged.
+device cryptographic profiles are unchanged. Identity version 4 adds independent
+session selectors with automatic backfill and no token/timestamp changes, requiring
+`semver:minor` review. Updated account-store construction requires version 4;
+apply migrations before using it. Published earlier SQL remains unchanged.
+
+Submission version 2 additively creates internal round admission and atomic
+submission records over version 1, requiring `semver:minor` review. The updated
+record store requires this migration; existing histories upgrade without rewriting
+published SQL. Its ciphertext size bound and reference are internal storage
+contracts, not admitted token/envelope or receipt formats. HTTP remains unchanged.
 
 The internal [session-scoped backup methods](database.md#session-scoped-member-backup-access)
 add no public API or automatic release bump. Individual session revocation now uses
 the existing account-first transaction lock order. Migration ranges, grants, HTTP,
 CLI, WASM, and cryptographic formats are unchanged; existing owner-ID storage
 methods retain their trusted-caller contract.
+
+Internal session rotation and the fixed five-minute authentication-age gate on
+session-scoped backup mutations change only unstable Go storage behavior. Older
+live sessions can read but must reauthenticate before mutations; there is no
+bearer-only refresh. No public wire/parameter, migration, grant, or device profile
+changes and no automatic release bump are introduced.
+
+The fixed 16-unexpired-session account admission limit changes only unstable Go
+storage behavior. `StartSession` can now return `ErrSessionLimit` without evicting
+existing sessions; rotation remains available at capacity. No public API, parameter,
+migration, grant, or cryptographic format changes or automatic release bump are
+introduced. Existing excess rows are retained and deny new starts until capacity
+is available. See the [storage contract](database.md#implemented-account-storage).
+
+The internal [session inventory](database.md#session-scoped-session-inventory) adds
+only unstable Go storage behavior, not a supported browser/API format or an automatic
+release bump. It returns bounded timestamp/current-session metadata and no partial
+list for excess rows. Its additive `SessionID` metadata uses identity migration 4;
+existing public parameters, grants, and device profiles remain unchanged.
+
+Internal [sibling-session revocation](database.md#session-scoped-sibling-revocation)
+adds an unstable Go method with a shared five-minute authentication-admission gate.
+It changes neither existing revocation methods nor the member-backup mutation
+window. It adds no supported wire format, migration, grant, cryptographic profile,
+or automatic release bump. Browser logout and authentication ceremonies remain
+unimplemented.
+
+Internal [selected-session revocation](database.md#session-scoped-selected-revocation)
+adds an unstable Go method over identity version-4 selectors. Its existing shared
+five-minute gate and account scope cannot be overridden by target selection.
+It adds no further migration, grant, supported wire format, device profile, or
+automatic release bump. Current and stale selectors are no-ops, not bearer renewal.
+
+Internal [session-scoped sign-out everywhere](database.md#session-scoped-sign-out-everywhere)
+adds an unstable Go method using the existing recent-admission gate. It changes no
+existing revocation method, migration, grant, public format, device cryptographic
+profile, or automatic release bump. Browser logout remains unimplemented.
+
+Internal [session-scoped account disabling](database.md#session-scoped-account-disabling)
+adds an unstable Go method with the same recent-admission gate. Unlike trusted-owner
+disable, an invalidated bearer cannot repeat it successfully. Existing owner-ID
+methods, public contracts, migrations, grants, device profiles, and release versions
+are unchanged. No re-enable, account deletion, or browser disable UI is introduced.
 
 The [browser account/vault direction](key-management.md#browser-account-vault)
 is a documentation requirement, not a new supported API or cryptographic profile.
@@ -195,6 +256,11 @@ The opt-in [browser check target](testing.md#member-worker-browser-checks) adds 
 test-binary delivery and external development-tool setup. It changes no product
 HTTP route, shell CSP, worker contract, or cryptographic format, and carries no
 automatic release bump under the test-change policy below.
+
+The harness's [synthetic member forms](ui-design.md#synthetic-member-forms) add only
+test-binary markup, a local controller, and tests. Product HTTP/OpenAPI, shared Go,
+worker commands, cryptographic formats, and release versions remain unchanged.
+This is not a supported browser account/vault API.
 
 Requiring a visible owner document with visibility events and terminating on
 backgrounding is a breaking development lifecycle change requiring `semver:major`
