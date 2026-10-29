@@ -226,6 +226,7 @@ func TestMemberBrowserDelivery(t *testing.T) {
 	}{
 		{name: "page", path: "/", status: 200},
 		{name: "worker", path: "/member-worker.mjs", status: 200},
+		{name: "forms", path: "/member-forms.mjs", status: 200},
 		{name: "wasm", path: "/client.wasm", status: 200},
 		{name: "head", method: "HEAD", path: "/", status: 200},
 		{name: "head-wasm", method: "HEAD", path: "/client.wasm", status: 200},
@@ -281,7 +282,7 @@ func TestMemberBrowserDelivery(t *testing.T) {
 				switch tc.path {
 				case "/client.wasm":
 					contentType = "application/wasm"
-				case "/member-worker.mjs":
+				case "/member-worker.mjs", "/member-forms.mjs":
 					contentType = "text/javascript; charset=utf-8"
 				}
 				if w.Header().Get("Content-Type") != contentType {

@@ -71,9 +71,10 @@ enable remember-device storage. Browser compatibility and these UX paths require
 
 ## Synthetic member forms
 
-The [opt-in browser harness](testing.md#member-worker-browser-checks) includes a
-test-only local setup form. It is embedded only in test binaries, never served by
-the demonstration commands or on the anonymous submission service.
+The [opt-in browser harness](testing.md#member-worker-browser-checks) includes
+test-only local setup and restoration forms. They are embedded only in test
+binaries, never served by the demonstration commands or on the anonymous
+submission service.
 
 Two separately labelled passphrase fields use `autocomplete="new-password"`, allow
 paste, and clear before awaiting worker startup. Shared Go confirms exact UTF-8
@@ -84,20 +85,40 @@ No form control has a submission name; CSP prohibits native form submission.
 
 Successful setup retains only encrypted/public material in page memory, with an
 explicit nondurable-backup warning. Setup cannot overwrite an existing synthetic
-backup. Reloading discards that material. Lock, disposal, and observed worker closure
-clear fields and reject late results. Browser/runtime copies and autofill cannot be
-reliably erased. Only synthetic inputs are permitted.
+backup. Reloading discards that material. Lock, disposal, visibility loss, and
+observed worker closure clear fields and reject late results. Browser/runtime
+copies and autofill cannot be reliably erased. Only synthetic inputs are permitted.
+
+Restoration accepts one local passphrase with `autocomplete="current-password"`.
+The fixed in-memory test adapter supplies the encrypted backup and expected public
+key without file selection, key display, or manual public-key entry. The controller
+snapshots the bounded 108-byte backup and 32-byte expected key before worker startup;
+the worker uses shared Go for authenticated import and expected-key matching. The
+expected key comes from the trusted setup output or an independently supplied fixture,
+not from the ciphertext being restored. This does not settle product enrollment
+binding or malicious-server rollback defense.
+
+Wrong passwords, corrupted backups, and key substitution unlock nothing and never
+call setup or replace the encrypted record. Setup stays unavailable while a backup
+exists. Cancellation and backgrounding terminate the owner; returning merely
+reenables explicit restoration. A second synthetic browser page can restore a
+driver-supplied encrypted record using its independently retained expected key.
+That fixture is not authentication, network vault access, persistence, or recovery.
 
 The implementation follows the [HTML Living Standard forms model](https://html.spec.whatwg.org/multipage/forms.html)
 (consulted 2026-10-29), not a new cryptographic profile. Automated Chromium checks
 exercise Tab/Enter, labelled control names in the accessibility tree, mismatch
 handling, field clearing, lock, and native validation of the resulting backup.
+Restoration checks cover wrong passwords, expected-key substitution, ciphertext
+corruption, startup cancellation, a separate page, and real background-tab locking.
 These are not manual screen-reader, autofill-provider, mobile, or WCAG results.
 
-![Synthetic member setup after local lock, with empty fields](images/member-forms.png)
+![Synthetic member setup and restoration after background locking, with empty fields](images/member-forms.png)
 
 Captured from the actual pinned Chromium harness on 2026-10-29. This is test UI,
-not evidence of account authentication, enrollment, or durable backup.
+not evidence of account authentication, enrollment, or durable backup. The stored
+lossless grayscale PNG was verified to preserve every decoded RGBA pixel from the
+capture.
 
 ## Visual language
 

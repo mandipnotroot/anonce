@@ -421,8 +421,9 @@ without guaranteeing cleanup or complete memory erasure.
 The opt-in [synthetic browser checks](testing.md#member-worker-browser-checks)
 exercise native/worker compatibility under isolated test CSP without changing
 these profiles. They do not establish supported-device costs or product custody.
-The harness's [synthetic setup form](ui-design.md#synthetic-member-forms) uses
-the existing confirmed text method only. It adds no JavaScript cryptography,
+The harness's [synthetic forms](ui-design.md#synthetic-member-forms) use the existing
+confirmed setup and required expected-key restoration text methods only.
+They add no JavaScript cryptography,
 password-strength policy, storage format, or account unlock profile.
 
 The [browser account vault](key-management.md#browser-account-vault) is planned.

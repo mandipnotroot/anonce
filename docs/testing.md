@@ -169,11 +169,13 @@ profile-2 nonce prefix and library composition.
 | Test-only browser asset bounds, complete manifest/digests, duplicate/traversal rejection, exact routes, hosts/origins, methods/HEAD, headers, and unread bodies | `TestMemberBrowserAssets`, `TestMemberBrowserDelivery`, `FuzzMemberBrowserManifest` |
 | Actual browser member worker, native backup restore and browser backup opened natively, failed restoration without replacement, snapshots, admission, public output, pending disposal, UI event-loop progress, page CSP probes, synthetic-clock expiry/rollback and explicit restoration, same-origin peer lock, background-tab lock/foreground restoration, and navigation termination | `TestMemberNativeBrowserCompatibility` with `scripts/member_browser_test.mjs`, through the opt-in `make member-browser-test` |
 | Synthetic setup form independent entries, immediate field clearing, busy/unlocked/saved admission, safe retention failures, cancellation and late-result rejection | `scripts/member_forms_test.mjs` in `make member-wasm-test`; actual keyboard submission, accessible names, screenshot, and native backup/request validation through `make member-browser-test` |
+| Synthetic restoration form required expected key, bounded snapshots, unchanged record, no setup fallback, source errors, cancellation/closure, and hidden/foreground behavior | `scripts/member_forms_test.mjs`, including a 256-case bounded generated source/text sweep with no KDF/I/O; actual wrong-password, key-substitution, ciphertext-corruption, startup-cancellation, separate-page restoration, and background-lock checks in `scripts/member_browser_test.mjs` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
 Web checks validate allowlists/delivery, not full HTML/CSS grammar or browser execution.
-The shell loads no JavaScript. Screenshots, actual CSP enforcement, keyboard access, assistive
-technology, contrast, and print rendering remain untested.
+The shell loads no JavaScript. Product-shell screenshots, browser CSP enforcement,
+manual keyboard/assistive technology review, contrast, and print rendering remain
+untested; the separate synthetic-form evidence does not cover that shell.
 
 Native backup costs can be measured with:
 
@@ -571,6 +573,18 @@ for native validation, with fixed failure diagnostics. Page network events are
 checked against a fixed allowlist; this is not a complete browser/worker network
 capture, proxy-log audit, or malicious-site isolation boundary.
 
+The forms additionally use actual keyboard text insertion and Tab/Enter submission.
+Setup confirmation errors leave no backup; successful encrypted/public output is
+checked natively. Restoration preserves that record on wrong-password, substituted
+expected-key, and corrupted-ciphertext failures, without generating a replacement.
+A separate page restores the driver-supplied record with its retained expected key;
+real backgrounding then terminates the owner and reenables explicit restoration.
+Accessible-name checks inspect the browser accessibility tree, not a screen reader.
+Node controller tests cover deterministic startup/pending cancellation, peer closure,
+failed sources, owned snapshot cleanup, and idle-field clearing on visibility loss.
+No additional parser grammar or cryptographic profile is introduced; shared worker,
+UTF-8, backup, and key parsers retain their existing bounded fuzz targets.
+
 These checks cover one headless desktop build and same-origin/same-partition pages.
 Synthetic owner wall-clock advances exercise late startup/operation replies,
 lifetime expiry, backward-clock termination, and explicit same-key restoration.
@@ -587,17 +601,19 @@ Browser abort-controller checks additionally cancel startup, unlocked custody, a
 pending restoration, reject already-aborted startup, and explicitly restore the
 same native backup/key through a new owner. Worker disappearance is checked after
 the cancellation cases; this is not an erasure or hard cancellation-time guarantee.
-On 2026-10-28, `make member-browser-test` passed on Linux x86_64 with the pinned
+On 2026-10-29, `make member-browser-test` passed on Linux x86_64 with the pinned
 Chromium 159.0.8129.0 executable and Go/Node runtimes. This includes the host-signal,
-encrypted-export, password-confirmation, and UTF-8 text passphrase cases. The successful
+encrypted-export, password-confirmation, UTF-8 text passphrase, and synthetic
+setup/restoration form cases. The successful
 run supersedes earlier attempts blocked by missing libraries or an unset executable
 path. The driver retained the browser sandbox and CSP checks.
 
 Navigation and tab-switch checks observe worker disappearance, not memory erasure
 or reliable global revocation. Event-loop progress is not a mobile latency/memory budget.
 Other engines, storage partitions, background suspension, back/forward-cache
-restoration, real logout, provider/passkey compatibility, screenshots, keyboard and
-assistive technology, and the complete account/vault journey remain untested.
+restoration, real logout, provider/passkey compatibility, product screenshots,
+manual keyboard/assistive technology review, and the complete account/vault journey
+remain untested. The test-form screenshot is not product evidence.
 No supported-browser matrix or readiness claim follows from this target.
 
 ## Required runtime command contract

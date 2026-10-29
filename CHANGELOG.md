@@ -10,6 +10,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Test-only browser encrypted-backup restoration with a required expected setup key,
+  local passphrase input, bounded pre-startup snapshots, and no replacement-key
+  fallback. Failed unlocking preserves the backup; visibility loss clears fields
+  and requires explicit restoration. Node lifecycle/generated-admission tests and
+  pinned Chromium wrong-password, substitution, corruption, cancellation, and
+  separate-page restoration checks cover the flow. No server vault or account
+  authentication is added.
 - Test-binary-only browser member setup form with independently entered local
   passphrase confirmation, shared Go/worker cryptography, safe progress/errors,
   field clearing, and lock/cancellation. Only encrypted/public material remains in

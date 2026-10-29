@@ -164,9 +164,61 @@ async function setupForm(session) {
   for (const name of ["Local unlock passphrase", "Confirm local unlock passphrase", "Lock / cancel local work"]) {
     assert.ok(tree.nodes.some((node) => node.name?.value === name), "missing accessible form control name");
   }
-  const screenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }, session);
-  writeFileSync(join(scratch, "member-forms.png"), Buffer.from(screenshot.data, "base64"));
   return { formBackup: record.backup, formPublicKey: record.publicKey, formCSR: record.csr };
+}
+async function restoreForm(page) {
+  const session = page.sessionId, passphrase = "synthetic browser passphrase é😀";
+  const original = await evaluate(session, moduleCall("formRecord()"));
+  const clear = "document.querySelectorAll('input[type=password]').values().every(e => e.value === '')";
+  for (const failure of ["password", "binding", "ciphertext"]) {
+    const record = { ...original };
+    if (failure === "binding") record.publicKey = (record.publicKey.startsWith("00") ? "01" : "00") + record.publicKey.slice(2);
+    if (failure === "ciphertext") record.backup = record.backup.slice(0, -2) + (record.backup.endsWith("00") ? "01" : "00");
+    await evaluate(session, moduleCall(`seedFormRecord(${JSON.stringify(record)})`));
+    assert.equal(await evaluate(session, "document.getElementById('setup-fields').disabled"), true);
+    await enter(session, "unlock-passphrase", failure === "password" ? "wrong synthetic passphrase" : passphrase);
+    await press(session, "Enter");
+    assert.equal(await evaluate(session, clear), true);
+    await until(async () => await evaluate(session, "document.getElementById('form-status').textContent.startsWith('Unlock failed.')"));
+    assert.ok(JSON.stringify(await evaluate(session, moduleCall("formRecord()"))) === JSON.stringify(record), "failed unlock replaced the encrypted record");
+    await until(async () => (await workerIDs()).length === 0);
+  }
+  await evaluate(session, moduleCall(`seedFormRecord(${JSON.stringify(original)})`));
+  await enter(session, "unlock-passphrase", passphrase);
+  // Cancel in the same task as submit, before startup can produce any output.
+  await evaluate(session, "document.getElementById('member-restore').requestSubmit(); document.getElementById('member-lock').click()");
+  assert.equal(await evaluate(session, clear), true);
+  assert.equal(await evaluate(session, "document.getElementById('restore-fields').disabled"), false);
+  await until(async () => (await workerIDs()).length === 0);
+
+  // A separate page gets only ciphertext and an independently retained setup key,
+  // modeling host-supplied restoration without manual key files or key generation.
+  const fresh = await newFormPage(original);
+  await enter(fresh.sessionId, "unlock-passphrase", passphrase);
+  await press(fresh.sessionId, "Enter");
+  assert.equal(await evaluate(fresh.sessionId, clear), true);
+  const tree = await send("Accessibility.getFullAXTree", {}, fresh.sessionId);
+  assert.ok(tree.nodes.some((node) => node.name?.value === "Local passphrase for restoration"), "missing accessible restoration field name");
+  await until(async () => await evaluate(fresh.sessionId, "document.getElementById('form-status').textContent.startsWith('Synthetic backup restored and key matched.')"));
+  assert.equal(await evaluate(fresh.sessionId, "document.activeElement.id"), "member-lock");
+  const unlockedWorkers = await workerIDs();
+  assert.ok(unlockedWorkers.length > 0);
+  await activate(page); // A real hidden-page transition must lock the form owner too.
+  await workersGone(unlockedWorkers);
+  await activate(fresh);
+  assert.equal(await evaluate(fresh.sessionId, "document.getElementById('restore-fields').disabled"), false);
+  assert.equal(await evaluate(fresh.sessionId, "document.getElementById('setup-fields').disabled"), true);
+  assert.equal(await evaluate(fresh.sessionId, clear), true);
+  assert.ok(JSON.stringify(await evaluate(fresh.sessionId, moduleCall("formRecord()"))) === JSON.stringify(original), "restoration changed the saved key/backup");
+  const screenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }, fresh.sessionId);
+  writeFileSync(join(scratch, "member-forms.png"), Buffer.from(screenshot.data, "base64"));
+  await send("Target.closeTarget", { targetId: fresh.targetId });
+  await activate(page);
+}
+async function newFormPage(record) {
+  const fresh = await page();
+  await evaluate(fresh.sessionId, moduleCall(`seedFormRecord(${JSON.stringify(record)})`));
+  return fresh;
 }
 let output;
 try {
@@ -177,6 +229,7 @@ try {
   assert.equal(await evaluate(main.sessionId, moduleCall(`deadlines(${JSON.stringify(input)})`)), true, "owner deadline checks failed");
   assert.equal(await evaluate(main.sessionId, moduleCall(`cancellation(${JSON.stringify(input)})`)), true, "owner cancellation checks failed");
   Object.assign(output, await setupForm(main.sessionId));
+  await restoreForm(main);
   await until(async () => (await workerIDs()).length === 0);
   const peer = await page();
   assert.equal(await evaluate(peer.sessionId, moduleCall("openPeer()")), true);

@@ -6,13 +6,21 @@ import { lockMemberWorkers, MemberWorkerSession } from "/member-client.mjs";
 import { mountMemberForms } from "/member-forms.mjs";
 
 let formBackup = null;
-const disposeForms = mountMemberForms(document, () => new MemberWorkerSession(), (created) => {
+const mountForms = () => mountMemberForms(document, () => new MemberWorkerSession(), (created) => {
   formBackup = { backup: created.backup.slice(), publicKey: created.publicKey.slice(), csr: created.csr.slice() };
-});
+}, () => formBackup);
+let disposeForms = mountForms();
 globalThis.addEventListener("pagehide", () => { disposeForms(); formBackup = null; });
 // Only encrypted/public output is available to the synthetic driver.
 export function formRecord() {
   return formBackup === null ? null : Object.fromEntries(Object.entries(formBackup).map(([name, bytes]) => [name, encode(bytes)]));
+}
+// Synthetic new-page/substitution fixtures only. The expected key is supplied
+// independently by the driver, never extracted from the backup being restored.
+export function seedFormRecord(record) {
+  disposeForms();
+  formBackup = record === null ? null : { backup: decode(record.backup), publicKey: decode(record.publicKey), csr: decode(record.csr) };
+  disposeForms = mountForms();
 }
 
 const decode = (hex) => Uint8Array.from(hex.match(/../g), (pair) => Number.parseInt(pair, 16));
