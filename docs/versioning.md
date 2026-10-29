@@ -86,6 +86,12 @@ adds an unstable Go method using the existing recent-admission gate. It changes 
 existing revocation method, migration, grant, public format, device cryptographic
 profile, or automatic release bump. Browser logout remains unimplemented.
 
+Internal [session-scoped account disabling](database.md#session-scoped-account-disabling)
+adds an unstable Go method with the same recent-admission gate. Unlike trusted-owner
+disable, an invalidated bearer cannot repeat it successfully. Existing owner-ID
+methods, public contracts, migrations, grants, device profiles, and release versions
+are unchanged. No re-enable, account deletion, or browser disable UI is introduced.
+
 The [browser account/vault direction](key-management.md#browser-account-vault)
 is a documentation requirement, not a new supported API or cryptographic profile.
 Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional

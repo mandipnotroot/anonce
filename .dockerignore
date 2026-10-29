@@ -20,6 +20,8 @@
 !internal/identity/accounts/selected_session_postgres_test.go
 !internal/identity/accounts/all_sessions_test.go
 !internal/identity/accounts/all_sessions_postgres_test.go
+!internal/identity/accounts/session_disable_test.go
+!internal/identity/accounts/session_disable_postgres_test.go
 !internal/identity/memberbackup/store_test.go
 !internal/identity/memberbackup/postgres_test.go
 **/testdata/

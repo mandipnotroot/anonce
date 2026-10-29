@@ -136,6 +136,19 @@ cover serialization and denial of subsequent access. Fresh independently verifie
 logins remain possible; local keys, membership, and already admitted work are not
 revoked. No browser logout or credential ceremony is implemented.
 
+[Session-scoped account disabling](database.md#session-scoped-account-disabling)
+uses the same bearer-derived ownership and post-lock recent-admission gate. A
+recently stolen bearer can permanently deny account access: no re-enable API or
+proof-of-intent ceremony is provided. Hosts must review product confirmation and
+recovery before exposing this internal method. `session-scoped-disable`,
+`concurrent-session-scoped-disable`, `session-disable-after-lock-wait`, and
+`session-disable-rollback` cover owner isolation, invalid/old bearer denial,
+competing starts/rotation/revocation, post-lock authorization, and atomic rollback
+of the state update and deletion. Member-backup `session-disable` cases cover
+admitted-work serialization, subsequent denial, and unchanged retained ciphertext,
+binding, and revision. Account disabling does not revoke membership or local keys,
+erase backups, reset quotas, or recover encrypted keys.
+
 ### Internal member-backup storage
 
 - The [development store](database.md#local-member-backup-storage-contract) scopes

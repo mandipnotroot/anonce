@@ -75,6 +75,9 @@ Available foundations:
   Recently authenticated bearers can also remove every account session, including
   their own, without an owner override. A later independently verified login remains
   possible; local keys and encrypted backups are unchanged. Browser logout remains open.
+  The same bearer-derived authorization now supports atomic account disabling and
+  removal of all sessions after recent admission. No re-enable or deletion exists;
+  encrypted backups are retained. Product confirmation/recovery policy remains open.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).

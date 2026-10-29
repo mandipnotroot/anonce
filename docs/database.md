@@ -269,6 +269,39 @@ local lock/logout integration. This is internal storage behavior, not a browser
 endpoint. Existing PostgreSQL 18 transaction semantics, grants, migrations, and
 cryptographic profiles are unchanged. See [account checks](testing.md#account-storage-checks).
 
+### Session-scoped account disabling
+
+`DisableForSession(ctx, token)` derives the active owner from a live bearer, using
+the same account-first transaction and strict five-minute recent-admission gate as
+[sign-out everywhere](#session-scoped-sign-out-everywhere). No owner override,
+target selector, or caller-selected authentication timestamp is accepted. It marks
+the account disabled and removes every session reference, including the caller,
+expired rows, and future-dated rows, in one transaction. It works above admission
+capacity without listing first. Other accounts are unchanged.
+
+Malformed, missing, expired, future-dated, revoked, rotated, or disabled bearers
+return `ErrUnavailable`. Older live bearers return `ErrReauthenticationRequired`.
+Authorization and age are rechecked after account-lock waits, before any change.
+Unlike trusted-owner `Disable`, repeating this operation with the invalidated
+bearer is denied rather than returning an authenticated success.
+
+Success is reported only after commit. Failure or cancellation during session
+deletion rolls back the account-state update too. An uncertain commit may already
+have disabled the account despite returning an error; do not retry blindly. After
+disable commits, new starts, rotation, inventory, and member-backup access fail.
+Already admitted work and returned data are not recalled.
+
+There is no re-enable API. This is not account deletion, encrypted-backup deletion,
+key erasure, membership revocation, quota reset, or recovery. Encrypted backup
+ciphertext, public binding, and revision remain stored but inaccessible through the
+disabled account's store methods. Local workers/keys require separate lock/logout
+integration. A recently stolen bearer can disable the account; recent admission
+does not prove user intent. A future host needs independently verified
+authentication, explicit confirmation, CSRF protection, rate limits, and a reviewed
+product disable/recovery policy before exposure. No browser/API, migration, grant,
+retention policy, or cryptographic format is added. See
+[account checks](testing.md#account-storage-checks).
+
 ### Proposed identity relations
 
 The following table describes the intended complete service, not implemented

@@ -84,6 +84,11 @@ uses the same bearer digest and recent-admission check, deleting the current tok
 as well as siblings. It adds no cryptographic operation or profile and does not
 lock or revoke device keys.
 
+[Session-scoped account disabling](database.md#session-scoped-account-disabling)
+also uses this unchanged digest and recent-admission policy. Account status and
+session references change atomically; encrypted backups and device keys do not.
+It adds no cryptographic profile, key revocation, or key recovery mechanism.
+
 ## Membership and authorization
 
 The development [database bootstrap](database.md#local-container-bootstrap) uses

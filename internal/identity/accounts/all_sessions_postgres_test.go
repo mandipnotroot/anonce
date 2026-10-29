@@ -207,6 +207,11 @@ func testPostgresConcurrentAllSessions(t *testing.T) {
 }
 
 func testPostgresAllSessionsWait(t *testing.T) {
+	testPostgresInvalidationWait(t, false)
+}
+
+// Both bearer-derived invalidators must observe the same post-lock authorization.
+func testPostgresInvalidationWait(t *testing.T, disable bool) {
 	store, pool := testStore(t)
 	for _, operation := range []string{"expiry", "age", "revocation", "rotation", "disable", "cancellation"} {
 		t.Run(operation, func(t *testing.T) {
@@ -230,9 +235,15 @@ func testPostgresAllSessionsWait(t *testing.T) {
 			defer cancel()
 			done := make(chan error, 1)
 			go func() {
-				count, err := store.RevokeAllForSession(ctx, token)
-				if count != 0 {
-					t.Error("queued sign-out returned a count after invalidation")
+				var err error
+				if disable {
+					err = store.DisableForSession(ctx, token)
+				} else {
+					var count int64
+					count, err = store.RevokeAllForSession(ctx, token)
+					if count != 0 {
+						t.Error("queued sign-out returned a count after invalidation")
+					}
 				}
 				done <- err
 			}()
@@ -285,6 +296,13 @@ func testPostgresAllSessionsWait(t *testing.T) {
 			var afterCount int
 			if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM anonce.account_sessions WHERE account_id=$1", owner[:]).Scan(&afterCount); err != nil || afterCount != beforeCount {
 				t.Fatal("denied queued sign-out changed references")
+			}
+			wantState := accountSnapshot{state: "active", sessions: beforeCount}
+			if operation == "disable" {
+				wantState.state, wantState.disabledAt = "disabled", true
+			}
+			if snapshotAccount(t, pool, owner) != wantState {
+				t.Fatal("denied queued invalidation changed account state")
 			}
 		})
 	}

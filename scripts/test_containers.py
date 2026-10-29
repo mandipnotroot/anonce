@@ -216,6 +216,7 @@ class AccountOperatorTests(unittest.TestCase):
             "store_test.go", "postgres_test.go", "selected_session_test.go",
             "selected_session_postgres_test.go", "all_sessions_test.go",
             "all_sessions_postgres_test.go",
+            "session_disable_test.go", "session_disable_postgres_test.go",
         ):
             self.assertGreater(patterns.index("!internal/identity/accounts/" + source), patterns.index("**/*_test.go"))
         self.assertIn("test -x /out/account.test", (ROOT / "Dockerfile").read_text())

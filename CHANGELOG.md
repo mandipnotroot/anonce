@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Internal session-authorized account disabling with the shared recent-authentication
+  gate, atomically removing all sessions without an owner override. Encrypted
+  backups remain stored; no re-enable API exists. Native admission/fuzz and real
+  PostgreSQL scope, race, post-lock authorization, rollback, and backup-access
+  invalidation/retention checks cover the operation. No browser/API, migration,
+  grant, membership change, or cryptographic profile is added.
 - Internal session-authorized sign-out everywhere with the shared recent-authentication
   gate, removing the caller and sibling references without an owner override.
   Counts publish only after commit; a later verified login remains possible.

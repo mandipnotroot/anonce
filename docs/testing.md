@@ -250,7 +250,7 @@ Those remain unavailable. Missing tools or failed assertions fail rather than sk
 `make db-account-test` uses the same disposable stack and prerequisites as
 `make db-migration-test`, including all its checks. The separate `account-test`
 Docker target builds a race-enabled Go test executable in the existing pinned
-builder image. Only the six account test source files are additionally admitted
+builder image. Only the eight account test source files are additionally admitted
 through `.dockerignore`; no test fixtures or host credentials enter the build.
 The build must produce an executable, not a successful no-test compilation.
 
@@ -340,6 +340,21 @@ Named subtests cover:
   disable, and cancellation deny queued sign-out without deletion or a count.
 - `sign-out-rollback`: a held session-row lock cancels deletion without publishing
   a count or removing the current/sibling sessions.
+- `session-scoped-disable`: bearer-derived atomic disabling and removal of all
+  references above capacity, foreign-account isolation, unchanged input, denial of
+  invalid/old bearers and later session starts, recent/age boundaries, and trusted
+  reauthentication. `TestSessionDisableAdmission` and bounded
+  `FuzzSessionDisableAdmission` cover native bounds, concurrent unavailable-store
+  access, cancellation, and input ownership.
+- `concurrent-session-scoped-disable`: independent pools using same/competing
+  bearers, sibling rotation, starts, sign-out everywhere, and trusted-owner disable
+  produce only serialized account states and remove all expected references.
+- `session-disable-after-lock-wait`: the shared sign-out/disable wait matrix
+  rechecks expiry, authentication age, revocation, rotation, disable, and cancellation
+  without changing account state or references on denial.
+- `session-disable-rollback`: a held session-row lock cancels deletion after the
+  account-state update; rollback restores the active state and both sessions,
+  preserves current authorization, and releases locks for a later disable.
 
 The submission run must reject store construction, and SQL checks verify that
 neither account table exists there. This is persistence evidence only, not passkey
@@ -384,8 +399,10 @@ Named subtests cover:
   All-sibling and selected-sibling revocation deny removed bearers while preserving
   the caller's backup access.
   Session-scoped sign-out denies both the current and sibling backup bearers.
+  Session-scoped disable also denies both, retaining ciphertext, binding, and revision.
 - `session-lock-order-and-cancellation`: individual/selected/sibling/all-session revocation and
   disable wait for admitted access; cancelled invalidation leaves sessions usable.
+  Both bearer-derived sign-out and disable use the same lock order.
   Held account/backup locks cancel access without changing the slot.
 - `session-expiry-after-lock-wait`: a session expiring while queued on the account
   lock cannot update its backup. The database clock determines expiry.
@@ -412,8 +429,9 @@ an explicit opt-in target.
 On 2026-10-29, `make db-member-backup-test` passed on Linux x86_64 with PostgreSQL
 18.6, Engine 29.9.2, and Compose 5.6.1, including version-3/version-4 upgrade/failure checks,
 session selectors, rotation, all-sibling/selected-sibling revocation,
-authentication-age admission, cancellation, and all named runtime-role race checks
-above. No authentication ceremony was exercised.
+bearer-derived sign-out/account disabling, authentication-age admission,
+cancellation, and all named runtime-role race checks above. No authentication
+ceremony was exercised.
 
 ### WASM verifier checks
 

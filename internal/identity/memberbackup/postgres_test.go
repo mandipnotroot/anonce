@@ -703,7 +703,7 @@ func testPostgresSessionScope(t *testing.T) {
 
 func testPostgresSessionInvalidation(t *testing.T) {
 	store, accountStore, pool := testStores(t)
-	for _, operation := range []string{"revoke", "revoke-selected", "revoke-others", "revoke-all", "session-sign-out", "disable", "expired", "unknown"} {
+	for _, operation := range []string{"revoke", "revoke-selected", "revoke-others", "revoke-all", "session-sign-out", "session-disable", "disable", "expired", "unknown"} {
 		t.Run(operation, func(t *testing.T) {
 			owner := newOwner(t, accountStore)
 			token, sibling := sessionToken(t, accountStore, owner), sessionToken(t, accountStore, owner)
@@ -736,6 +736,8 @@ func testPostgresSessionInvalidation(t *testing.T) {
 				}
 			case "disable":
 				err = accountStore.Disable(t.Context(), owner)
+			case "session-disable":
+				err = accountStore.DisableForSession(t.Context(), token)
 			case "expired":
 				// Runtime can insert synthetic expired sessions, but cannot extend
 				// or edit a live session's immutable expiry.
@@ -754,10 +756,17 @@ func testPostgresSessionInvalidation(t *testing.T) {
 				t.Fatal("invalidate backup session")
 			}
 			deniedSession(t, store, token)
-			if operation == "disable" || operation == "revoke-all" || operation == "session-sign-out" {
+			if operation == "disable" || operation == "revoke-all" || operation == "session-sign-out" || operation == "session-disable" {
 				deniedSession(t, store, sibling)
 			} else if record, err := store.GetForSession(t.Context(), sibling); err != nil || record.Revision != 1 {
 				t.Fatal("invalidation affected sibling or backup")
+			}
+			if operation == "session-disable" {
+				var retained bool
+				if err := pool.QueryRow(t.Context(), `SELECT revision=1 AND backup=$2 AND public_key=$3
+                    FROM anonce.member_key_backups WHERE account_id=$1`, owner[:], envelope(), make([]byte, 32)).Scan(&retained); err != nil || !retained {
+					t.Fatal("session disable changed encrypted backup, binding, or revision")
+				}
 			}
 		})
 	}
@@ -785,7 +794,7 @@ func backupSessionSelector(t *testing.T, store *accounts.Store, token []byte) ac
 
 func testPostgresSessionLocking(t *testing.T) {
 	store, accountStore, pool := testStores(t)
-	for _, operation := range []string{"revoke", "revoke-selected", "revoke-others", "revoke-all", "session-sign-out", "disable"} {
+	for _, operation := range []string{"revoke", "revoke-selected", "revoke-others", "revoke-all", "session-sign-out", "session-disable", "disable"} {
 		t.Run(operation, func(t *testing.T) {
 			owner := newOwner(t, accountStore)
 			token := sessionToken(t, accountStore, owner)
@@ -822,6 +831,8 @@ func testPostgresSessionLocking(t *testing.T) {
 					}
 				case "disable":
 					err = accountStore.Disable(ctx, owner)
+				case "session-disable":
+					err = accountStore.DisableForSession(ctx, token)
 				}
 				if !errors.Is(err, context.DeadlineExceeded) {
 					t.Error("invalidation did not wait for authorized operation")
