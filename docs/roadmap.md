@@ -63,7 +63,9 @@ Available foundations:
   A session-scoped active-session inventory now returns bounded creation/expiry
   metadata and a current-session marker without exposing tokens/digests or tracking
   devices. Authorization is rechecked after account-lock waits; excess sessions
-  fail without a partial list. Product session-management UI remains unavailable.
+  fail without a partial list. Recently authenticated bearers can also remove
+  sibling sessions without an owner override, preserving their own absolute expiry.
+  Product session-management UI and browser logout integration remain unavailable.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).

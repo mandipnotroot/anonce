@@ -163,6 +163,44 @@ This follows the existing PostgreSQL 18
 contract (consulted 2026-10-29). No migration, grant, credential ceremony, or browser
 transport is introduced. See [account checks](testing.md#account-storage-checks).
 
+### Session-scoped sibling revocation
+
+`RevokeOtherSessions(ctx, token)` derives and authorizes the live bearer's owner
+using the same account-first transaction as inventory. It removes all other session
+references for that account, including expired and future-dated rows, and returns
+the removed-row count only after commit. The current token, creation time, and
+absolute expiry remain unchanged. Other accounts and encrypted backups are not
+modified. No owner override, target digest, timestamp, or caller-asserted freshness
+is accepted. It works at or above the session admission limit without listing first.
+
+Admission additionally requires nonfuture creation strictly within the preceding
+five minutes, checked with the database clock after account-lock waits. The shared
+`accounts.RecentAuthenticationWindow` also supplies the unchanged member-backup
+mutation window. An older live bearer returns `ErrReauthenticationRequired` with
+zero count and no mutation; inventory remains available. Malformed, unknown,
+future-dated, expired, revoked, and disabled bearers return `ErrUnavailable` instead.
+Only independently verified authentication followed by trusted session creation or
+rotation can establish recent admission. Token possession alone cannot renew it.
+Database clock changes can affect both expiry and this age gate.
+
+Concurrent package starts, rotations, revocations, disabling, and session-scoped
+backup access serialize on the account lock. A sibling operation ordered first
+commits before removal; already admitted work and returned data are not recalled.
+A separately authenticated start ordered afterward can create a new session.
+Competing bearers cannot both retain their own session through sibling revocation.
+Repeated calls with the surviving bearer and no siblings succeed with count zero.
+The five-second deadline bounds work, not the number of deleted references.
+Cancellation or failure returns zero count; an uncertain commit may have removed
+siblings and must not trigger a blind retry. Reread inventory or sign in afresh.
+
+This internal policy supports future session management following
+[OWASP simultaneous-session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#simultaneous-session-logons)
+(consulted 2026-10-29), not a product logout endpoint or proof of user intent.
+A recently stolen token can still remove legitimate siblings. Hosts still need
+verified authentication, protected transport, CSRF protection, rate limits, and
+local custody/logout integration. No migration, grant, HTTP/browser interface,
+device-key locking, membership revocation, or recovery mechanism is added.
+
 ### Proposed identity relations
 
 The following table describes the intended complete service, not implemented

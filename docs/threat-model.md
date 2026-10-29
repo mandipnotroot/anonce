@@ -68,7 +68,7 @@ properties described below.
 - Session creation/rotation, individual/all-session revocation, and disabling take the account row lock first.
   Disable atomically removes sessions and prevents new ones. An already-authorized
   in-flight request is not recalled; no distributed revocation or browser logout
-  claim is made. Database clock rollback can affect expiry.
+  claim is made. Database clock rollback can affect expiry and authentication-age admission.
 - This package trusts its caller to verify authentication and authorize changes.
   Session starts admit at most 16 unexpired references per account, rechecking
   committed state and database-clock expiry after the account lock. Denial does
@@ -93,6 +93,19 @@ invalid/future/expired bearers, invalidation, expiry during waits, and cancellat
 against real PostgreSQL. A stolen live bearer can read that owner's session times;
 returned metadata can become stale and is not recalled. This is not device
 identification, browser logout, or an authentication ceremony.
+
+The [sibling-revocation operation](database.md#session-scoped-sibling-revocation)
+uses the same derived owner and lock, requiring authentication admission within
+five minutes after any lock wait. Old live bearers cannot evict siblings or gain
+freshness from possession alone. A recently stolen bearer can still evict legitimate
+sessions; age is not proof of user intent. Revocation leaves the caller's token and
+absolute expiry unchanged, affects no other account, and denies later backup access
+by removed bearers. Already admitted operations, returned ciphertext, and local
+device keys are not recalled or erased. Later independently authenticated starts
+remain possible. `revoke-other-sessions`, `concurrent-revoke-other-sessions`,
+`revoke-others-after-lock-wait`, and `revoke-others-cancellation-and-rollback` map
+scope, competing bearers, rotation/invalidation, post-lock age/expiry, and rollback
+to real PostgreSQL checks. This adds no browser logout or credential ceremony.
 
 ### Internal member-backup storage
 

@@ -78,6 +78,339 @@ func TestPostgresAccounts(t *testing.T) {
 	t.Run("session-limit-after-lock-wait", testPostgresSessionLimitWait)
 	t.Run("session-inventory", testPostgresSessionInventory)
 	t.Run("inventory-after-lock-wait", testPostgresInventoryWait)
+	t.Run("revoke-other-sessions", testPostgresRevokeOthers)
+	t.Run("concurrent-revoke-other-sessions", testPostgresConcurrentRevokeOthers)
+	t.Run("revoke-others-after-lock-wait", testPostgresRevokeOthersWait)
+	t.Run("revoke-others-cancellation-and-rollback", testPostgresRevokeOthersRollback)
+}
+
+func testPostgresRevokeOthers(t *testing.T) {
+	store, pool := testStore(t)
+	id, other := newAccount(t, store), newAccount(t, store)
+	token, original := startSession(t, store, id)
+	otherToken, otherSession := startSession(t, store, other)
+	before := bytes.Clone(token)
+	defer clear(before)
+	var siblings [][]byte
+	for range MaxSessionsPerAccount - 1 {
+		sibling, _ := startSession(t, store, id)
+		siblings = append(siblings, sibling)
+	}
+	// Removing siblings must work even with excess restored/direct-SQL rows,
+	// expired references, and nonfuture-policy violations.
+	for _, offset := range []time.Duration{-2 * time.Hour, time.Hour, -time.Minute} {
+		sibling, _ := syntheticSession(t, pool, id, offset, time.Hour)
+		siblings = append(siblings, sibling)
+	}
+	if count, err := store.RevokeOtherSessions(t.Context(), token); err != nil || count != int64(len(siblings)) || !bytes.Equal(before, token) {
+		t.Fatal("sibling revocation returned wrong count or changed bearer")
+	}
+	if current, err := store.Resolve(t.Context(), token); err != nil || current != original {
+		t.Fatal("sibling revocation changed the current token, owner, or expiry")
+	}
+	for _, sibling := range siblings {
+		if _, err := store.Resolve(t.Context(), sibling); !errors.Is(err, ErrUnavailable) {
+			t.Fatal("sibling remained usable")
+		}
+		digest, _ := tokenDigest(sibling)
+		var exists bool
+		if err := pool.QueryRow(t.Context(), "SELECT EXISTS (SELECT 1 FROM anonce.account_sessions WHERE token_digest=$1)", digest[:]).Scan(&exists); err != nil || exists {
+			t.Fatal("sibling reference was not removed")
+		}
+	}
+	if current, err := store.Resolve(t.Context(), otherToken); err != nil || current != otherSession {
+		t.Fatal("sibling revocation changed another account")
+	}
+	if count, err := store.RevokeOtherSessions(t.Context(), token); err != nil || count != 0 {
+		t.Fatal("repeated sibling revocation was not idempotent")
+	}
+	// A separately authenticated start ordered later is allowed and can be seen.
+	startSession(t, store, id)
+	if entries, err := store.ListSessions(t.Context(), token); err != nil || len(entries) != 2 {
+		t.Fatal("sibling revocation prevented a later authenticated start")
+	}
+	for _, state := range []string{"malformed", "unknown", "expired", "future", "revoked", "disabled", "old", "boundary"} {
+		t.Run(state, func(t *testing.T) {
+			owner := newAccount(t, store)
+			candidate, _ := startSession(t, store, owner)
+			sibling, _ := startSession(t, store, owner)
+			want := ErrUnavailable
+			switch state {
+			case "malformed":
+				candidate = candidate[:TokenSize-1]
+			case "unknown":
+				candidate = make([]byte, TokenSize)
+				rand.Read(candidate)
+				defer clear(candidate)
+			case "expired":
+				candidate, _ = syntheticSession(t, pool, owner, -2*time.Hour, time.Hour)
+			case "future":
+				candidate, _ = syntheticSession(t, pool, owner, time.Hour, time.Hour)
+			case "revoked":
+				if err := store.Revoke(t.Context(), candidate); err != nil {
+					t.Fatal("revoke sibling-management bearer")
+				}
+			case "disabled":
+				// Keep references to prove the authorization gate precedes deletion.
+				if _, err := pool.Exec(t.Context(), "UPDATE anonce.accounts SET state='disabled',disabled_at=statement_timestamp() WHERE id=$1", owner[:]); err != nil {
+					t.Fatal("disable sibling-management owner")
+				}
+			case "old", "boundary":
+				offset := -RecentAuthenticationWindow
+				if state == "old" {
+					offset -= time.Second
+				}
+				candidate, _ = syntheticSession(t, pool, owner, offset, time.Hour)
+				want = ErrReauthenticationRequired
+			}
+			var beforeCount int
+			if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM anonce.account_sessions WHERE account_id=$1", owner[:]).Scan(&beforeCount); err != nil {
+				t.Fatal("count sessions before denied revocation")
+			}
+			if count, err := store.RevokeOtherSessions(t.Context(), candidate); count != 0 || !errors.Is(err, want) {
+				t.Fatal("invalid or old bearer revoked siblings or exposed count")
+			}
+			var afterCount int
+			if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM anonce.account_sessions WHERE account_id=$1", owner[:]).Scan(&afterCount); err != nil || afterCount != beforeCount {
+				t.Fatal("denied sibling revocation changed references")
+			}
+			if state == "old" || state == "boundary" {
+				if entries, err := store.ListSessions(t.Context(), candidate); err != nil || len(entries) != beforeCount {
+					t.Fatal("authentication age denied inventory")
+				}
+				fresh, rotated, err := store.RotateSession(t.Context(), owner, candidate)
+				if err != nil {
+					t.Fatal("rotate after caller-verified reauthentication")
+				}
+				defer clear(fresh)
+				if count, err := store.RevokeOtherSessions(t.Context(), fresh); err != nil || count != int64(beforeCount-1) {
+					t.Fatal("reauthenticated bearer could not revoke siblings")
+				}
+				if current, err := store.Resolve(t.Context(), fresh); err != nil || current != rotated {
+					t.Fatal("sibling revocation changed reauthenticated session")
+				}
+				if _, err := store.Resolve(t.Context(), sibling); !errors.Is(err, ErrUnavailable) {
+					t.Fatal("reauthenticated sibling revocation retained a sibling")
+				}
+			}
+		})
+	}
+	nearOwner := newAccount(t, store)
+	near, admitted := syntheticSession(t, pool, nearOwner, -RecentAuthenticationWindow+30*time.Second, time.Hour)
+	startSession(t, store, nearOwner)
+	if count, err := store.RevokeOtherSessions(t.Context(), near); err != nil || count != 1 {
+		t.Fatal("recent near-boundary session could not revoke siblings")
+	}
+	if current, err := store.Resolve(t.Context(), near); err != nil || current != admitted {
+		t.Fatal("near-boundary sibling revocation changed current session")
+	}
+	pool.Close()
+	if count, err := store.RevokeOtherSessions(t.Context(), token); count != 0 || err == nil || bytes.Contains([]byte(err.Error()), []byte("postgres")) {
+		t.Fatal("closed sibling-revocation pool returned count or driver details")
+	}
+}
+
+func testPostgresConcurrentRevokeOthers(t *testing.T) {
+	store, _ := testStore(t)
+	peer, _ := testStore(t)
+	for _, operation := range []string{"same-bearer", "competing-bearers", "sibling-rotation", "revoke-all", "disable"} {
+		t.Run(operation, func(t *testing.T) {
+			id := newAccount(t, store)
+			token, _ := startSession(t, store, id)
+			sibling, _ := startSession(t, store, id)
+			gate := make(chan struct{})
+			counts := make(chan int64, 2)
+			var wg sync.WaitGroup
+			wg.Go(func() {
+				<-gate
+				count, err := store.RevokeOtherSessions(t.Context(), token)
+				if err != nil && (!errors.Is(err, ErrUnavailable) || operation == "same-bearer" || operation == "sibling-rotation") {
+					t.Error("concurrent sibling revocation failed unexpectedly")
+				}
+				counts <- count
+			})
+			wg.Go(func() {
+				<-gate
+				switch operation {
+				case "same-bearer", "competing-bearers":
+					bearer := token
+					if operation == "competing-bearers" {
+						bearer = sibling
+					}
+					count, err := peer.RevokeOtherSessions(t.Context(), bearer)
+					if err != nil && (!errors.Is(err, ErrUnavailable) || operation == "same-bearer") {
+						t.Error("peer sibling revocation failed unexpectedly")
+					}
+					counts <- count
+				case "sibling-rotation":
+					fresh, _, err := peer.RotateSession(t.Context(), id, sibling)
+					defer clear(fresh)
+					if err != nil && !errors.Is(err, ErrUnavailable) {
+						t.Error("sibling rotation failed unexpectedly")
+					}
+				case "revoke-all":
+					if err := peer.RevokeAll(t.Context(), id); err != nil {
+						t.Error("competing revoke-all failed")
+					}
+				case "disable":
+					if err := peer.Disable(t.Context(), id); err != nil {
+						t.Error("competing disable failed")
+					}
+				}
+			})
+			close(gate)
+			wg.Wait()
+			close(counts)
+			var total int64
+			for count := range counts {
+				total += count
+			}
+			if operation == "revoke-all" || operation == "disable" {
+				if _, err := store.Resolve(t.Context(), token); !errors.Is(err, ErrUnavailable) {
+					t.Fatal("current session survived account invalidation")
+				}
+			} else {
+				bearer := token
+				if _, err := store.Resolve(t.Context(), token); errors.Is(err, ErrUnavailable) && operation == "competing-bearers" {
+					bearer = sibling
+				}
+				if entries, err := store.ListSessions(t.Context(), bearer); err != nil || len(entries) != 1 || !entries[0].Current || total != 1 {
+					t.Fatal("competing operations did not leave exactly one current session")
+				}
+			}
+		})
+	}
+}
+
+func testPostgresRevokeOthersWait(t *testing.T) {
+	store, pool := testStore(t)
+	for _, operation := range []string{"expiry", "age", "revocation", "insertion", "disable", "cancellation"} {
+		t.Run(operation, func(t *testing.T) {
+			id := newAccount(t, store)
+			var token []byte
+			var session Session
+			if operation == "age" {
+				token, session = syntheticSession(t, pool, id, -RecentAuthenticationWindow+time.Second, time.Hour)
+			} else {
+				lifetime := MaxLifetime
+				if operation == "expiry" {
+					lifetime = time.Second
+				}
+				var err error
+				token, session, err = store.StartSession(t.Context(), id, lifetime)
+				if err != nil {
+					t.Fatal("prepare queued sibling revocation")
+				}
+				defer clear(token)
+			}
+			startSession(t, store, id)
+			tx, err := pool.Begin(t.Context())
+			if err != nil {
+				t.Fatal("begin sibling revocation lock")
+			}
+			defer func() { _ = tx.Rollback(t.Context()) }()
+			if err := lockAccount(t.Context(), tx, id, true); err != nil {
+				t.Fatal("hold sibling revocation account lock")
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() {
+				count, err := store.RevokeOtherSessions(ctx, token)
+				if err != nil && count != 0 || err == nil && count != 2 {
+					t.Error("queued sibling revocation returned unexpected count")
+				}
+				done <- err
+			}()
+			waitForBlockedStart(t, pool, tx.Conn().PgConn().PID())
+			want := ErrUnavailable
+			remaining := 2
+			switch operation {
+			case "expiry", "age":
+				deadline := session.ExpiresAt
+				if operation == "age" {
+					deadline = session.CreatedAt.Add(RecentAuthenticationWindow)
+					want = ErrReauthenticationRequired
+				}
+				_, err = pool.Exec(t.Context(), "SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM ($1::timestamptz - clock_timestamp()))) + 0.05)", deadline)
+			case "revocation":
+				digest, _ := tokenDigest(token)
+				_, err = tx.Exec(t.Context(), "DELETE FROM anonce.account_sessions WHERE token_digest=$1", digest[:])
+				remaining = 1
+			case "insertion":
+				next := make([]byte, TokenSize)
+				rand.Read(next)
+				digest, _ := tokenDigest(next)
+				clear(next)
+				_, err = tx.Exec(t.Context(), `INSERT INTO anonce.account_sessions(token_digest,account_id,expires_at)
+                    VALUES ($1,$2,statement_timestamp()+interval '1 hour')`, digest[:], id[:])
+				want, remaining = nil, 1
+			case "disable":
+				_, err = tx.Exec(t.Context(), "UPDATE anonce.accounts SET state='disabled',disabled_at=statement_timestamp() WHERE id=$1", id[:])
+			case "cancellation":
+				cancel()
+				if err := <-done; !errors.Is(err, context.Canceled) {
+					t.Fatal("queued sibling revocation lost cancellation")
+				}
+			}
+			if err != nil {
+				t.Fatal("prepare post-lock sibling revocation state")
+			}
+			if err := tx.Commit(t.Context()); err != nil {
+				t.Fatal("release sibling revocation account lock")
+			}
+			if operation != "cancellation" {
+				if err := <-done; !errors.Is(err, want) {
+					t.Fatal("sibling revocation ignored post-lock state or authentication age")
+				}
+			}
+			var count int
+			if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM anonce.account_sessions WHERE account_id=$1", id[:]).Scan(&count); err != nil || count != remaining {
+				t.Fatal("queued sibling revocation left unexpected references")
+			}
+		})
+	}
+}
+
+func testPostgresRevokeOthersRollback(t *testing.T) {
+	store, pool := testStore(t)
+	id := newAccount(t, store)
+	token, original := startSession(t, store, id)
+	var siblings [][]byte
+	for range 3 {
+		sibling, _ := startSession(t, store, id)
+		siblings = append(siblings, sibling)
+	}
+	digest, _ := tokenDigest(siblings[1])
+	tx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal("begin sibling row lock")
+	}
+	defer func() { _ = tx.Rollback(t.Context()) }()
+	if _, err := tx.Exec(t.Context(), "DELETE FROM anonce.account_sessions WHERE token_digest=$1", digest[:]); err != nil {
+		t.Fatal("hold sibling row lock")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	if count, err := store.RevokeOtherSessions(ctx, token); count != 0 || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("blocked sibling deletion returned count or lost cancellation")
+	}
+	if err := tx.Rollback(t.Context()); err != nil {
+		t.Fatal("release sibling row lock")
+	}
+	// Listing takes the same account lock, waiting for the cancelled transaction
+	// to roll back any earlier sibling deletions before verifying the full set.
+	if entries, err := store.ListSessions(t.Context(), token); err != nil || len(entries) != len(siblings)+1 {
+		t.Fatal("cancelled sibling revocation partially committed")
+	}
+	for _, sibling := range siblings {
+		if _, err := store.Resolve(t.Context(), sibling); err != nil {
+			t.Fatal("cancelled sibling revocation removed a session")
+		}
+	}
+	if current, err := store.Resolve(t.Context(), token); err != nil || current != original {
+		t.Fatal("cancelled sibling revocation changed current session")
+	}
 }
 
 func testPostgresSessionInventory(t *testing.T) {

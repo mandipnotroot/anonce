@@ -10,6 +10,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Internal session-scoped sign-out of other sessions after authentication admission
+  within five minutes, preserving the current token and absolute expiry. Ownership,
+  expiry, and authentication age are rechecked after account-lock waits; failure
+  returns no count. Native admission/fuzz and opt-in real PostgreSQL cross-pool,
+  age/expiry, rollback, and member-backup invalidation checks cover the operation.
+  No login ceremony, browser logout, key revocation, migration, grant, or device
+  cryptographic format is added.
 - Internal session-scoped active-session inventory with creation/expiry timestamps
   and a current-session marker, without bearer secrets, digests, device tracking,
   or an owner override. Authorization is rechecked after account-lock waits;

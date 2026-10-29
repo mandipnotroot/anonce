@@ -65,9 +65,12 @@ After independently verifying fresh authentication for the same account, a trust
 caller may use `RotateSession` to atomically replace one live token with a fresh
 random token. The new row's creation time records that authentication admission;
 its absolute expiry is copied unchanged. No bearer-only renewal is permitted.
-Session-scoped backup writes require creation within the preceding five minutes,
-checked with the database clock after the account lock. This is a development
-storage policy, not proof of a verified ceremony or a product assurance level.
+Session-scoped backup writes and
+[sibling-session revocation](database.md#session-scoped-sibling-revocation) require
+creation within the preceding five minutes, using the same shared admission window
+checked with the database clock after the account lock. Sibling revocation neither
+rotates the retained token nor changes its timestamps or device keys. This is a
+development storage policy, not proof of a verified ceremony or a product assurance level.
 See the [transaction contract](database.md#session-scoped-member-backup-access).
 
 ## Membership and authorization

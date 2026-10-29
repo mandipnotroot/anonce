@@ -703,7 +703,7 @@ func testPostgresSessionScope(t *testing.T) {
 
 func testPostgresSessionInvalidation(t *testing.T) {
 	store, accountStore, pool := testStores(t)
-	for _, operation := range []string{"revoke", "revoke-all", "disable", "expired", "unknown"} {
+	for _, operation := range []string{"revoke", "revoke-others", "revoke-all", "disable", "expired", "unknown"} {
 		t.Run(operation, func(t *testing.T) {
 			owner := newOwner(t, accountStore)
 			token, sibling := sessionToken(t, accountStore, owner), sessionToken(t, accountStore, owner)
@@ -714,6 +714,12 @@ func testPostgresSessionInvalidation(t *testing.T) {
 			switch operation {
 			case "revoke":
 				err = accountStore.Revoke(t.Context(), token)
+			case "revoke-others":
+				var count int64
+				count, err = accountStore.RevokeOtherSessions(t.Context(), sibling)
+				if err == nil && count != 1 {
+					t.Fatal("sibling revocation removed unexpected backup sessions")
+				}
 			case "revoke-all":
 				err = accountStore.RevokeAll(t.Context(), owner)
 			case "disable":
@@ -752,10 +758,11 @@ func testPostgresSessionInvalidation(t *testing.T) {
 
 func testPostgresSessionLocking(t *testing.T) {
 	store, accountStore, pool := testStores(t)
-	for _, operation := range []string{"revoke", "revoke-all", "disable"} {
+	for _, operation := range []string{"revoke", "revoke-others", "revoke-all", "disable"} {
 		t.Run(operation, func(t *testing.T) {
 			owner := newOwner(t, accountStore)
 			token := sessionToken(t, accountStore, owner)
+			sibling := sessionToken(t, accountStore, owner)
 			// The callback runs only after the account lock and session recheck.
 			// Each invalidator must wait for this transaction, then cancel cleanly.
 			err := store.withSession(t.Context(), token, false, func(ctx context.Context, _ pgx.Tx, _ accounts.ID) error {
@@ -765,6 +772,12 @@ func testPostgresSessionLocking(t *testing.T) {
 				switch operation {
 				case "revoke":
 					err = accountStore.Revoke(ctx, token)
+				case "revoke-others":
+					var count int64
+					count, err = accountStore.RevokeOtherSessions(ctx, sibling)
+					if count != 0 {
+						t.Error("cancelled sibling revocation returned a count")
+					}
 				case "revoke-all":
 					err = accountStore.RevokeAll(ctx, owner)
 				case "disable":

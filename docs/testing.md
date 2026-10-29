@@ -299,6 +299,19 @@ Named subtests cover:
   token revocation/rotation, disable, and database-clock expiry; cancellation returns
   no metadata. Native `TestAccountAdmission`, `TestAccountUnavailableAndCancellation`,
   and bounded `FuzzAccountToken` cover input admission and ownership without SQL.
+- `revoke-other-sessions`: bearer-derived sibling removal at/exceeding capacity,
+  expired/future-row cleanup, cross-account isolation, unchanged current token/expiry
+  and input, repeat calls, later authenticated starts, invalid and old bearer denial,
+  near-boundary admission and age-boundary rejection, trusted rotation, and secret-free
+  closed-pool failure. The same native admission/cancellation/fuzz tests cover inputs.
+- `concurrent-revoke-other-sessions`: independent pools using the same/competing
+  bearers, sibling rotation, revoke-all, and disable leave only the expected survivor
+  or no live sessions, without returning another account's references.
+- `revoke-others-after-lock-wait`: queued operations recheck database-clock expiry
+  and authentication age, observe revocation/disable and sibling insertion, and
+  propagate cancellation without a count or unintended deletion.
+- `revoke-others-cancellation-and-rollback`: a held sibling-row lock cancels deletion;
+  all sibling rows survive rollback and the current session remains unchanged.
 
 The submission run must reject store construction, and SQL checks verify that
 neither account table exists there. This is persistence evidence only, not passkey
@@ -338,8 +351,9 @@ Named subtests cover:
 - `session-owner-scope`: session-derived owner isolation, revision conflicts,
   fixed binding, deletion/recreation, and independent result buffers.
 - `session-invalidation`: unknown/expired/revoked/disabled sessions cannot read,
-  write, or delete; individual revocation leaves sibling sessions usable.
-- `session-lock-order-and-cancellation`: individual/all-session revocation and
+  write, or delete; individual revocation leaves sibling sessions usable. Sibling
+  revocation denies removed bearers while preserving the caller's backup access.
+- `session-lock-order-and-cancellation`: individual/sibling/all-session revocation and
   disable wait for admitted access; cancelled invalidation leaves sessions usable.
   Held account/backup locks cancel access without changing the slot.
 - `session-expiry-after-lock-wait`: a session expiring while queued on the account
@@ -364,9 +378,9 @@ browser vault journey.
 Bounded native admission tests/fuzzing run in `make check`; real PostgreSQL remains
 an explicit opt-in target.
 
-On 2026-10-28, `make db-member-backup-test` passed on Linux x86_64 with PostgreSQL
+On 2026-10-29, `make db-member-backup-test` passed on Linux x86_64 with PostgreSQL
 18.6, Engine 29.9.2, and Compose 5.6.1, including version-3 upgrade/failure checks,
-session rotation, authentication-age admission, cancellation, and all named
+session rotation, sibling revocation, authentication-age admission, cancellation, and all named
 runtime-role race checks above. No authentication ceremony was exercised.
 
 ### WASM verifier checks

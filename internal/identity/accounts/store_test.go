@@ -47,6 +47,9 @@ func TestAccountAdmission(t *testing.T) {
 		if sessions, err := store.ListSessions(t.Context(), token); sessions != nil || !errors.Is(err, ErrUnavailable) {
 			t.Fatal("invalid inventory bearer admitted")
 		}
+		if count, err := store.RevokeOtherSessions(t.Context(), token); count != 0 || !errors.Is(err, ErrUnavailable) {
+			t.Fatal("invalid sibling-revocation bearer admitted")
+		}
 	}
 	if fresh, session, err := store.RotateSession(t.Context(), ID{}, make([]byte, TokenSize)); fresh != nil || session != (Session{}) || !errors.Is(err, ErrInvalidInput) {
 		t.Fatal("zero rotation account admitted")
@@ -95,6 +98,9 @@ func TestAccountUnavailableAndCancellation(t *testing.T) {
 					}
 					if sessions, err := store.ListSessions(ctx, make([]byte, TokenSize)); sessions != nil || !errors.Is(err, want) {
 						t.Error("inventory did not fail closed")
+					}
+					if count, err := store.RevokeOtherSessions(ctx, make([]byte, TokenSize)); count != 0 || !errors.Is(err, want) {
+						t.Error("sibling revocation did not fail closed")
 					}
 					if err := store.RevokeAll(ctx, ID{1}); !errors.Is(err, want) {
 						t.Error("revoke-all did not fail closed")
@@ -152,6 +158,9 @@ func FuzzAccountToken(f *testing.F) {
 		}
 		if sessions, err := store.ListSessions(t.Context(), token); sessions != nil || !errors.Is(err, ErrUnavailable) || !bytes.Equal(before, token) {
 			t.Fatal("inventory admission or ownership differs")
+		}
+		if count, err := store.RevokeOtherSessions(t.Context(), token); count != 0 || !errors.Is(err, ErrUnavailable) || !bytes.Equal(before, token) {
+			t.Fatal("sibling revocation admission or ownership differs")
 		}
 	})
 }

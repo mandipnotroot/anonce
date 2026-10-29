@@ -65,6 +65,13 @@ release bump. It returns bounded timestamp/current-session metadata and no parti
 list for excess rows. Existing public parameters, migrations, grants, and device
 profiles remain unchanged.
 
+Internal [sibling-session revocation](database.md#session-scoped-sibling-revocation)
+adds an unstable Go method with a shared five-minute authentication-admission gate.
+It changes neither existing revocation methods nor the member-backup mutation
+window. It adds no supported wire format, migration, grant, cryptographic profile,
+or automatic release bump. Browser logout and authentication ceremonies remain
+unimplemented.
+
 The [browser account/vault direction](key-management.md#browser-account-vault)
 is a documentation requirement, not a new supported API or cryptographic profile.
 Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional
