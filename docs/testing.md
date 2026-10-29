@@ -143,6 +143,13 @@ profiles. Key tests generate keys at runtime and clear accessible owned buffers;
 opaque library copies cannot be explicitly cleared. Generic backup tests use
 synthetic non-key payloads; CLI filesystem tests use non-key stand-ins.
 
+Member-key and reviewer-key suites share backup contract checks in
+`internal/client/internal/keytest`. Algorithm-specific validation and compatibility
+tests stay in each wrapper. Wrapper cancellation tests exercise every observed
+checkpoint rather than hard-coded nested call counts; the keystore suite retains
+explicit admission, derivation, and output-boundary checks. CLI publication tests
+share destination snapshots while retaining their command and unsafe-path cases.
+
 Unsafe-file fixtures set and verify their final permissions after creation so
 CI's restrictive `umask 077` cannot make a public-file case owner-only. Tests do
 not change the process-wide mask while parallel tests run. Reproduce CI defaults

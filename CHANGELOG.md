@@ -280,6 +280,9 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Consolidate key-backup contract tests and CLI destination-preservation checks.
+  Wrapper cancellation tests cover observed checkpoints without fixed nested call
+  counts. Algorithm-specific cases, runtime behavior, and formats are unchanged.
 - Breaking development bridge/worker method-set expansion for opt-in password
   confirmation. Rebuild and deploy all member assets together; mixed method sets
   fail closed. Existing methods, command envelopes, HTTP, CLI, and backup formats
