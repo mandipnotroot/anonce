@@ -59,6 +59,12 @@ migration, grant, or cryptographic format changes or automatic release bump are
 introduced. Existing excess rows are retained and deny new starts until capacity
 is available. See the [storage contract](database.md#implemented-account-storage).
 
+The internal [session inventory](database.md#session-scoped-session-inventory) adds
+only unstable Go storage behavior, not a supported browser/API format or an automatic
+release bump. It returns bounded timestamp/current-session metadata and no partial
+list for excess rows. Existing public parameters, migrations, grants, and device
+profiles remain unchanged.
+
 The [browser account/vault direction](key-management.md#browser-account-vault)
 is a documentation requirement, not a new supported API or cryptographic profile.
 Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional

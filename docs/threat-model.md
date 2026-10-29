@@ -84,6 +84,16 @@ properties described below.
   the checked runtime role/database, without parameter tracing. Storage tests do
   not establish a secure account workflow or authorize anonymous submissions.
 
+The [session inventory](database.md#session-scoped-session-inventory) derives its
+owner from the live bearer and rechecks authorization after account-lock waits.
+It returns only bounded creation/expiry metadata and a current-session marker,
+never tokens/digests or another account's sessions. Excess rows fail without a
+partial list. `session-inventory` and `inventory-after-lock-wait` cover scope,
+invalid/future/expired bearers, invalidation, expiry during waits, and cancellation
+against real PostgreSQL. A stolen live bearer can read that owner's session times;
+returned metadata can become stale and is not recalled. This is not device
+identification, browser logout, or an authentication ceremony.
+
 ### Internal member-backup storage
 
 - The [development store](database.md#local-member-backup-storage-contract) scopes

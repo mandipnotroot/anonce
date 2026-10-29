@@ -76,6 +76,171 @@ func TestPostgresAccounts(t *testing.T) {
 	t.Run("session-limit", testPostgresSessionLimit)
 	t.Run("concurrent-session-limit", testPostgresConcurrentSessionLimit)
 	t.Run("session-limit-after-lock-wait", testPostgresSessionLimitWait)
+	t.Run("session-inventory", testPostgresSessionInventory)
+	t.Run("inventory-after-lock-wait", testPostgresInventoryWait)
+}
+
+func testPostgresSessionInventory(t *testing.T) {
+	store, pool := testStore(t)
+	id, other := newAccount(t, store), newAccount(t, store)
+	oldToken, old := syntheticSession(t, pool, id, -time.Hour, 2*time.Hour)
+	token, current := startSession(t, store, id)
+	startSession(t, store, other)
+	syntheticSession(t, pool, id, -2*time.Hour, time.Hour)
+	future, _ := syntheticSession(t, pool, id, time.Hour, time.Hour)
+	before := bytes.Clone(token)
+	defer clear(before)
+	for _, bearer := range [][]byte{token, oldToken} {
+		entries, err := store.ListSessions(t.Context(), bearer)
+		if err != nil || len(entries) != 2 || entries[0] != (SessionInfo{current.CreatedAt, current.ExpiresAt, bytes.Equal(bearer, token)}) ||
+			entries[1] != (SessionInfo{old.CreatedAt, old.ExpiresAt, bytes.Equal(bearer, oldToken)}) || !bytes.Equal(token, before) {
+			t.Fatal("inventory exposed another owner, invalid row, or wrong metadata")
+		}
+		entries[0] = SessionInfo{}
+	}
+	for _, state := range []string{"malformed", "unknown", "expired", "future", "revoked", "disabled"} {
+		t.Run(state, func(t *testing.T) {
+			owner := newAccount(t, store)
+			candidate := make([]byte, TokenSize)
+			rand.Read(candidate)
+			defer clear(candidate)
+			switch state {
+			case "malformed":
+				candidate = candidate[:TokenSize-1]
+			case "expired":
+				candidate, _ = syntheticSession(t, pool, owner, -2*time.Hour, time.Hour)
+			case "future":
+				candidate = future
+			case "revoked", "disabled":
+				candidate, _ = startSession(t, store, owner)
+				var err error
+				if state == "revoked" {
+					err = store.Revoke(t.Context(), candidate)
+				} else {
+					err = store.Disable(t.Context(), owner)
+				}
+				if err != nil {
+					t.Fatal("invalidate inventory bearer")
+				}
+			}
+			if entries, err := store.ListSessions(t.Context(), candidate); entries != nil || !errors.Is(err, ErrUnavailable) {
+				t.Fatal("inventory returned metadata to an invalid bearer")
+			}
+		})
+	}
+	// Direct SQL and restored data can exceed the package's admission limit.
+	for range MaxSessionsPerAccount - 2 {
+		syntheticSession(t, pool, id, -time.Minute, time.Hour)
+	}
+	if entries, err := store.ListSessions(t.Context(), token); err != nil || len(entries) != MaxSessionsPerAccount {
+		t.Fatal("inventory rejected exact capacity")
+	}
+	syntheticSession(t, pool, id, -time.Minute, time.Hour)
+	if entries, err := store.ListSessions(t.Context(), token); entries != nil || !errors.Is(err, ErrSessionLimit) {
+		t.Fatal("over-capacity inventory returned a partial list")
+	}
+	if _, err := store.Resolve(t.Context(), token); err != nil {
+		t.Fatal("inventory denial changed current session")
+	}
+	pool.Close()
+	if entries, err := store.ListSessions(t.Context(), token); entries != nil || err == nil || bytes.Contains([]byte(err.Error()), []byte("postgres")) {
+		t.Fatal("closed inventory pool returned metadata or driver details")
+	}
+}
+
+func syntheticSession(t *testing.T, pool *pgxpool.Pool, owner ID, offset, lifetime time.Duration) ([]byte, Session) {
+	t.Helper()
+	token := make([]byte, TokenSize)
+	rand.Read(token)
+	t.Cleanup(func() { clear(token) })
+	digest, _ := tokenDigest(token)
+	session := Session{AccountID: owner}
+	err := pool.QueryRow(t.Context(), `INSERT INTO anonce.account_sessions(token_digest,account_id,created_at,expires_at)
+        VALUES ($1,$2,statement_timestamp()+$3*interval '1 second',statement_timestamp()+$4*interval '1 second')
+        RETURNING created_at, expires_at`, digest[:], owner[:], int64(offset/time.Second), int64((offset+lifetime)/time.Second)).Scan(&session.CreatedAt, &session.ExpiresAt)
+	if err != nil {
+		t.Fatal("insert synthetic session metadata")
+	}
+	return token, session
+}
+
+func testPostgresInventoryWait(t *testing.T) {
+	store, pool := testStore(t)
+	for _, operation := range []string{"expiry", "revocation", "rotation", "disable", "insertion", "cancellation"} {
+		t.Run(operation, func(t *testing.T) {
+			id := newAccount(t, store)
+			lifetime := MaxLifetime
+			if operation == "expiry" {
+				lifetime = time.Second
+			}
+			token, session, err := store.StartSession(t.Context(), id, lifetime)
+			if err != nil {
+				t.Fatal("prepare inventory lock wait")
+			}
+			defer clear(token)
+			digest, _ := tokenDigest(token)
+			tx, err := pool.Begin(t.Context())
+			if err != nil {
+				t.Fatal("begin inventory lock")
+			}
+			defer func() { _ = tx.Rollback(t.Context()) }()
+			if err := lockAccount(t.Context(), tx, id, true); err != nil {
+				t.Fatal("hold inventory account lock")
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() {
+				entries, err := store.ListSessions(ctx, token)
+				if err != nil && entries != nil || err == nil && (len(entries) != 2 || !entries[1].Current) {
+					t.Error("queued inventory returned unexpected metadata")
+				}
+				done <- err
+			}()
+			waitForBlockedStart(t, pool, tx.Conn().PgConn().PID())
+			want := ErrUnavailable
+			switch operation {
+			case "expiry":
+				_, err = pool.Exec(t.Context(), "SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM ($1::timestamptz - clock_timestamp()))) + 0.05)", session.ExpiresAt)
+			case "revocation", "rotation":
+				_, err = tx.Exec(t.Context(), "DELETE FROM anonce.account_sessions WHERE token_digest=$1", digest[:])
+				if err == nil && operation == "rotation" {
+					next := make([]byte, TokenSize)
+					rand.Read(next)
+					replacement, _ := tokenDigest(next)
+					clear(next)
+					_, err = tx.Exec(t.Context(), `INSERT INTO anonce.account_sessions(token_digest, account_id, expires_at)
+                        VALUES ($1,$2,$3)`, replacement[:], id[:], session.ExpiresAt)
+				}
+			case "disable":
+				_, err = tx.Exec(t.Context(), "UPDATE anonce.accounts SET state='disabled',disabled_at=statement_timestamp() WHERE id=$1", id[:])
+			case "insertion":
+				next := make([]byte, TokenSize)
+				rand.Read(next)
+				sibling, _ := tokenDigest(next)
+				clear(next)
+				_, err = tx.Exec(t.Context(), `INSERT INTO anonce.account_sessions(token_digest,account_id,expires_at)
+                    VALUES ($1,$2,statement_timestamp()+interval '1 hour')`, sibling[:], id[:])
+				want = nil
+			case "cancellation":
+				cancel()
+				if err := <-done; !errors.Is(err, context.Canceled) {
+					t.Fatal("inventory lost blocked cancellation")
+				}
+			}
+			if err != nil {
+				t.Fatal("prepare post-lock inventory state")
+			}
+			if err := tx.Commit(t.Context()); err != nil {
+				t.Fatal("release inventory lock")
+			}
+			if operation != "cancellation" {
+				if err := <-done; !errors.Is(err, want) {
+					t.Fatal("inventory ignored post-lock authorization or state")
+				}
+			}
+		})
+	}
 }
 
 func testPostgresSessionLimit(t *testing.T) {

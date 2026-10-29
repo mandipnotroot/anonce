@@ -60,6 +60,10 @@ Available foundations:
   same lock, without eviction. Expiry/revocation frees capacity, and rotation remains
   available at capacity. This internal admission bound does not replace rate limits
   or expired-reference cleanup.
+  A session-scoped active-session inventory now returns bounded creation/expiry
+  metadata and a current-session marker without exposing tokens/digests or tracking
+  devices. Authorization is rechecked after account-lock waits; excess sessions
+  fail without a partial list. Product session-management UI remains unavailable.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).

@@ -52,6 +52,11 @@ per account under its existing account lock. This is a
 [storage admission policy](database.md#implemented-account-storage), not a change
 to randomness, digest composition, lifetime, or any cryptographic format.
 
+The internal [session inventory](database.md#session-scoped-session-inventory)
+reuses this same digest and account-lock authorization, returning timestamps and a
+current-session marker only. Neither bearer secrets nor stored digests are returned;
+no new primitive, identifier, or cryptographic format is introduced.
+
 Internal [session-scoped member-backup access](database.md#session-scoped-member-backup-access)
 reuses this exact digest/expiry profile for owner authorization. It neither derives
 an unlock key nor changes encrypted backups, session secrets, or browser formats.

@@ -74,7 +74,8 @@ Distinguish implemented from planned behavior.
 - `internal/identity/accounts`: identity runtime-role account/session store, digest-only
   random tokens, absolute expiry, individual/all-session revocation, transactional
   disable, token rotation after caller-verified reauthentication without extending
-  expiry, a fixed per-account live-session admission limit, and bounded expired cleanup;
+  expiry, a fixed per-account live-session admission limit, bounded session-scoped
+  active-session metadata, and bounded expired cleanup;
   no authentication ceremony, membership, vault, or HTTP integration.
 - `internal/identity/memberbackup`: development-only account-scoped encrypted
   member-backup slots with fixed public binding, compare-and-swap revisions,

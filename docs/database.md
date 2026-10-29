@@ -131,6 +131,38 @@ ceremony or HTTP integration exists. Product retention and recovery must be revi
 before real data is admitted. See the
 [real PostgreSQL account checks](testing.md#account-storage-checks).
 
+### Session-scoped session inventory
+
+`ListSessions(ctx, token)` derives the account from the bearer session, locks the
+active account, then rechecks the same token's existence, nonfuture creation, and
+absolute expiry in a fresh Read Committed statement. The five-second transaction
+uses the same account-first lock order as session changes and member-backup access.
+Revocation, rotation, or disable committed first denies a queued lookup. Expiry is
+checked using the database clock after lock waits, not transaction-start time.
+
+The returned `SessionInfo` entries contain creation and absolute-expiry timestamps
+and a `Current` marker only. No account ID, token, digest, device ID, IP, user agent,
+or anonymous activity is returned or added to storage. Entries are ordered newest
+first, with expiry and an internal digest tie-breaker; digests never leave the store.
+This is session metadata, not a list of devices or a supported HTTP format.
+
+The query returns at most 16 live, nonfuture entries as of authorization admission.
+It fetches at most one extra entry to detect excess sessions from direct SQL, older
+writers, or restoration. Excess returns `ErrSessionLimit` without a partial list
+or eviction. Malformed, unknown, future-dated, expired, revoked, and disabled bearer
+sessions share `ErrUnavailable` and return no metadata. Older live sessions may
+list without recent authentication. Cancellation or transaction failure returns
+no list. Results are returned only after commit and can immediately become stale;
+cleanup may remove references that expire after admission. Already returned data
+is not recalled by revocation. Hosts still need authentication, protected delivery,
+CSRF protection, and rate limits before exposing session management.
+
+This follows the existing PostgreSQL 18
+[row-lock](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS) and
+[Read Committed](https://www.postgresql.org/docs/18/transaction-iso.html#XACT-READ-COMMITTED)
+contract (consulted 2026-10-29). No migration, grant, credential ceremony, or browser
+transport is introduced. See [account checks](testing.md#account-storage-checks).
+
 ### Proposed identity relations
 
 The following table describes the intended complete service, not implemented

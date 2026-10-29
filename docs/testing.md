@@ -291,14 +291,22 @@ Named subtests cover:
 - `session-limit-after-lock-wait`: queued admission observes committed insertion,
   revocation, disable, and database-clock expiry; cancellation returns no material
   and leaves capacity unchanged.
+- `session-inventory`: owner-derived creation/expiry metadata and current marker,
+  old live bearer access, unchanged inputs/output ownership, cross-account isolation,
+  malformed/unknown/future/expired/revoked/disabled bearer rejection, exact capacity,
+  excess rows without partial output, and secret-free closed-pool failure.
+- `inventory-after-lock-wait`: queued lookup observes committed sibling insertion,
+  token revocation/rotation, disable, and database-clock expiry; cancellation returns
+  no metadata. Native `TestAccountAdmission`, `TestAccountUnavailableAndCancellation`,
+  and bounded `FuzzAccountToken` cover input admission and ownership without SQL.
 
 The submission run must reject store construction, and SQL checks verify that
 neither account table exists there. This is persistence evidence only, not passkey
 verification, HTTP owner authorization, login/logout UX, vault custody, membership
 binding, production retention, or the complete browser acceptance journey.
 
-On 2026-10-28, `make db-account-test` passed on Linux x86_64 with PostgreSQL 18.6,
-Engine 29.9.2, and Compose 5.6.1, including version-2 upgrade/failure checks and
+On 2026-10-29, `make db-account-test` passed on Linux x86_64 with PostgreSQL 18.6,
+Engine 29.9.2, and Compose 5.6.1, including version-2/version-3 upgrade/failure checks and
 the runtime-role race-enabled subtests above.
 
 ### Member-backup storage checks

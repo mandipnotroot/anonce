@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Internal session-scoped active-session inventory with creation/expiry timestamps
+  and a current-session marker, without bearer secrets, digests, device tracking,
+  or an owner override. Authorization is rechecked after account-lock waits;
+  over-capacity accounts return no partial list. Native admission/fuzz and opt-in
+  real PostgreSQL scope, expiry, invalidation, and cancellation checks cover access.
+  No browser/API, migration, grant, or cryptographic format is added.
 - Internal per-account session admission limit of 16 unexpired sessions, checked
   after account-lock waits without evicting existing sessions. Expiry/revocation
   frees capacity, and reauthentication rotation remains available at capacity.
