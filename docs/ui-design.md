@@ -69,6 +69,11 @@ explicit lock/cancel/sign-out, published limits, issuance-loss warnings and the
 receipt-contract limitation are visible. Ordinary users do not handle keys, CSRs
 or files. Reviewers are warned that their encrypted key stays in this browser.
 
+An undecryptable answer gets a plain-language placeholder without hiding later
+records or pages. The final status reports the number of rejected answers. Lock,
+hidden-page state, and reviewer-owner replacement stop reading instead of being
+treated as bad answers; no late plaintext or success status is displayed.
+
 Replies, charts, generalized forms, credential/recovery management and advanced
 administration remain excluded. Product screenshots, manual assistive-device,
 contrast, mobile and autofill-provider review remain outstanding. The synthetic

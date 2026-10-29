@@ -180,6 +180,7 @@ make wasm-test        # native/WASM public-request compatibility and bridge chec
 make member-wasm      # separate local member-session WASM and matching notices
 make member-wasm-test # native/Node backup compatibility, member bridge/worker checks
 make member-browser-test # opt-in synthetic Chromium checks; requires MEMBER_BROWSER
+make browser-unit-test # reviewer record isolation and cancellation checks in Node
 make container-secrets # generate/validate local database secret files, no replacement
 make container-config # validate normalized Compose settings, no daemon required
 make up              # build/start/wait and verify the local demo stack
