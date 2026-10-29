@@ -5,8 +5,10 @@
 
 Audience: front-end contributors, accessibility reviewers, and product reviewers.
 
-Status: read-only local shell implemented; product UI is design only. No browser
-screenshots or accessibility results yet.
+Status: the original read-only shell and separate connected browser MVP forms are
+implemented. The isolated member harness remains synthetic, not the account UI.
+Broader product screens, product screenshots and manual accessibility evidence
+remain outstanding.
 
 ## Account and review workflow
 
@@ -54,6 +56,30 @@ enable remember-device storage. Browser compatibility and these UX paths require
 
 ## Current local shell
 
+### Connected browser MVP pages
+
+The opt-in [browser hosts](deployment.md#browser-mvp-local-startup) add account,
+local unlocking, enrollment, round/publication, anonymous free-text submission and
+local reviewer forms. They are separate from the original read-only shell.
+
+The anonymous origin collects and encrypts answers. Reviewer plaintext renders
+locally with `textContent`, never HTML interpolation or a plaintext server API.
+Labels, live status, disabled startup controls, independent passphrase confirmation,
+explicit lock/cancel/sign-out, published limits, issuance-loss warnings and the
+receipt-contract limitation are visible. Ordinary users do not handle keys, CSRs
+or files. Reviewers are warned that their encrypted key stays in this browser.
+
+An undecryptable answer gets a plain-language placeholder without hiding later
+records or pages. The final status reports the number of rejected answers. Lock,
+hidden-page state, round expiry, and reviewer-owner replacement stop reading
+instead of being treated as bad answers; no late plaintext or success status is
+displayed.
+
+Replies, charts, generalized forms, credential/recovery management and advanced
+administration remain excluded. Product screenshots, manual assistive-device,
+contrast, mobile and autofill-provider review remain outstanding. The synthetic
+screenshot below is not evidence of these connected pages.
+
 - **Pages:** submission-only `/` and `/about`; `/dev/styleguide` requires
   `-dev-styleguide`. The guide has a synthetic draft, unavailable publication button,
   and empty/status examples, not administration.
@@ -67,6 +93,57 @@ enable remember-device storage. Browser compatibility and these UX paths require
   HTML/CSS, run browsers, measure contrast, establish WCAG conformance, or replace
   keyboard/assistive review. Actual desktop/mobile and light/dark screenshots plus
   browser/manual checks remain required; no substitute rendering images are provided.
+
+## Synthetic member forms
+
+The [opt-in browser harness](testing.md#member-worker-browser-checks) includes
+test-only local setup and restoration forms. They are embedded only in test
+binaries, never served by the demonstration commands or on the anonymous
+submission service.
+
+Two separately labelled passphrase fields use `autocomplete="new-password"`, allow
+paste, and clear before awaiting worker startup. Shared Go confirms exact UTF-8
+bytes before preparing the key, encrypted backup, and fixed request. A live status,
+busy state, and keyboard-operable lock/cancel button expose progress without keys,
+passphrases, or driver diagnostics. Controls start disabled until scripts mount.
+No form control has a submission name; CSP prohibits native form submission.
+
+Successful setup retains only encrypted/public material in page memory, with an
+explicit nondurable-backup warning. Setup cannot overwrite an existing synthetic
+backup. Reloading discards that material. Lock, disposal, visibility loss, and
+observed worker closure clear fields and reject late results. Browser/runtime
+copies and autofill cannot be reliably erased. Only synthetic inputs are permitted.
+
+Restoration accepts one local passphrase with `autocomplete="current-password"`.
+The fixed in-memory test adapter supplies the encrypted backup and expected public
+key without file selection, key display, or manual public-key entry. The controller
+snapshots the bounded 108-byte backup and 32-byte expected key before worker startup;
+the worker uses shared Go for authenticated import and expected-key matching. The
+expected key comes from the trusted setup output or an independently supplied fixture,
+not from the ciphertext being restored. This does not settle product enrollment
+binding or malicious-server rollback defense.
+
+Wrong passwords, corrupted backups, and key substitution unlock nothing and never
+call setup or replace the encrypted record. Setup stays unavailable while a backup
+exists. Cancellation and backgrounding terminate the owner; returning merely
+reenables explicit restoration. A second synthetic browser page can restore a
+driver-supplied encrypted record using its independently retained expected key.
+That fixture is not authentication, network vault access, persistence, or recovery.
+
+The implementation follows the [HTML Living Standard forms model](https://html.spec.whatwg.org/multipage/forms.html)
+(consulted 2026-10-29), not a new cryptographic profile. Automated Chromium checks
+exercise Tab/Enter, labelled control names in the accessibility tree, mismatch
+handling, field clearing, lock, and native validation of the resulting backup.
+Restoration checks cover wrong passwords, expected-key substitution, ciphertext
+corruption, startup cancellation, a separate page, and real background-tab locking.
+These are not manual screen-reader, autofill-provider, mobile, or WCAG results.
+
+![Synthetic member setup and restoration after background locking, with empty fields](images/member-forms.png)
+
+Captured from the actual pinned Chromium harness on 2026-10-29. This is test UI,
+not evidence of account authentication, enrollment, or durable backup. The stored
+lossless grayscale PNG was verified to preserve every decoded RGBA pixel from the
+capture.
 
 ## Visual language
 

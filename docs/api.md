@@ -5,19 +5,22 @@
 
 Audience: transport implementers and client authors.
 
-Status: local demonstration infrastructure only. The [API definition](openapi.yaml)
+Status: the original commands retain demonstration-only behavior. The separate
+opt-in browser hosts implement the [browser API definition](browser-openapi.yaml)
+and the contract below. The original [API definition](openapi.yaml)
 uses the official [OpenAPI 3.1.0 specification](https://spec.openapis.org/oas/v3.1.0)
-and separates implemented endpoints from proposed discovery APIs. Cryptographic
-schemas await encoding and profile review.
+and separates demonstration endpoints from proposed discovery APIs. Browser
+cryptographic encodings are specified separately in
+[profile 1](cryptography.md#browser-mvp-profile-1).
 
 The separate [local WASM verifier](key-management.md#local-wasm-request-verification)
 provides request validation and opt-in expected-key matching through an in-process
 JavaScript interface, not an HTTP route. These commands serve no verifier artifacts;
 HTTP routes and OpenAPI schemas are unchanged.
 
-The separate [local member-session bridge](key-management.md#local-wasm-member-sessions)
-also uses only an in-process interface. It adds no HTTP endpoint or OpenAPI schema;
-the services still handle no passwords, private keys, or encrypted member backups.
+The [local member-session bridge](key-management.md#local-wasm-member-sessions)
+itself uses an in-process interface, not HTTP. Browser hosts compose it with the
+backup API below; original demonstration commands still handle no backups.
 Its unlocked `backup(password)` method returns only local encrypted bytes; it is
 not a vault upload or password-change HTTP operation.
 Local `createConfirmed` and `backupConfirmed` add password confirmation in shared
@@ -35,6 +38,47 @@ encode only locally into existing worker commands. No text passwords enter HTTP,
 and no OpenAPI schema or product route is added.
 
 ## Implemented infrastructure
+
+### Opt-in browser HTTP contract
+
+See [startup](deployment.md#browser-mvp-local-startup). All browser routes require
+the configured HTTPS host, bounded headers, 32 KiB JSON bodies, 32 in-flight
+requests, ten-second request deadlines and `no-store`. Identity writes additionally
+require exact `Origin`, `Sec-Fetch-Site: same-origin`, and `X-Anonce-CSRF: 1`.
+Only JSON is accepted; unknown fields and trailing values fail. The stable public
+error shape remains `code` and `message`, without internal diagnostics.
+
+Identity session and ceremony cookies are `__Host-` prefixed, Secure, HttpOnly,
+host-only, path `/`, SameSite Strict, with one-hour and two-minute lifetimes.
+Session secrets use the existing digest-only store. WebAuthn verifies the exact RP
+and origin with user verification required. Ceremonies are single-use even after
+failed verification. Login replaces the local bearer after verified authentication;
+logout revokes it and locks local workers. One credential per account, no recovery,
+no credential addition and no PRF unlocking are the initial limits.
+
+Authentication begins allow ten attempts per hashed account name per five minutes,
+with at most 1024 in-memory entries, plus 120 global POST requests per minute and
+256 outstanding persisted ceremonies. Rate counters are per process and reset on
+restart; run one instance of each local host. No IP address is collected. These
+bounds do not stop distributed saturation or replace production abuse review.
+
+The anonymous host rejects all cookie and Authorization headers on API requests.
+Its submit route rejects identity-origin calls. Only public publication and
+round-scoped review allow exact-origin CORS from the configured identity host,
+without `Access-Control-Allow-Credentials`. Reviewer proofs are not account
+credentials. Tokens and unlock material never appear in URLs. Public common round
+IDs may appear in query parameters. The API accepts no account-linked submission
+history or plaintext-answer endpoint.
+
+Binary fields are canonical unpadded base64url, except WebAuthn's standard JSON
+ceremony representation. Formats and signature contracts are fixed in
+[cryptography](cryptography.md#browser-mvp-profile-1). The browser API is unreleased
+and incompatible with the proposed `/api/v1/` schemas; no automatic fallback exists.
+
+The internal [submission record store](database.md#implemented-submission-record-storage)
+adds no HTTP endpoint or OpenAPI schema. It trusts a future verifier, so exposing
+its digest/byte arguments directly would bypass token authorization and envelope
+validation. Submission routes still return `501`; readiness remains unavailable.
 
 The [local container stack](deployment.md#container-stack) changes deployment only.
 Its explicit `-container-network` flag permits container-local IPv4 wildcard binding

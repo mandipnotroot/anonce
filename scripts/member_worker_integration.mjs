@@ -13,7 +13,7 @@ import { Worker as NodeWorker } from "node:worker_threads";
 const config = readFileSync(new URL("./wasm.toml", import.meta.url), "utf8");
 assert.equal(process.version, /^node_version = "([^"]+)"$/m.exec(config)?.[1]);
 const directory = resolve(process.argv[2]);
-const expected = ["LICENSE", "LICENSE.anonce", "LICENSE.x-crypto", "LICENSE.x-sys", "PATENTS", "PATENTS.x-crypto", "PATENTS.x-sys",
+const expected = ["LICENSE", "LICENSE.anonce", "LICENSE.circl", "LICENSE.x-crypto", "LICENSE.x-sys", "PATENTS", "PATENTS.x-crypto", "PATENTS.x-sys",
   "client.wasm", "member-client.mjs", "member-worker.mjs", "protocol.mjs", "wasm_exec.js"].sort();
 const names = [];
 for (const line of readFileSync(join(directory, "SHA256SUMS"), "utf8").trimEnd().split("\n")) {

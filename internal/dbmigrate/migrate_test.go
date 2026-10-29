@@ -154,6 +154,23 @@ func TestMigrationFiles(t *testing.T) {
 		} else if err != nil || !bytes.Contains(backups, []byte("CREATE TABLE anonce.member_key_backups")) {
 			t.Fatal("identity member backup migration missing")
 		}
+		selectors, err := fs.ReadFile(files, "00004_session_selectors.sql")
+		if side == "submission" {
+			if !errors.Is(err, fs.ErrNotExist) {
+				t.Fatal("submission history contains session selector migration")
+			}
+		} else if err != nil || !bytes.Contains(selectors, []byte("ADD COLUMN session_id uuid NOT NULL DEFAULT gen_random_uuid()")) {
+			t.Fatal("identity session selector migration missing")
+		}
+		records, err := fs.ReadFile(files, "00002_submission_records.sql")
+		if side == "identity" {
+			if !errors.Is(err, fs.ErrNotExist) {
+				t.Fatal("identity history contains submission records")
+			}
+		} else if err != nil || !bytes.Contains(records, []byte("UNIQUE (round_id, spend_digest)")) ||
+			!bytes.Contains(records, []byte("CREATE TABLE anonce.submission_records")) {
+			t.Fatal("submission record migration missing")
+		}
 	}
 }
 

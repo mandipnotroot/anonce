@@ -42,6 +42,11 @@ make docs-setup
 make check docs-build
 ```
 
+Install ExifTool before policy checks that inspect images or other asset metadata.
+On Debian/Ubuntu, use `sudo apt-get install libimage-exiftool-perl`; verify it with
+`exiftool -ver`. CI installs the distribution package explicitly and keeps missing
+metadata inspection a failure.
+
 Add new files to Git for index, link, and site validation. Build from tracked
 documents; do not maintain separate site copies.
 

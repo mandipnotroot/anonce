@@ -1,0 +1,15 @@
+/* SPDX-FileCopyrightText: 2026 Anonce Contributors
+ * SPDX-License-Identifier: AGPL-3.0-only */
+:root { color-scheme: light dark; font: 1rem/1.6 system-ui, sans-serif; }
+body { max-width: 54rem; margin: auto; padding: 1.5rem; }
+section { border: 1px solid; border-radius: .5rem; padding: 1rem; margin: 1rem 0; }
+label { display: block; margin-top: .75rem; }
+input, textarea, button, select { font: inherit; padding: .5rem; max-width: 100%; }
+textarea { width: 95%; min-height: 8rem; }
+button { margin: .75rem .5rem .25rem 0; cursor: pointer; }
+:focus-visible { outline: 3px solid #8b8bff; outline-offset: 3px; }
+[hidden] { display: none !important; }
+#status { min-height: 3rem; border-inline-start: 4px solid; padding-inline-start: 1rem; }
+.warning { border: 2px solid; padding: .75rem; }
+pre, output { white-space: pre-wrap; overflow-wrap: anywhere; }
+a { text-underline-offset: .2em; }

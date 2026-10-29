@@ -224,6 +224,42 @@ func privateDirectory(t *testing.T) string {
 	return directory
 }
 
+// unchangedPath snapshots absence, file identity and regular-file contents before
+// a rejected publication. Symlinks are compared without following their targets.
+func unchangedPath(t *testing.T, path string) func() {
+	t.Helper()
+	before, err := os.Lstat(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	var contents []byte
+	if err == nil && before.Mode().IsRegular() {
+		contents, err = os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return func() {
+		t.Helper()
+		after, err := os.Lstat(path)
+		if before == nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("failed publication created a destination")
+			}
+			return
+		}
+		if err != nil || !os.SameFile(before, after) {
+			t.Fatal("existing destination was replaced")
+		}
+		if before.Mode().IsRegular() {
+			data, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(data, contents) {
+				t.Fatal("existing destination was modified")
+			}
+		}
+	}
+}
+
 func (c *cancelAtCheck) Err() error {
 	c.calls++
 	if c.calls >= c.at {

@@ -61,6 +61,9 @@ func New(ctx context.Context, pool *pgxpool.Pool) (*Store, error) {
         AND NOT pg_has_role(current_user, 'anonce_owner', 'MEMBER')
         AND to_regclass('anonce.accounts') IS NOT NULL
         AND to_regclass('anonce.account_sessions') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM pg_attribute
+            WHERE attrelid = to_regclass('anonce.account_sessions')
+            AND attname = 'session_id' AND NOT attisdropped)
         AND (SELECT count(*) = 1 AND bool_and(singleton AND service = 'identity')
              FROM anonce.storage_boundary)
         FROM pg_roles WHERE rolname = current_user`).Scan(&valid)

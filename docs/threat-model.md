@@ -9,6 +9,40 @@ Status: design analysis, not a completed security assessment.
 
 ## Current controls and limits
 
+### Connected local browser MVP
+
+The [separate browser hosts](deployment.md#browser-mvp-local-startup) add verified
+WebAuthn ceremonies, protected sessions, CSRF checks, bounded authentication
+attempts/input, existing-worker member custody, owner-scoped encrypted backups,
+single-use invitations, authorized publication, blind-token quotas, anonymous HPKE
+answers, signed acceptance and local review. Earlier foundation-only statements
+below continue to describe the original demonstration commands.
+
+This is source composition, not independent approval. Exact-origin/window checks
+and omitted credentials constrain handoff, not global traffic correlation. The
+website distributor and local host remain trusted. Timing, identifying content and
+small cohorts can reveal members. Publication trust is operator-configured; no
+independent checkpoint detects split views.
+
+Signed acceptance attests committed exact ciphertext under a canonical token spend.
+It does not prove log inclusion or prevent privileged database rollback, lost
+storage or a compromised receipt signer. Reviewer read expiry does not recall
+plaintext/ciphertext or erase browser backups. Lost reviewer browser storage or
+passphrases is unrecoverable. New-device member restoration trusts service binding
+metadata; same-browser pins do not defeat malicious delivery or rollback.
+
+A member can submit a structurally valid envelope that the reviewer cannot
+decrypt. Reviewer pages reject that record individually and continue with later
+records. Worker closure, round expiry, hidden-page state, and owner replacement
+still stop the read. This does not authenticate answer contents or prevent
+identifying text.
+
+Rate counters are per process. Local signing files and round RSA keys stored in
+the identity database lack protected signer custody. Retention/restoration,
+externally anchored audit/transparency, recovery, revocation administration,
+incident handling and broad browser evidence remain incomplete. Use synthetic
+data only and never expose these local hosts publicly.
+
 These controls cover local development only. They do not establish the protocol
 properties described below.
 
@@ -51,11 +85,30 @@ properties described below.
   operator image with only one database network and migration credential. It
   explicitly assumes ownership, serializes application with a bounded session lock,
   and rejects unsupported histories. Runtime can read the boundary marker and has
-  explicit identity account/session/member-backup grants, never migration-state access. The runner
+  explicit identity account/session/member-backup and submission round/record grants,
+  never migration-state access. The runner
   has schema-owner authority; its SQL and image are
   trusted operator inputs. Version records are not tamper evidence or checksums.
   Password buffers are cleared where owned, but driver/runtime copies remain.
   Plaintext database TCP is local-only, with no hostile-host or production TLS claim.
+
+### Submission record storage
+
+- The [internal store](database.md#implemented-submission-record-storage) admits only
+  the separate submission runtime database. One append-only record atomically binds
+  each round-scoped spend digest to ciphertext. A unique constraint arbitrates
+  concurrent spending; only exact-payload retries return the original reference.
+  Runtime grants prevent record replacement/deletion and schedule/digest updates.
+- Shared round locks order acceptance against cancellation, with the database
+  clock checked after lock waits. Cancelled/closed rounds admit nothing new; stored
+  data is retained. Clock rollback, privileged SQL, compromised runtime code, and
+  old database restoration remain outside this package's protection.
+- Its trusted caller must verify tokens, derive canonical spend digests, validate
+  envelopes and common bulletins, and authorize provisioning/cancellation. The
+  store cannot prove ciphertext validity, anonymity, or quota compliance. No HTTP
+  path, reviewer retrieval, outbox, public receipt, or inclusion proof exists.
+  Internal precise timestamps need a reviewed retention/minimization policy.
+  Database/driver logging must not record parameters, results, or request addresses.
 
 ### Identity account storage
 
@@ -86,13 +139,19 @@ properties described below.
 
 The [session inventory](database.md#session-scoped-session-inventory) derives its
 owner from the live bearer and rechecks authorization after account-lock waits.
-It returns only bounded creation/expiry metadata and a current-session marker,
+It returns bounded creation/expiry metadata, independent non-secret row selectors,
+and a current-session marker,
 never tokens/digests or another account's sessions. Excess rows fail without a
 partial list. `session-inventory` and `inventory-after-lock-wait` cover scope,
 invalid/future/expired bearers, invalidation, expiry during waits, and cancellation
 against real PostgreSQL. A stolen live bearer can read that owner's session times;
 returned metadata can become stale and is not recalled. This is not device
-identification, browser logout, or an authentication ceremony.
+identification, browser logout, or an authentication ceremony. `session-selectors`
+checks stable per-row selectors, replacement on rotation, constraint/grant
+enforcement, and rejection of selectors as credentials. The migration target checks
+backfill without changing existing tokens or timestamps, repeated application, and
+transactional failure. Selectors remain identity-side linkable metadata and must
+not enter anonymous requests, logs, or tracking systems.
 
 The [sibling-revocation operation](database.md#session-scoped-sibling-revocation)
 uses the same derived owner and lock, requiring authentication admission within
@@ -106,6 +165,42 @@ remain possible. `revoke-other-sessions`, `concurrent-revoke-other-sessions`,
 `revoke-others-after-lock-wait`, and `revoke-others-cancellation-and-rollback` map
 scope, competing bearers, rotation/invalidation, post-lock age/expiry, and rollback
 to real PostgreSQL checks. This adds no browser logout or credential ceremony.
+
+[Selected sibling revocation](database.md#session-scoped-selected-revocation) uses
+independent inventory selectors, never bearer digests, and the same owner-derived
+recent-authentication gate. Current, missing, stale, and foreign selectors cannot
+remove the current session or another account's row; rotation invalidates the old
+selector without exposing a successor. `selected-session-revocation`,
+`concurrent-selected-session-revocation`, `selected-session-after-lock-wait`, and
+`selected-session-rollback` cover scope, competing bearers, rotation, post-lock
+authorization/age/expiry, and cancelled deletion. Member-backup `revoke-selected`
+cases cover denied subsequent access and serialization with admitted backup work.
+This does not lock a remote device, erase returned data, or establish user intent.
+
+[Session-scoped sign-out everywhere](database.md#session-scoped-sign-out-everywhere)
+derives ownership from the bearer, rechecks the same recent-admission gate after
+account-lock waits, and removes the current session as well as siblings. A stolen
+recent bearer can deny legitimate users access; this is not proof of user intent.
+`session-scoped-sign-out`, `concurrent-session-scoped-sign-out`,
+`sign-out-after-lock-wait`, and `sign-out-rollback` map owner isolation, invalid/old
+bearer denial, concurrent starts/rotation/invalidation, post-lock authorization,
+and rollback to real PostgreSQL checks. Member-backup `session-sign-out` cases
+cover serialization and denial of subsequent access. Fresh independently verified
+logins remain possible; local keys, membership, and already admitted work are not
+revoked. No browser logout or credential ceremony is implemented.
+
+[Session-scoped account disabling](database.md#session-scoped-account-disabling)
+uses the same bearer-derived ownership and post-lock recent-admission gate. A
+recently stolen bearer can permanently deny account access: no re-enable API or
+proof-of-intent ceremony is provided. Hosts must review product confirmation and
+recovery before exposing this internal method. `session-scoped-disable`,
+`concurrent-session-scoped-disable`, `session-disable-after-lock-wait`, and
+`session-disable-rollback` cover owner isolation, invalid/old bearer denial,
+competing starts/rotation/revocation, post-lock authorization, and atomic rollback
+of the state update and deletion. Member-backup `session-disable` cases cover
+admitted-work serialization, subsequent denial, and unchanged retained ciphertext,
+binding, and revision. Account disabling does not revoke membership or local keys,
+erase backups, reset quotas, or recover encrypted keys.
 
 ### Internal member-backup storage
 
@@ -342,6 +437,20 @@ to real PostgreSQL checks. This adds no browser logout or credential ceremony.
   not mobile suspension, a supported-browser matrix, or product custody.
 
 ## Browser account and vault risks
+
+The [synthetic local forms](ui-design.md#synthetic-member-forms) are test-only.
+Its separately entered passphrases clear before worker startup, and lifecycle
+generation checks reject late output after lock/closure/disposal. Only encrypted
+backups and public request material remain in page memory. This is neither durable
+backup nor enrollment; reload loses the synthetic data. Hostile page code, browser
+autofill, immutable strings, and runtime copies remain outside erasure guarantees.
+Restoration uses the retained trusted setup key or independent synthetic fixture,
+never a key derived from the ciphertext. The controller bounds and snapshots its
+fixed trusted adapter's encrypted/public output before startup, and never generates
+a key after failed restoration. Backgrounding clears idle fields as well as ending
+worker custody; foregrounding cannot silently unlock. These controls do not provide
+product enrollment binding, account authorization, rollback defense, or recovery.
+No product service accepts these inputs or delivers these forms.
 
 The [account vault](key-management.md#browser-account-vault) and
 [account-to-anonymous flow](architecture.md#account-and-anonymous-flow) are planned,
