@@ -16,6 +16,13 @@ Audience: contributors, repository administrators, and release maintainers.
 | Weekly dependency updates | GitHub Actions, Python check tools, Go modules |
 | `make workflow-lint` | Pinned actionlint and Go toolchain |
 
+The checks workflow runs when a PR opens, receives new commits, reopens, or becomes
+ready for review, on pushes to `main`, and on manual dispatch. Title, description,
+and label edits do not start or cancel CI runs. PR metadata is validated when PR
+checks run, not on each metadata edit. Maintainers must review the final title,
+description, and SemVer label before merging; an earlier policy result does not
+validate subsequent metadata changes.
+
 - Workflows use read-only permissions by default, full history, non-persistent
   checkout credentials, timeouts, concurrency controls, pinned action commits,
   and local runner hardening.

@@ -190,6 +190,9 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- PR title, description, and label edits no longer trigger CI. Code updates and
+  existing lifecycle, default-branch, and manual triggers retain all checks.
+
 - Breaking development bridge/worker method-set expansion for opt-in password
   confirmation. Rebuild and deploy all member assets together; mixed method sets
   fail closed. Existing methods, command envelopes, HTTP, CLI, and backup formats
