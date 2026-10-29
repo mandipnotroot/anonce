@@ -19,6 +19,7 @@ advisories before further imports.
 | Read-only shell templates and CSS | AGPL-3.0-only | Original embedded assets; device fonts, no third-party product assets or browser packages |
 | Contributor Covenant 3.0 adaptation | CC-BY-SA-4.0 | Upstream attribution and separate document license retained |
 | Python standard library | PSF-2.0 | External interpreter, not copied into the project |
+| [ExifTool](https://exiftool.org/#license), distribution-maintained package | Artistic-1.0-Perl OR GPL-1.0-or-later, under Perl's terms | External metadata inspector; Ubuntu 24.04 CI installs `libimage-exiftool-perl` and reports its version; not vendored or pinned to one upstream release |
 | Git and GNU Make | GPL-2.0-only / GPL-3.0-or-later upstream tools | External development tools, not project relicensing |
 | REUSE 6.2.0 | GPL-3.0-or-later upstream tool | External compliance check; [REUSE 3.3 specification](https://reuse.software/spec-3.3/) |
 | [mdBook 0.5.4](https://github.com/rust-lang/mdBook/releases/tag/v0.5.4) | MPL-2.0 | Documentation-only tool; official release archives and asset notices pinned in `scripts/mdbook.toml` |
@@ -40,6 +41,11 @@ advisories before further imports.
   Go checksum verification. These external tools are not copied project files.
   Review transitive graphs before redistribution.
 - Future binaries must include applicable Go runtime notices alongside the project license.
+
+ExifTool's upstream licensing and read-only metadata-inspection role were reviewed
+2026-10-29. Distribution security updates are retained; CI verifies availability
+rather than assuming the runner includes it. Local setup is in
+[contributing](../CONTRIBUTING.md#local-checks).
 
 ### Admitted Go modules
 
