@@ -4,10 +4,43 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { encode } from "../web/browser/common.mjs";
-import { readReviewRecords } from "../web/browser/review-records.mjs";
+import { readReviewRecords, reviewOwnerActive } from "../web/browser/review-records.mjs";
 
 const record = () => ({ envelope: encode(new Uint8Array(4145)) });
 const plaintext = (text) => ({ bytes: new TextEncoder().encode(text) });
+
+test("owner admission rejects hidden, replaced, expired, and invalid-clock states", async (t) => {
+  for (const [name, visibility, until, now, replaced, closed, want] of [
+    ["live", "visible", 2000, 1000, false, false, true],
+    ["closed", "visible", 2000, 1000, false, true, false],
+    ["hidden", "hidden", 2000, 1000, false, false, false],
+    ["replaced", "visible", 2000, 1000, true, false, false],
+    ["expiry boundary", "visible", 2000, 2000, false, false, false],
+    ["expired", "visible", 2000, 2001, false, false, false],
+    ["invalid deadline", "visible", Number.NaN, 1000, false, false, false],
+    ["unbounded deadline", "visible", Infinity, 1000, false, false, false],
+    ["invalid clock", "visible", 2000, Number.NaN, false, false, false],
+  ]) {
+    await t.test(name, () => {
+      const owner = { closed, close() { this.closed = true; } };
+      assert.equal(reviewOwnerActive(owner, replaced ? {} : owner, visibility, until, now), want);
+      assert.equal(owner.closed, !want);
+    });
+  }
+});
+
+test("round expiry while decrypting is terminal, not a rejected answer", async () => {
+  let now = 1000, settle;
+  const result = plaintext("synthetic expired answer"), output = [];
+  const owner = { closed: false, close() { this.closed = true; }, call() { return new Promise((resolve) => { settle = resolve; }); } };
+  const pending = readReviewRecords(owner, [record()], () => reviewOwnerActive(owner, owner, "visible", 2000, now), (text) => output.push(text));
+  now = 2000;
+  settle(result);
+  await assert.rejects(pending, /review unavailable/);
+  assert.equal(owner.closed, true);
+  assert.ok(result.bytes.every((b) => b === 0));
+  assert.deepEqual(output, []);
+});
 
 test("one rejected ciphertext does not suppress later valid answers", async () => {
   const first = plaintext("synthetic first answer"), last = plaintext("synthetic later answer");

@@ -3,6 +3,15 @@
 
 import { decode } from "./common.mjs";
 
+export function reviewOwnerActive(owner, current, visibility, reviewUntil, now = Date.now()) {
+  if (owner !== current || visibility !== "visible" || !Number.isFinite(now) ||
+      !Number.isFinite(reviewUntil) || now >= reviewUntil) {
+    owner.close();
+    return false;
+  }
+  return !owner.closed;
+}
+
 // A rejected answer must not hide later records. A closed or replaced owner is
 // different: stop the read and never publish late plaintext, even after success.
 export async function readReviewRecords(worker, records, isActive, append) {

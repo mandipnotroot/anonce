@@ -71,8 +71,9 @@ or files. Reviewers are warned that their encrypted key stays in this browser.
 
 An undecryptable answer gets a plain-language placeholder without hiding later
 records or pages. The final status reports the number of rejected answers. Lock,
-hidden-page state, and reviewer-owner replacement stop reading instead of being
-treated as bad answers; no late plaintext or success status is displayed.
+hidden-page state, round expiry, and reviewer-owner replacement stop reading
+instead of being treated as bad answers; no late plaintext or success status is
+displayed.
 
 Replies, charts, generalized forms, credential/recovery management and advanced
 administration remain excluded. Product screenshots, manual assistive-device,
