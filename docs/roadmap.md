@@ -18,6 +18,13 @@ See the [user flow](ui-design.md#account-and-review-workflow) and
 
 ## Now
 
+- Browser account session management connects the existing inventory and revocation
+  store to protected HTTP and accessible page controls, including expiry-preserving
+  passkey reauthentication, explicit sign-out-everywhere confirmation and local
+  cleanup. See the [contract and limits](api.md#browser-session-management) and
+  [checks](testing.md#connected-browser-mvp-checks). Remote revocation is not erasure
+  of already loaded keys/text, and offline/suspended cleanup is not guaranteed.
+
 - Review the connected [browser MVP](deployment.md#browser-mvp-local-startup) and
   [profile 1](cryptography.md#browser-mvp-profile-1) independently before real-data
   use. Its local-passphrase path does not implement PRF or recovery. Resolve
@@ -72,7 +79,8 @@ Available foundations:
   devices. Authorization is rechecked after account-lock waits; excess sessions
   fail without a partial list. Recently authenticated bearers can also remove
   sibling sessions without an owner override, preserving their own absolute expiry.
-  Product session-management UI and browser logout integration remain unavailable.
+   The separate opt-in browser host now supplies session-management UI and local
+   logout cleanup; these remain absent from the original demonstration commands.
   Identity version 4 adds independent non-secret session selectors to that inventory,
   backfilling existing rows without changing tokens or expiry. Rotation replaces
   the selector rather than creating a stable device-tracking handle.
@@ -81,7 +89,8 @@ Available foundations:
   do not reveal or modify another account's references.
   Recently authenticated bearers can also remove every account session, including
   their own, without an owner override. A later independently verified login remains
-  possible; local keys and encrypted backups are unchanged. Browser logout remains open.
+   possible; device key material and encrypted backups are unchanged. Browser logout
+   composes local locking separately under the contract above.
   The same bearer-derived authorization now supports atomic account disabling and
   removal of all sessions after recent admission. No re-enable or deletion exists;
   encrypted backups are retained. Product confirmation/recovery policy remains open.

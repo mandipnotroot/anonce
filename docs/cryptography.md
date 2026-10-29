@@ -97,6 +97,17 @@ initial compatibility limits. Login does not unlock a device key.
 
 ## Account session storage profile
 
+The separate browser host now composes this profile with
+[passkey reauthentication and session controls](api.md#browser-session-management).
+Reauthentication retains the selected WebAuthn verification requirements, binds the
+stored ceremony to its purpose/account and the original bearer's SHA-256 digest,
+and calls expiry-preserving rotation only after verification. Session selectors
+remain non-secret and independent of tokens/digests. No new primitive, backup
+format, anonymous identifier or device-key unlocking mechanism is introduced.
+This retains the selected [WebAuthn Level 3](key-management.md#authentication-and-unlocking)
+relying-party verification and [OWASP session renewal guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#renew-the-session-id-after-any-privilege-level-change),
+consulted 2026-10-29; five-minute admission is a project-specific development policy.
+
 The internal account store generates independent 16-byte account IDs and 32-byte
 opaque session secrets with Go `crypto/rand`. Session secrets contain no identity
 or claims. Store only `crypto/sha256.Sum256(secret)` as the indexed verifier;

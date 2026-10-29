@@ -45,10 +45,13 @@ listeners.add((m)=>{
   }
 });
 async function attach(targetId){const {sessionId}=await send("Target.attachToTarget",{targetId,flatten:true});const page={targetId,sessionId};await send("Network.enable",{},sessionId);await send("Page.enable",{},sessionId);return page;}
-async function page(context,url=identity+"/"){const {targetId}=await send("Target.createTarget",{url:"about:blank",browserContextId:context});const p=await attach(targetId);await send("WebAuthn.enable",{enableUI:false},p.sessionId);await send("WebAuthn.addVirtualAuthenticator",{options:{protocol:"ctap2",transport:"internal",hasResidentKey:true,hasUserVerification:true,isUserVerified:true,automaticPresenceSimulation:true}},p.sessionId);await send("Page.navigate",{url},p.sessionId);await activate(p);await until(p,"document.readyState==='complete'&&document.getElementById('status')","page startup");return p;}
+async function page(context,url=identity+"/"){const {targetId}=await send("Target.createTarget",{url:"about:blank",browserContextId:context});const p=await attach(targetId);await send("WebAuthn.enable",{enableUI:false},p.sessionId);p.authenticatorId=(await send("WebAuthn.addVirtualAuthenticator",{options:{protocol:"ctap2",transport:"internal",hasResidentKey:true,hasUserVerification:true,isUserVerified:true,automaticPresenceSimulation:true}},p.sessionId)).authenticatorId;await send("Page.navigate",{url},p.sessionId);await activate(p);await until(p,"document.readyState==='complete'&&document.getElementById('status')","page startup");return p;}
 async function set(page,id,value){await evaluate(page,`document.getElementById(${JSON.stringify(id)}).value=${JSON.stringify(value)}`);}
 async function click(page,id){await evaluate(page,`document.getElementById(${JSON.stringify(id)}).click()`);}
 async function register(page,name,bootstrap=""){await until(page,"!document.getElementById('register').disabled","registration ready");await set(page,"username",name);await set(page,"bootstrap",bootstrap);await click(page,"register");await until(page,`document.getElementById('account').textContent.includes(${JSON.stringify(name)})`,"verified registration");}
+async function copyPasskey(from,to){const {credentials}=await send("WebAuthn.getCredentials",{authenticatorId:from.authenticatorId},from.sessionId);await send("WebAuthn.clearCredentials",{authenticatorId:to.authenticatorId},to.sessionId);for(const credential of credentials)await send("WebAuthn.addCredential",{authenticatorId:to.authenticatorId,credential},to.sessionId);}
+async function login(p){await activate(p);await set(p,"username","member_one");await click(p,"login");await until(p,"document.getElementById('status').textContent.startsWith('Account authenticated')","independent verified session");}
+const inventory=(p)=>evaluate(p,"import('/assets/common.mjs').then(m=>m.api('/api/browser/sessions'))");
 const lifetime=setTimeout(()=>child.kill("SIGKILL"),240000);
 try{
   const adminContext=(await send("Target.createBrowserContext")).browserContextId;
@@ -111,8 +114,31 @@ try{
   // second tab in the reviewer's own context to cause a real hidden transition.
   await page(reviewerContext);await until(reviewer,"document.visibilityState==='hidden'","reviewer tab hidden");
   await until(reviewer,"document.querySelector('.plaintext')?.textContent===''","background reviewer plaintext cleanup");
-  await activate(member);
-  await click(member,"logout");await until(member,"document.getElementById('status')?.textContent.startsWith('Create an account or sign in')","browser logout and local disposal");
+  const peerContext=(await send("Target.createBrowserContext")).browserContextId,peer=await page(peerContext);
+  await copyPasskey(member,peer);await login(peer);await copyPasskey(peer,member);
+  await activate(member);await click(member,"session-refresh");await until(member,"document.querySelectorAll('#session-list li').length===2","two independent account sessions");
+  const before=await inventory(member);assert.equal(before.length,2);assert.ok(before.every(s=>Object.keys(s).sort().join()==="created_at,current,expires_at,id"));
+  const sessionTree=(await send("Accessibility.getFullAXTree",{},member.sessionId)).nodes;for(const name of ["Active account sessions","Refresh sessions","Verify passkey again","Sign out this other session","I want to sign out every account session, including this one","Lock and sign out everywhere"])assert.ok(sessionTree.some(n=>n.name?.value===name),"session control accessible name: "+name);
+  const oldCurrent=before.find(s=>s.current),oldSibling=before.find(s=>!s.current);
+  await set(member,"passphrase",passphrase);await click(member,"unlock");await until(member,"document.getElementById('status').textContent.startsWith('Member key restored')","restore before reauthentication lock");
+  await until(member,"!document.getElementById('session-actions').disabled","session actions ready after restoration");await evaluate(member,"document.getElementById('session-verify').focus()");assert.equal(await evaluate(member,"document.activeElement.id"),"session-verify");await send("Input.dispatchKeyEvent",{type:"keyDown",key:"Enter",code:"Enter",text:"\r",windowsVirtualKeyCode:13},member.sessionId);await send("Input.dispatchKeyEvent",{type:"keyUp",key:"Enter",code:"Enter",windowsVirtualKeyCode:13},member.sessionId);await until(member,"document.getElementById('status').textContent.startsWith('Passkey verified')","keyboard-triggered operation-bound verified reauthentication");
+  const after=await inventory(member),newCurrent=after.find(s=>s.current);assert.notEqual(newCurrent.id,oldCurrent.id);assert.equal(newCurrent.expires_at,oldCurrent.expires_at);assert.deepEqual(after.find(s=>!s.current),oldSibling);
+  assert.equal(await evaluate(member,"document.getElementById('enroll').disabled&&[...document.querySelectorAll('input[type=password]')].every(e=>e.value==='')"),true,"reauthentication must leave local keys locked");
+  const wrongPurpose=await evaluate(member,"import('/assets/common.mjs').then(async m=>{await m.api('/api/browser/auth/reauthenticate/begin',{});return fetch('/api/browser/auth/login/finish',{method:'POST',headers:{'Content-Type':'application/json','X-Anonce-CSRF':'1'},body:'{}'}).then(r=>r.status);})");assert.equal(wrongPurpose,403,"reauthentication cannot finish as login");
+  await evaluate(member,"document.querySelector('#session-list li button').click()");await until(member,"document.getElementById('status').textContent.startsWith('Other session signed out')","selected browser session revocation");assert.equal((await inventory(member)).length,1);assert.equal(await evaluate(member,"document.activeElement.id"),"session-refresh","removed session action returns focus to the enabled refresh button");
+  await activate(peer);await until(peer,"document.getElementById('sessions').hidden","foreground observes remote revocation");assert.equal(await evaluate(peer,"fetch('/api/browser/me').then(r=>r.status)"),401);
+  await copyPasskey(member,peer);await login(peer);await copyPasskey(peer,member);
+  await activate(member);await click(member,"session-refresh");await until(member,"document.querySelectorAll('#session-list li').length===2","second independent sign-in remains possible");
+  const samePartition=await page(memberContext);await until(samePartition,"!document.getElementById('sessions').hidden","same-partition signed-in peer");
+  await activate(member);await set(member,"passphrase",passphrase);await click(member,"unlock");await until(member,"document.getElementById('status').textContent.startsWith('Member key restored')","restore before all-session sign-out");
+  assert.equal(await evaluate(member,"document.getElementById('logout-all').disabled"),true,"sign-out everywhere requires explicit confirmation");
+  await click(member,"confirm-logout-all");await click(member,"logout-all");await until(member,"document.getElementById('status').textContent.startsWith('Create an account or sign in')","browser sign-out everywhere");
+  await until(samePartition,"document.getElementById('sessions').hidden&&document.getElementById('account').textContent===''","same-partition sign-out notification cleanup");
+  await activate(peer);await until(peer,"document.getElementById('sessions').hidden","other browser observes all-session revocation");
+  assert.equal(await evaluate(peer,"fetch('/api/browser/me').then(r=>r.status)"),401);assert.equal(await evaluate(member,"fetch('/api/browser/me').then(r=>r.status)"),401);
+  assert.deepEqual([...leaks],[],"session controls introduce no anonymous identity traffic");
+  await login(member);assert.deepEqual(await evaluate(member,"import('/assets/common.mjs').then(m=>m.api('/api/browser/backup'))"),stored,"sign-out preserves encrypted member backup");
+  await click(member,"logout");await until(member,"document.getElementById('status')?.textContent.startsWith('Create an account or sign in')","single browser logout and local disposal");
   assert.equal(await evaluate(member,"fetch('/api/browser/me',{credentials:'same-origin'}).then(r=>r.status)"),401,"revoked browser session must not resolve");
-  console.log("PASS: administrator publication → verified member blind authorization/encrypted acceptance → authorized local reviewer decryption; browser vault persistence/restoration, CSRF, single-use enrollment, exact retry races, duplicate-spend conflict and unauthorized review.");
+  console.log("PASS: administrator publication → verified member blind authorization/encrypted acceptance → authorized local reviewer decryption; browser vault persistence/restoration, CSRF, retry races, session inventory/revocation, expiry-preserving passkey reauthentication, same-partition cleanup and sign-out everywhere.");
 }finally{clearTimeout(lifetime);if(!exited){await send("Browser.close").catch(()=>{});}if(!exited)child.kill("SIGKILL");rmSync(profile,{recursive:true,force:true});}

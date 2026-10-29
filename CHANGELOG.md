@@ -10,6 +10,13 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Browser active-session inventory, selected-session sign-out and confirmed sign-out
+  everywhere, with purpose/bearer-bound passkey reauthentication that preserves
+  absolute expiry. Sign-out locks local keys; same-partition notifications and
+  visible-page checks clear observed invalid sessions. Added HTTP, lifecycle,
+  bounded-parser and real-browser/PostgreSQL checks. Backups and membership are
+  retained; remotely loaded keys/text and admitted work cannot be recalled.
+
 - Opt-in browser account, member-vault, enrollment, round publication, blind-token
   authorization, anonymous encrypted response, signed acceptance and local reviewer
   workflow. Added separate TLS hosts, explicit one-response/free-text scope,

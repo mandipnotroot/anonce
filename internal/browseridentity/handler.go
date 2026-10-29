@@ -46,6 +46,8 @@ type handler struct {
 type ceremony struct {
 	User    browser.User
 	Session webauthn.SessionData
+	Kind    string
+	Bearer  [32]byte
 }
 
 func New(ctx context.Context, pool *pgxpool.Pool, cfg Config) (http.Handler, error) {
@@ -94,6 +96,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	token := browserhttp.Token(r, "session")
 	defer clear(token)
+	if path == "/api/browser/sessions" || path == "/api/browser/sessions/revoke" || path == "/api/browser/logout-all" {
+		h.manageSessions(w, r, token)
+		return
+	}
 	user, err := h.state.Current(r.Context(), token)
 	if err != nil {
 		browserhttp.Error(w, 401)
@@ -131,6 +137,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch path {
 	case "/api/browser/logout":
+		var in *struct{}
+		if !browserhttp.Read(w, r, &in) {
+			return
+		}
+		if in == nil {
+			browserhttp.Error(w, 400)
+			return
+		}
 		if h.accounts.Revoke(r.Context(), token) != nil {
 			browserhttp.Error(w, 503)
 			return
@@ -300,18 +314,45 @@ func (h *handler) authenticate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/browser/auth/"), "/")
-	if len(parts) != 2 || (parts[0] != "register" && parts[0] != "login") {
+	if len(parts) != 2 || (parts[0] != "register" && parts[0] != "login" && parts[0] != "reauthenticate") {
 		browserhttp.Error(w, 404)
 		return
 	}
 	kind := parts[0]
+	storageKind := kind
+	if kind == "reauthenticate" {
+		storageKind = "login"
+	}
 	if parts[1] == "begin" {
 		var in struct {
 			Name      string `json:"name"`
 			Bootstrap string `json:"bootstrap"`
 		}
-		if !browserhttp.Read(w, r, &in) {
+		if kind == "reauthenticate" {
+			var empty *struct{}
+			if !browserhttp.Read(w, r, &empty) {
+				return
+			}
+			if empty == nil {
+				browserhttp.Error(w, 400)
+				return
+			}
+		} else if !browserhttp.Read(w, r, &in) {
 			return
+		}
+		var c ceremony
+		c.Kind = kind
+		if kind == "reauthenticate" {
+			token := browserhttp.Token(r, "session")
+			defer clear(token)
+			var err error
+			c.User, err = h.state.Current(r.Context(), token)
+			if err != nil {
+				browserhttp.Error(w, 401)
+				return
+			}
+			in.Name = c.User.Name
+			c.Bearer = sha256.Sum256(token)
 		}
 		hash := sha256.Sum256([]byte(in.Name))
 		if !h.attempts.Allow(string(hash[:])) {
@@ -323,7 +364,6 @@ func (h *handler) authenticate(w http.ResponseWriter, r *http.Request) {
 			browserhttp.Error(w, 400)
 			return
 		}
-		var c ceremony
 		var options any
 		var err error
 		if kind == "register" {
@@ -367,7 +407,7 @@ func (h *handler) authenticate(w http.ResponseWriter, r *http.Request) {
 		}
 		secret := browserhttp.Random()
 		defer clear(secret)
-		if h.state.SaveCeremony(r.Context(), secret, kind, raw) != nil {
+		if h.state.SaveCeremony(r.Context(), secret, storageKind, raw) != nil {
 			browserhttp.Error(w, 503)
 			return
 		}
@@ -381,12 +421,22 @@ func (h *handler) authenticate(w http.ResponseWriter, r *http.Request) {
 	}
 	secret := browserhttp.Token(r, "ceremony")
 	defer clear(secret)
-	raw, err := h.state.TakeCeremony(r.Context(), secret, kind)
+	raw, err := h.state.TakeCeremony(r.Context(), secret, storageKind)
 	browserhttp.Cookie(w, "ceremony", "", -1)
 	var c ceremony
-	if err != nil || json.Unmarshal(raw, &c) != nil {
+	if err != nil || json.Unmarshal(raw, &c) != nil || c.Kind != kind {
 		browserhttp.Error(w, 403)
 		return
+	}
+	if kind == "reauthenticate" {
+		token := browserhttp.Token(r, "session")
+		defer clear(token)
+		digest := sha256.Sum256(token)
+		user, err := h.state.Current(r.Context(), token)
+		if err != nil || user.ID != c.User.ID || subtle.ConstantTimeCompare(digest[:], c.Bearer[:]) != 1 {
+			browserhttp.Error(w, 401)
+			return
+		}
 	}
 	// Bounded library parsing sees only the allowlisted WebAuthn response JSON.
 	r.Body = http.MaxBytesReader(w, r.Body, browserhttp.MaxBody)
@@ -402,7 +452,12 @@ func (h *handler) authenticate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		user, err := h.state.Login(r.Context(), c.User.Name, func(u browser.User) (*webauthn.Credential, error) { return h.auth.FinishLogin(u, c.Session, r) })
+		user, err := h.state.Login(r.Context(), c.User.Name, func(u browser.User) (*webauthn.Credential, error) {
+			if u.ID != c.User.ID {
+				return nil, browser.ErrDenied
+			}
+			return h.auth.FinishLogin(u, c.Session, r)
+		})
 		if err != nil {
 			browserhttp.Error(w, 403)
 			return
@@ -412,6 +467,17 @@ func (h *handler) authenticate(w http.ResponseWriter, r *http.Request) {
 	// Account changes cannot refresh an existing bearer without a verified ceremony.
 	old := browserhttp.Token(r, "session")
 	defer clear(old)
+	if kind == "reauthenticate" {
+		token, session, err := h.accounts.RotateSession(r.Context(), c.User.ID, old)
+		if err != nil {
+			browserhttp.Error(w, 401)
+			return
+		}
+		defer clear(token)
+		browserhttp.Cookie(w, "session", browserhttp.Encode(token), max(1, int(time.Until(session.ExpiresAt)/time.Second)))
+		browserhttp.JSON(w, 200, map[string]bool{"authenticated": true})
+		return
+	}
 	if len(old) == 32 {
 		if h.accounts.Revoke(r.Context(), old) != nil {
 			browserhttp.Error(w, 503)
