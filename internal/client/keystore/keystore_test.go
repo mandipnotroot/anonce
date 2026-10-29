@@ -392,7 +392,12 @@ func FuzzBackup(f *testing.F) {
 		}
 		// Fuzz the structural parser only, never attacker-selected KDF work. Full
 		// authentication and real profile costs are exercised by the tests above.
-		if !validBackup(Purpose(purpose), backup) {
+		before := bytes.Clone(backup)
+		err := ValidateEnvelope(Purpose(purpose), backup)
+		if (err == nil) != validBackup(Purpose(purpose), backup) || !bytes.Equal(before, backup) {
+			t.Fatal("public envelope admission or ownership differs")
+		}
+		if err != nil {
 			return
 		}
 		if len(backup) < 61 || len(backup) > 65596 ||

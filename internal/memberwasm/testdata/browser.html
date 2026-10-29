@@ -11,8 +11,38 @@
 <body>
   <main>
     <h1>Member worker browser checks</h1>
-    <p>Development tests only. No accounts, enrollment, storage, or real secrets.</p>
+    <p>Development tests only. No accounts, enrollment, persistent storage, or real secrets.</p>
     <p role="status" id="status">Waiting for the synthetic test runner.</p>
+    <section aria-labelledby="forms-heading">
+      <h2 id="forms-heading">Synthetic member setup and restoration</h2>
+      <p id="form-warning">Development harness only. Never enter real secrets. No sign-in,
+        enrollment, server backup, recovery, or submission is available. Reloading discards the backup.</p>
+      <p id="passphrase-help">Use a synthetic local unlock passphrase, not a login password.
+        Both entries must match exactly and contain 1–1024 UTF-8 bytes. Paste is supported.</p>
+      <form id="member-setup" method="post" aria-describedby="form-warning passphrase-help">
+        <fieldset id="setup-fields" disabled>
+          <legend>Prepare a synthetic member key</legend>
+          <p><label for="setup-passphrase">Local unlock passphrase</label>
+            <input id="setup-passphrase" type="password" autocomplete="new-password" maxlength="1024" required></p>
+          <p><label for="setup-confirmation">Confirm local unlock passphrase</label>
+            <input id="setup-confirmation" type="password" autocomplete="new-password" maxlength="1024" required></p>
+          <button type="submit">Prepare synthetic key</button>
+        </fieldset>
+      </form>
+      <form id="member-restore" method="post" aria-describedby="form-warning restore-help">
+        <fieldset id="restore-fields" disabled>
+          <legend>Restore the synthetic encrypted backup</legend>
+          <p id="restore-help">Use the backup held in this page's memory and its trusted setup key.
+            No key files, backup uploads, or manual public-key entry are needed.
+            Failed unlocking never prepares a replacement key.</p>
+          <p><label for="unlock-passphrase">Local passphrase for restoration</label>
+            <input id="unlock-passphrase" type="password" autocomplete="current-password" maxlength="1024" required></p>
+          <button type="submit">Restore synthetic backup</button>
+        </fieldset>
+      </form>
+      <p><button id="member-lock" type="button" disabled>Lock / cancel local work</button></p>
+      <p role="status" aria-live="polite" aria-atomic="true" id="form-status">Local setup unavailable until scripts load.</p>
+    </section>
     <noscript>JavaScript is required for these development checks.</noscript>
   </main>
 </body>

@@ -10,6 +10,96 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Opt-in browser account, member-vault, enrollment, round publication, blind-token
+  authorization, anonymous encrypted response, signed acceptance and local reviewer
+  workflow. Added separate TLS hosts, explicit one-response/free-text scope,
+  additive migrations and a real-browser/PostgreSQL journey target. The receipt
+  attests storage, not transparency-log inclusion. Recovery, reviewer server
+  backups, production operation and independent approval are excluded.
+
+- Submission version-2 round and append-only record tables with an internal
+  runtime-role store for atomic spend/ciphertext persistence, exact-payload retries,
+  immutable round bindings, database-clock windows, and ordered cancellation.
+  Added native admission/fuzz tests and an opt-in `make db-submission-record-test`
+  for real PostgreSQL races, post-lock admission, rollback, grants, and isolation.
+  No token verification, HTTP submission, public receipt, or browser workflow is added.
+- Test-only browser encrypted-backup restoration with a required expected setup key,
+  local passphrase input, bounded pre-startup snapshots, and no replacement-key
+  fallback. Failed unlocking preserves the backup; visibility loss clears fields
+  and requires explicit restoration. Node lifecycle/generated-admission tests and
+  pinned Chromium wrong-password, substitution, corruption, cancellation, and
+  separate-page restoration checks cover the flow. No server vault or account
+  authentication is added.
+- Test-binary-only browser member setup form with independently entered local
+  passphrase confirmation, shared Go/worker cryptography, safe progress/errors,
+  field clearing, and lock/cancellation. Only encrypted/public material remains in
+  page memory; setup cannot overwrite it. Node lifecycle tests and pinned Chromium
+  keyboard, accessible-name, screenshot, and native backup checks cover the form.
+  No product route, authentication, enrollment, durable backup, or new profile is added.
+- Internal session-authorized account disabling with the shared recent-authentication
+  gate, atomically removing all sessions without an owner override. Encrypted
+  backups remain stored; no re-enable API exists. Native admission/fuzz and real
+  PostgreSQL scope, race, post-lock authorization, rollback, and backup-access
+  invalidation/retention checks cover the operation. No browser/API, migration,
+  grant, membership change, or cryptographic profile is added.
+- Internal session-authorized sign-out everywhere with the shared recent-authentication
+  gate, removing the caller and sibling references without an owner override.
+  Counts publish only after commit; a later verified login remains possible.
+  Native admission/fuzz and real PostgreSQL scope, race, post-lock authorization,
+  rollback, and member-backup invalidation checks cover the operation. No browser
+  logout, migration, grant, membership change, or cryptographic profile is added.
+- Internal recently authenticated revocation of one selected sibling using a
+  non-secret inventory selector. Current, missing, stale, and foreign selectors
+  remove nothing; rotation cannot be followed through an old selector. Native
+  admission/fuzz and real PostgreSQL scope, concurrency, post-lock authorization,
+  rollback, and member-backup invalidation checks cover the operation. No further
+  migration, grant, browser/API, or cryptographic format is added.
+- Identity version-4 non-secret session selectors, independent of bearer tokens and
+  digests, with existing-row backfill and unchanged tokens, bindings, and timestamps.
+  Active-session inventory returns stable per-row selectors; rotation replaces
+  them. Updated account-store construction requires migration 4. Real PostgreSQL
+  checks cover upgrade/failure, uniqueness, denied updates, and credential rejection.
+  No browser/API, device tracking, or cryptographic backup format is added.
+- Internal session-scoped sign-out of other sessions after authentication admission
+  within five minutes, preserving the current token and absolute expiry. Ownership,
+  expiry, and authentication age are rechecked after account-lock waits; failure
+  returns no count. Native admission/fuzz and opt-in real PostgreSQL cross-pool,
+  age/expiry, rollback, and member-backup invalidation checks cover the operation.
+  No login ceremony, browser logout, key revocation, migration, grant, or device
+  cryptographic format is added.
+- Internal session-scoped active-session inventory with creation/expiry timestamps
+  and a current-session marker, without bearer secrets, digests, device tracking,
+  or an owner override. Authorization is rechecked after account-lock waits;
+  over-capacity accounts return no partial list. Native admission/fuzz and opt-in
+  real PostgreSQL scope, expiry, invalidation, and cancellation checks cover access.
+  No browser/API, migration, grant, or cryptographic format is added.
+- Internal per-account session admission limit of 16 unexpired sessions, checked
+  after account-lock waits without evicting existing sessions. Expiry/revocation
+  frees capacity, and reauthentication rotation remains available at capacity.
+  Bounded native admission fuzzing and opt-in real PostgreSQL concurrency,
+  post-lock expiry/revocation, and cancellation checks cover the contract.
+  No authentication ceremony, browser/API, migration, grant, or cryptographic
+  format is added; total-resource limits and production policy remain host work.
+- Internal session rotation after caller-verified reauthentication, bound to the
+  same account, with fresh digest-only tokens, atomic old-token invalidation, and
+  unchanged absolute expiry. Session-scoped member-backup mutations now require
+  authentication admission within five minutes, rechecked after account-lock
+  waits; older live sessions retain read access. Native admission/fuzz and opt-in
+  real PostgreSQL race/cancellation tests cover the policy. No login ceremony,
+  browser/API integration, migration, grant, or encrypted-backup format is added.
+- Internal session-scoped member-backup reads, writes, and deletion, deriving the
+  owner from a live session without an owner override. Account locking serializes
+  access with individual/all-session revocation and disable; expiry is rechecked
+  after lock waits. Existing revision/binding/tombstone rules remain unchanged.
+  Native admission/fuzz tests and opt-in real PostgreSQL race/cancellation checks
+  cover access. No HTTP/browser vault, authentication ceremony, recovery, migration,
+  or cryptographic format is added.
+- Identity version-3 encrypted member-backup slots and an internal runtime-role
+  store with account scoping, fixed public-key binding, bounded profile-2 envelopes,
+  revision-checked replacement/deletion, retained deletion tombstones, and account
+  disable serialization. Opt-in `make db-member-backup-test` exercises real
+  PostgreSQL persistence, races, cancellation, and grants. No HTTP/browser vault,
+  authentication, enrollment binding, PRF, recovery, or submission storage is added.
 - Identity version-2 account/session migration and an internal pgx runtime-role
   store with random digest-only session secrets, bounded absolute expiry,
   revocation, transactional account disabling, and bounded expired-reference
@@ -190,6 +280,9 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Consolidate key-backup contract tests and CLI destination-preservation checks.
+  Wrapper cancellation tests cover observed checkpoints without fixed nested call
+  counts. Algorithm-specific cases, runtime behavior, and formats are unchanged.
 - Breaking development bridge/worker method-set expansion for opt-in password
   confirmation. Rebuild and deploy all member assets together; mixed method sets
   fail closed. Existing methods, command envelopes, HTTP, CLI, and backup formats
@@ -261,6 +354,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Browser reviewer reads reject malformed or undecryptable answers individually
+  and continue with later records. Lock, visibility loss, round expiry, and owner
+  replacement still stop reading without publishing late plaintext; owned buffers
+  are cleared.
+- Policy, Pages, and nightly CI explicitly install and verify ExifTool before
+  inspecting asset metadata, keeping missing inspection a failure.
 - Pages CI now installs the pinned development Node.js runtime before running
   WASM checks instead of relying on the runner's preinstalled version.
 - Backup inspection now reports short public-key writes as failures, rather than

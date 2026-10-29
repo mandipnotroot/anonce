@@ -35,12 +35,24 @@ func TestAccountAdmission(t *testing.T) {
 	}
 	for _, size := range []int{0, 1, TokenSize - 1, TokenSize + 1, 4096} {
 		token := bytes.Repeat([]byte{'x'}, size)
+		if fresh, session, err := store.RotateSession(t.Context(), id, token); fresh != nil || session != (Session{}) || !errors.Is(err, ErrUnavailable) {
+			t.Fatal("invalid rotation token admitted")
+		}
 		if session, err := store.Resolve(t.Context(), token); session != (Session{}) || !errors.Is(err, ErrUnavailable) {
 			t.Fatal("invalid token resolved")
 		}
 		if err := store.Revoke(t.Context(), token); !errors.Is(err, ErrInvalidInput) {
 			t.Fatal("invalid revocation admitted")
 		}
+		if sessions, err := store.ListSessions(t.Context(), token); sessions != nil || !errors.Is(err, ErrUnavailable) {
+			t.Fatal("invalid inventory bearer admitted")
+		}
+		if count, err := store.RevokeOtherSessions(t.Context(), token); count != 0 || !errors.Is(err, ErrUnavailable) {
+			t.Fatal("invalid sibling-revocation bearer admitted")
+		}
+	}
+	if fresh, session, err := store.RotateSession(t.Context(), ID{}, make([]byte, TokenSize)); fresh != nil || session != (Session{}) || !errors.Is(err, ErrInvalidInput) {
+		t.Fatal("zero rotation account admitted")
 	}
 	for _, limit := range []int{-1, 0, 1001} {
 		if count, err := store.PurgeExpired(t.Context(), limit); count != 0 || !errors.Is(err, ErrInvalidInput) {
@@ -78,8 +90,17 @@ func TestAccountUnavailableAndCancellation(t *testing.T) {
 					if session, err := store.Resolve(ctx, make([]byte, TokenSize)); session != (Session{}) || !errors.Is(err, want) {
 						t.Error("resolve did not fail closed")
 					}
+					if token, session, err := store.RotateSession(ctx, ID{1}, make([]byte, TokenSize)); token != nil || session != (Session{}) || !errors.Is(err, want) {
+						t.Error("rotation did not fail closed")
+					}
 					if err := store.Revoke(ctx, make([]byte, TokenSize)); !errors.Is(err, want) {
 						t.Error("revoke did not fail closed")
+					}
+					if sessions, err := store.ListSessions(ctx, make([]byte, TokenSize)); sessions != nil || !errors.Is(err, want) {
+						t.Error("inventory did not fail closed")
+					}
+					if count, err := store.RevokeOtherSessions(ctx, make([]byte, TokenSize)); count != 0 || !errors.Is(err, want) {
+						t.Error("sibling revocation did not fail closed")
 					}
 					if err := store.RevokeAll(ctx, ID{1}); !errors.Is(err, want) {
 						t.Error("revoke-all did not fail closed")
@@ -130,6 +151,40 @@ func FuzzAccountToken(f *testing.F) {
 		}
 		if ok && digest != sha256.Sum256(token) || !ok && digest != ([sha256.Size]byte{}) {
 			t.Fatal("wrong token verifier")
+		}
+		var store Store
+		if fresh, session, err := store.RotateSession(t.Context(), ID{1}, token); fresh != nil || session != (Session{}) || !errors.Is(err, ErrUnavailable) || !bytes.Equal(before, token) {
+			t.Fatal("rotation admission or ownership differs")
+		}
+		if sessions, err := store.ListSessions(t.Context(), token); sessions != nil || !errors.Is(err, ErrUnavailable) || !bytes.Equal(before, token) {
+			t.Fatal("inventory admission or ownership differs")
+		}
+		if count, err := store.RevokeOtherSessions(t.Context(), token); count != 0 || !errors.Is(err, ErrUnavailable) || !bytes.Equal(before, token) {
+			t.Fatal("sibling revocation admission or ownership differs")
+		}
+	})
+}
+
+func FuzzAccountSessionAdmission(f *testing.F) {
+	for _, lifetime := range []time.Duration{-1, 0, time.Second - 1, time.Second, time.Second + 1, MaxLifetime, MaxLifetime + 1} {
+		f.Add([]byte{1}, int64(lifetime))
+	}
+	f.Add([]byte{}, int64(time.Second))
+	f.Fuzz(func(t *testing.T, rawID []byte, nanos int64) {
+		if len(rawID) > len(ID{}) {
+			return
+		}
+		before := bytes.Clone(rawID)
+		var id ID
+		copy(id[:], rawID)
+		lifetime := time.Duration(nanos)
+		want := ErrUnavailable
+		if id == (ID{}) || lifetime < time.Second || lifetime > MaxLifetime || lifetime%time.Second != 0 {
+			want = ErrInvalidInput
+		}
+		var store Store
+		if token, session, err := store.StartSession(t.Context(), id, lifetime); token != nil || session != (Session{}) || !errors.Is(err, want) || !bytes.Equal(before, rawID) {
+			t.Fatal("session admission did not fail closed or changed input")
 		}
 	})
 }

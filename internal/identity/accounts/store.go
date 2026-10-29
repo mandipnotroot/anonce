@@ -17,14 +17,19 @@ import (
 )
 
 const (
-	TokenSize        = 32
-	MaxLifetime      = 12 * time.Hour
-	operationTimeout = 5 * time.Second
+	TokenSize   = 32
+	MaxLifetime = 12 * time.Hour
+
+	// MaxSessionsPerAccount bounds unexpired sessions admitted by StartSession.
+	// This fixed development limit is not a product authentication policy.
+	MaxSessionsPerAccount = 16
+	operationTimeout      = 5 * time.Second
 )
 
 var (
 	ErrInvalidInput = errors.New("invalid account input")
 	ErrUnavailable  = errors.New("account or session unavailable")
+	ErrSessionLimit = errors.New("account session limit reached")
 )
 
 // ID is a random, identity-side account reference, never a membership or spend ID.
@@ -56,6 +61,9 @@ func New(ctx context.Context, pool *pgxpool.Pool) (*Store, error) {
         AND NOT pg_has_role(current_user, 'anonce_owner', 'MEMBER')
         AND to_regclass('anonce.accounts') IS NOT NULL
         AND to_regclass('anonce.account_sessions') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM pg_attribute
+            WHERE attrelid = to_regclass('anonce.account_sessions')
+            AND attname = 'session_id' AND NOT attisdropped)
         AND (SELECT count(*) = 1 AND bool_and(singleton AND service = 'identity')
              FROM anonce.storage_boundary)
         FROM pg_roles WHERE rolname = current_user`).Scan(&valid)
@@ -86,6 +94,8 @@ func (s *Store) Create(ctx context.Context) (ID, error) {
 // It returns a newly allocated opaque bearer secret exactly once; callers must
 // clear it after protected delivery. Only its SHA-256 digest reaches PostgreSQL.
 // No caller-selected token, idle refresh, or privilege assertion is accepted.
+// At MaxSessionsPerAccount unexpired sessions it returns ErrSessionLimit without
+// evicting existing sessions. Expired references do not consume admission.
 func (s *Store) StartSession(ctx context.Context, id ID, lifetime time.Duration) ([]byte, Session, error) {
 	if id == (ID{}) || lifetime < time.Second || lifetime > MaxLifetime || lifetime%time.Second != 0 {
 		return nil, Session{}, ErrInvalidInput
@@ -103,6 +113,20 @@ func (s *Store) StartSession(ctx context.Context, id ID, lifetime time.Duration)
 	if err := lockAccount(ctx, tx, id, true); err != nil {
 		return nil, Session{}, err
 	}
+	// Count in a fresh statement after the account lock so both committed starts
+	// and expiry during lock waits are visible. Stop at the limit even if older
+	// code or direct SQL left more sessions. All package starts hold this lock.
+	var count int
+	err = tx.QueryRow(ctx, `SELECT count(*) FROM (
+        SELECT 1 FROM anonce.account_sessions
+        WHERE account_id = $1 AND expires_at > statement_timestamp()
+        LIMIT $2) AS live`, id[:], MaxSessionsPerAccount).Scan(&count)
+	if err != nil {
+		return nil, Session{}, failure(ctx, "check account session limit")
+	}
+	if count >= MaxSessionsPerAccount {
+		return nil, Session{}, ErrSessionLimit
+	}
 	token := make([]byte, TokenSize)
 	rand.Read(token)
 	digest, _ := tokenDigest(token)
@@ -118,6 +142,62 @@ func (s *Store) StartSession(ctx context.Context, id ID, lifetime time.Duration)
 		return nil, Session{}, failure(ctx, "create account session")
 	}
 	return token, session, nil
+}
+
+// RotateSession requires fresh, independently verified authentication for id, not
+// merely possession of token. The trusted caller must bind that ceremony to this
+// account and operation. It replaces only that account's live token, preserving
+// absolute expiry and sibling sessions. CreatedAt records the new admission time.
+// Inputs remain caller-owned and must not change until return. Clear the new
+// secret after protected delivery. An uncertain commit returns no token and can
+// invalidate the old one; require fresh sign-in rather than automatic retry.
+func (s *Store) RotateSession(ctx context.Context, id ID, token []byte) ([]byte, Session, error) {
+	if id == (ID{}) {
+		return nil, Session{}, ErrInvalidInput
+	}
+	digest, ok := tokenDigest(token)
+	if !ok {
+		return nil, Session{}, ErrUnavailable
+	}
+	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
+	defer cancel()
+	if err := s.ready(ctx); err != nil {
+		return nil, Session{}, err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return nil, Session{}, failure(ctx, "begin account session rotation")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockAccount(ctx, tx, id, true); err != nil {
+		return nil, Session{}, err
+	}
+	fresh := make([]byte, TokenSize)
+	rand.Read(fresh)
+	next, _ := tokenDigest(fresh)
+	session := Session{AccountID: id}
+	// A separate statement after the account lock observes revocation/expiry
+	// during lock waits. One timestamp bounds both deletion and insertion.
+	err = tx.QueryRow(ctx, `WITH previous AS (
+        DELETE FROM anonce.account_sessions
+        WHERE token_digest = $1 AND account_id = $2
+          AND created_at <= statement_timestamp() AND expires_at > statement_timestamp()
+        RETURNING expires_at)
+        INSERT INTO anonce.account_sessions(token_digest, account_id, expires_at)
+        SELECT $3, $2, expires_at FROM previous
+        RETURNING created_at, expires_at`, digest[:], id[:], next[:]).Scan(&session.CreatedAt, &session.ExpiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		clear(fresh)
+		return nil, Session{}, ErrUnavailable
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		clear(fresh)
+		return nil, Session{}, failure(ctx, "rotate account session")
+	}
+	return fresh, session, nil
 }
 
 // Resolve checks current account status and absolute expiry on every lookup.
@@ -148,6 +228,8 @@ func (s *Store) Resolve(ctx context.Context, token []byte) (Session, error) {
 }
 
 // Revoke is idempotent for a well-sized unknown, expired, or already revoked token.
+// It locks the account before deletion, serializing with session-scoped backup
+// access. Already returned data and previously admitted operations are not recalled.
 func (s *Store) Revoke(ctx context.Context, token []byte) error {
 	digest, ok := tokenDigest(token)
 	if !ok {
@@ -158,8 +240,29 @@ func (s *Store) Revoke(ctx context.Context, token []byte) error {
 	if err := s.ready(ctx); err != nil {
 		return err
 	}
-	if _, err := s.pool.Exec(ctx, "DELETE FROM anonce.account_sessions WHERE token_digest = $1", digest[:]); err != nil {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return failure(ctx, "begin account session revocation")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var rawID []byte
+	err = tx.QueryRow(ctx, "SELECT account_id FROM anonce.account_sessions WHERE token_digest = $1", digest[:]).Scan(&rawID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	var id ID
+	if err != nil || len(rawID) != len(id) {
+		return failure(ctx, "find revoked session account")
+	}
+	copy(id[:], rawID)
+	if err := lockAccount(ctx, tx, id, false); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "DELETE FROM anonce.account_sessions WHERE token_digest = $1", digest[:]); err != nil {
 		return failure(ctx, "revoke account session")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return failure(ctx, "commit account session revocation")
 	}
 	return nil
 }

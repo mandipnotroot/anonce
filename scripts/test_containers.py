@@ -156,6 +156,43 @@ class MigrationOperatorTests(unittest.TestCase):
 
 
 class AccountOperatorTests(unittest.TestCase):
+    def test_submission_record_runtime_scope(self):
+        stack = Stack(env={})
+        with patch.object(stack, "config", return_value=model()), patch.object(stack, "migration_image", return_value="synthetic") as build, \
+                patch.object(stack, "run", return_value=SimpleNamespace(returncode=0)) as run, \
+                patch.object(stack, "sql", return_value=SimpleNamespace(stdout=b"t\n")) as sql:
+            account_checks(stack, "submission-record-test")
+            build.assert_called_once_with("submission-record-test")
+            self.assertEqual(run.call_count, 4)
+            self.assertEqual(sql.call_count, 2)
+            for index, side in enumerate(("identity", "submission")):
+                command = run.call_args_list[index * 2].args[0]
+                self.assertEqual(command[command.index("--network") + 1], "synthetic_" + side)
+                self.assertEqual(command[command.index("--mount") + 1],
+                                 f"type=bind,src=/synthetic-secrets/{side}_runtime,dst=/run/secrets/runtime_password,readonly")
+        patterns = (ROOT / ".dockerignore").read_text().splitlines()
+        for source in ("store_test.go", "postgres_test.go"):
+            self.assertGreater(patterns.index("!internal/submission/records/" + source), patterns.index("**/*_test.go"))
+        self.assertIn("test -x /out/submissionrecords.test", (ROOT / "Dockerfile").read_text())
+
+    def test_member_backup_runtime_scope(self):
+        stack = Stack(env={})
+        with patch.object(stack, "config", return_value=model()), patch.object(stack, "migration_image", return_value="synthetic") as build, \
+                patch.object(stack, "run", return_value=SimpleNamespace(returncode=0)) as run, \
+                patch.object(stack, "sql", return_value=SimpleNamespace(stdout=b"t\n")):
+            account_checks(stack, "member-backup-test")
+            build.assert_called_once_with("member-backup-test")
+            self.assertEqual(run.call_count, 4)
+            for index, side in enumerate(("identity", "submission")):
+                command = run.call_args_list[index * 2].args[0]
+                self.assertEqual(command[command.index("--network") + 1], "synthetic_" + side)
+                self.assertEqual(command[command.index("--mount") + 1],
+                                 f"type=bind,src=/synthetic-secrets/{side}_runtime,dst=/run/secrets/runtime_password,readonly")
+        patterns = (ROOT / ".dockerignore").read_text().splitlines()
+        for source in ("store_test.go", "postgres_test.go"):
+            self.assertGreater(patterns.index("!internal/identity/memberbackup/" + source), patterns.index("**/*_test.go"))
+        self.assertIn("test -x /out/memberbackup.test", (ROOT / "Dockerfile").read_text())
+
     def test_runtime_scopes_and_cleanup(self):
         stack = Stack(env={})
         calls = []
@@ -194,7 +231,12 @@ class AccountOperatorTests(unittest.TestCase):
                 stack.migration_image("unrecognized")
             run.assert_not_called()
         patterns = (ROOT / ".dockerignore").read_text().splitlines()
-        for source in ("store_test.go", "postgres_test.go"):
+        for source in (
+            "store_test.go", "postgres_test.go", "selected_session_test.go",
+            "selected_session_postgres_test.go", "all_sessions_test.go",
+            "all_sessions_postgres_test.go",
+            "session_disable_test.go", "session_disable_postgres_test.go",
+        ):
             self.assertGreater(patterns.index("!internal/identity/accounts/" + source), patterns.index("**/*_test.go"))
         self.assertIn("test -x /out/account.test", (ROOT / "Dockerfile").read_text())
 
