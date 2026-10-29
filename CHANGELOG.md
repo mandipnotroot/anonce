@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Identity version-4 non-secret session selectors, independent of bearer tokens and
+  digests, with existing-row backfill and unchanged tokens, bindings, and timestamps.
+  Active-session inventory returns stable per-row selectors; rotation replaces
+  them. Updated account-store construction requires migration 4. Real PostgreSQL
+  checks cover upgrade/failure, uniqueness, denied updates, and credential rejection.
+  No browser/API, device tracking, or cryptographic backup format is added.
 - Internal session-scoped sign-out of other sessions after authentication admission
   within five minutes, preserving the current token and absolute expiry. Ownership,
   expiry, and authentication age are rechecked after account-lock waits; failure

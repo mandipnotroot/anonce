@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // RecentAuthenticationWindow is the fixed development admission window for
@@ -18,9 +19,15 @@ const RecentAuthenticationWindow = 5 * time.Minute
 // ErrReauthenticationRequired denotes a live bearer too old to revoke siblings.
 var ErrReauthenticationRequired = errors.New("account session requires recent authentication")
 
+// SessionID is a non-secret, random row selector, never a bearer credential,
+// token digest, device identifier, or authorization to access an account.
+// Rotation replaces it; it is not a stable browser or device tracking handle.
+type SessionID [16]byte
+
 // SessionInfo is identity-side session metadata, not a device identifier or an
 // anonymous activity record. It contains no bearer secret or stored digest.
 type SessionInfo struct {
+	ID        SessionID
 	CreatedAt time.Time
 	ExpiresAt time.Time
 	Current   bool
@@ -36,16 +43,16 @@ func (s *Store) ListSessions(ctx context.Context, token []byte) ([]SessionInfo, 
 	var result []SessionInfo
 	err := s.withSession(ctx, token, false, func(ctx context.Context, tx pgx.Tx, owner ID, admittedAt time.Time) error {
 		digest, _ := tokenDigest(token)
-		rows, err := tx.Query(ctx, `SELECT created_at, expires_at, token_digest = $2
+		rows, err := tx.Query(ctx, `SELECT session_id, created_at, expires_at, token_digest = $2
             FROM anonce.account_sessions WHERE account_id = $1
             AND created_at <= $3 AND expires_at > $3
-            ORDER BY created_at DESC, expires_at DESC, token_digest
+            ORDER BY created_at DESC, expires_at DESC, session_id
             LIMIT $4`, owner[:], digest[:], admittedAt, MaxSessionsPerAccount+1)
 		if err != nil {
 			return failure(ctx, "list account sessions")
 		}
 		defer rows.Close()
-		result, err = pgx.CollectRows(rows, pgx.RowToStructByPos[SessionInfo])
+		result, err = pgx.CollectRows(rows, sessionInfoRow)
 		if err != nil {
 			return failure(ctx, "read account session list")
 		}
@@ -58,6 +65,19 @@ func (s *Store) ListSessions(ctx context.Context, token []byte) ([]SessionInfo, 
 		return nil, err
 	}
 	return result, nil
+}
+
+func sessionInfoRow(row pgx.CollectableRow) (SessionInfo, error) {
+	var info SessionInfo
+	var id pgtype.UUID
+	if err := row.Scan(&id, &info.CreatedAt, &info.ExpiresAt, &info.Current); err != nil {
+		return SessionInfo{}, err
+	}
+	if !id.Valid || id.Bytes == ([16]byte{}) {
+		return SessionInfo{}, ErrUnavailable
+	}
+	info.ID = SessionID(id.Bytes)
+	return info, nil
 }
 
 // RevokeOtherSessions removes every sibling reference, including expired or

@@ -70,7 +70,8 @@ Distinguish implemented from planned behavior.
   histories and an operator-only pgx runner for local databases, with owner-created
   boundary markers, explicit migration targets, and opt-in real-PostgreSQL checks;
   identity version 2 adds internal account/session persistence and version 3 adds
-  an encrypted member-backup slot; no credentials, protocol tables or HTTP persistence.
+  an encrypted member-backup slot; version 4 adds independent non-secret session
+  selectors. No credentials, protocol tables or HTTP persistence.
 - `internal/identity/accounts`: identity runtime-role account/session store, digest-only
   random tokens, absolute expiry, individual/all-session revocation, transactional
   disable, token rotation after caller-verified reauthentication without extending

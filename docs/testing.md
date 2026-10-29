@@ -230,9 +230,10 @@ both PostgreSQL instances with only their respective migration credentials.
 advancement, simultaneous/repeated application, separate version tables, owner-created
 objects, runtime marker reads, denied runtime DML/DDL and ledger access, wrong-target
 rejection, future/duplicate/negative/unapplied/out-of-order histories, and a missing
-marker. Identity checks force version-2 and version-3 failures after their preceding
+marker. Identity checks force version-2, version-3, and version-4 failures after their preceding
 versions, verify transactional object rollback and unchanged history, then apply
-the additive upgrades.
+the additive upgrades. Version 4 also backfills existing sessions without changing
+their token digests, owners, or timestamps, and preserves selectors on repeated runs.
 No SQL privilege result is inferred from unit tests. `TestMigrationAdmission`,
 `TestMigrationCancellation`, `TestMigrationCredentialFiles`, and `TestMigrationFiles`
 run under native race coverage; bounded admission fuzzing is included in `make fuzz`.
@@ -267,7 +268,7 @@ Named subtests cover:
   idempotent disable, and missing/disabled account rejection.
 - `constraints-and-grants`: exact sizes, duplicate keys, foreign keys, state/expiry
   checks, denied session extension/account deletion/DDL/owner escalation/ledger access,
-  and the fixed four-column session schema.
+  and the fixed five-column session schema.
 - `expiry-and-retention`: expired records reject before deletion, bounded cleanup
   preserves live sessions, and actual database-clock absolute expiry.
 - `concurrent-disable`: concurrent session creation and disabling under the race
@@ -299,6 +300,11 @@ Named subtests cover:
   token revocation/rotation, disable, and database-clock expiry; cancellation returns
   no metadata. Native `TestAccountAdmission`, `TestAccountUnavailableAndCancellation`,
   and bounded `FuzzAccountToken` cover input admission and ownership without SQL.
+- `session-selectors`: stable, independent non-secret inventory selectors across
+  bearers, rejection as credentials, nonnull/nonzero/unique constraints, denied
+  runtime updates, and fresh selectors on rotation without sibling changes.
+  The migration harness checks version-4 failure rollback, existing-row backfill,
+  unchanged token/account/timestamps, and stable selectors on repeated application.
 - `revoke-other-sessions`: bearer-derived sibling removal at/exceeding capacity,
   expired/future-row cleanup, cross-account isolation, unchanged current token/expiry
   and input, repeat calls, later authenticated starts, invalid and old bearer denial,

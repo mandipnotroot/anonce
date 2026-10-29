@@ -30,7 +30,7 @@ explicit breaking review.
 
 The opt-in [local migration commands](deployment.md#local-database-migrations) are
 additive development interfaces requiring `semver:minor` review. The independent
-histories support contiguous versions 0 through identity 3 or submission 1 and reject
+histories support contiguous versions 0 through identity 4 or submission 1 and reject
 unsupported state; published SQL is immutable. Identity version 2 is an additive
 account/session migration over version 1, with no automatic downgrade. The internal
 account store and its session storage profile add no browser wire format, credentials,
@@ -38,7 +38,10 @@ or membership authority. Identity version 3 additively creates a development-onl
 member-backup slot over version 2, requiring `semver:minor` review. Its internal
 owner/revision API and public envelope validation add no vault HTTP format or
 cryptographic profile; published SQL remains immutable. Existing HTTP, CLI key tooling, WASM, and
-device cryptographic profiles are unchanged.
+device cryptographic profiles are unchanged. Identity version 4 adds independent
+session selectors with automatic backfill and no token/timestamp changes, requiring
+`semver:minor` review. Updated account-store construction requires version 4;
+apply migrations before using it. Published earlier SQL remains unchanged.
 
 The internal [session-scoped backup methods](database.md#session-scoped-member-backup-access)
 add no public API or automatic release bump. Individual session revocation now uses
@@ -62,8 +65,8 @@ is available. See the [storage contract](database.md#implemented-account-storage
 The internal [session inventory](database.md#session-scoped-session-inventory) adds
 only unstable Go storage behavior, not a supported browser/API format or an automatic
 release bump. It returns bounded timestamp/current-session metadata and no partial
-list for excess rows. Existing public parameters, migrations, grants, and device
-profiles remain unchanged.
+list for excess rows. Its additive `SessionID` metadata uses identity migration 4;
+existing public parameters, grants, and device profiles remain unchanged.
 
 Internal [sibling-session revocation](database.md#session-scoped-sibling-revocation)
 adds an unstable Go method with a shared five-minute authentication-admission gate.

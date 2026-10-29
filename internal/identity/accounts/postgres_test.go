@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -77,6 +78,7 @@ func TestPostgresAccounts(t *testing.T) {
 	t.Run("concurrent-session-limit", testPostgresConcurrentSessionLimit)
 	t.Run("session-limit-after-lock-wait", testPostgresSessionLimitWait)
 	t.Run("session-inventory", testPostgresSessionInventory)
+	t.Run("session-selectors", testPostgresSessionSelectors)
 	t.Run("inventory-after-lock-wait", testPostgresInventoryWait)
 	t.Run("revoke-other-sessions", testPostgresRevokeOthers)
 	t.Run("concurrent-revoke-other-sessions", testPostgresConcurrentRevokeOthers)
@@ -425,8 +427,8 @@ func testPostgresSessionInventory(t *testing.T) {
 	defer clear(before)
 	for _, bearer := range [][]byte{token, oldToken} {
 		entries, err := store.ListSessions(t.Context(), bearer)
-		if err != nil || len(entries) != 2 || entries[0] != (SessionInfo{current.CreatedAt, current.ExpiresAt, bytes.Equal(bearer, token)}) ||
-			entries[1] != (SessionInfo{old.CreatedAt, old.ExpiresAt, bytes.Equal(bearer, oldToken)}) || !bytes.Equal(token, before) {
+		if err != nil || len(entries) != 2 || entries[0] != (SessionInfo{sessionSelector(t, pool, token), current.CreatedAt, current.ExpiresAt, bytes.Equal(bearer, token)}) ||
+			entries[1] != (SessionInfo{sessionSelector(t, pool, oldToken), old.CreatedAt, old.ExpiresAt, bytes.Equal(bearer, oldToken)}) || !bytes.Equal(token, before) {
 			t.Fatal("inventory exposed another owner, invalid row, or wrong metadata")
 		}
 		entries[0] = SessionInfo{}
@@ -495,6 +497,73 @@ func syntheticSession(t *testing.T, pool *pgxpool.Pool, owner ID, offset, lifeti
 		t.Fatal("insert synthetic session metadata")
 	}
 	return token, session
+}
+
+func sessionSelector(t *testing.T, pool *pgxpool.Pool, token []byte) SessionID {
+	t.Helper()
+	digest, _ := tokenDigest(token)
+	var id pgtype.UUID
+	if err := pool.QueryRow(t.Context(), "SELECT session_id FROM anonce.account_sessions WHERE token_digest=$1", digest[:]).Scan(&id); err != nil || !id.Valid || id.Bytes == ([16]byte{}) {
+		t.Fatal("read session selector")
+	}
+	return SessionID(id.Bytes)
+}
+
+func testPostgresSessionSelectors(t *testing.T) {
+	store, pool := testStore(t)
+	owner := newAccount(t, store)
+	token, original := startSession(t, store, owner)
+	sibling, _ := startSession(t, store, owner)
+	currentID, siblingID := sessionSelector(t, pool, token), sessionSelector(t, pool, sibling)
+	if currentID == siblingID {
+		t.Fatal("independent sessions share a selector")
+	}
+	for _, bearer := range [][]byte{token, sibling} {
+		entries, err := store.ListSessions(t.Context(), bearer)
+		if err != nil || len(entries) != 2 || entries[0].ID != siblingID || entries[1].ID != currentID {
+			t.Fatal("inventory selectors are unstable or bearer-dependent")
+		}
+	}
+	for _, selector := range []SessionID{currentID, siblingID} {
+		// Neither the selector bytes nor a token-sized padded selector authorize.
+		for _, size := range []int{len(selector), TokenSize} {
+			candidate := make([]byte, size)
+			copy(candidate, selector[:])
+			if _, err := store.Resolve(t.Context(), candidate); !errors.Is(err, ErrUnavailable) {
+				t.Fatal("selector resolved as a credential")
+			}
+			if entries, err := store.ListSessions(t.Context(), candidate); entries != nil || !errors.Is(err, ErrUnavailable) {
+				t.Fatal("selector authorized inventory")
+			}
+		}
+	}
+	for _, tc := range []struct{ value, state string }{
+		{"NULL", "23502"},
+		{"'00000000-0000-0000-0000-000000000000'::uuid", "23514"},
+		{"(SELECT session_id FROM anonce.account_sessions LIMIT 1)", "23505"},
+	} {
+		_, err := pool.Exec(t.Context(), `INSERT INTO anonce.account_sessions(token_digest,account_id,expires_at,session_id)
+            VALUES (decode(repeat('ac',32),'hex'),$1,statement_timestamp()+interval '1 hour',`+tc.value+`)`, owner[:])
+		pgerr, ok := errors.AsType[*pgconn.PgError](err)
+		if !ok || pgerr.Code != tc.state {
+			t.Fatal("invalid or duplicate selector admitted")
+		}
+	}
+	if _, err := pool.Exec(t.Context(), "UPDATE anonce.account_sessions SET session_id=gen_random_uuid()"); err == nil {
+		t.Fatal("runtime can change existing selectors")
+	}
+	fresh, rotated, err := store.RotateSession(t.Context(), owner, token)
+	if err != nil || rotated.ExpiresAt != original.ExpiresAt {
+		t.Fatal("rotate selector session")
+	}
+	defer clear(fresh)
+	if next := sessionSelector(t, pool, fresh); next == currentID || next == siblingID || sessionSelector(t, pool, sibling) != siblingID {
+		t.Fatal("rotation reused a selector or changed a sibling")
+	}
+	var exists bool
+	if err := pool.QueryRow(t.Context(), "SELECT EXISTS (SELECT 1 FROM anonce.account_sessions WHERE session_id=$1)", pgtype.UUID{Bytes: currentID, Valid: true}).Scan(&exists); err != nil || exists {
+		t.Fatal("rotation retained the old selector")
+	}
 }
 
 func testPostgresInventoryWait(t *testing.T) {
@@ -1119,7 +1188,7 @@ func testPostgresConstraints(t *testing.T) {
 		}
 	}
 	var count int
-	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM information_schema.columns WHERE table_schema='anonce' AND table_name='account_sessions'`).Scan(&count); err != nil || count != 4 {
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM information_schema.columns WHERE table_schema='anonce' AND table_name='account_sessions'`).Scan(&count); err != nil || count != 5 {
 		t.Fatal("session schema contains unexpected fields")
 	}
 	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM anonce.account_sessions WHERE token_digest=$1", digest[:]).Scan(&count); err != nil || count != 1 {

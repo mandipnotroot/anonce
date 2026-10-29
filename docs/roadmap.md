@@ -66,6 +66,9 @@ Available foundations:
   fail without a partial list. Recently authenticated bearers can also remove
   sibling sessions without an owner override, preserving their own absolute expiry.
   Product session-management UI and browser logout integration remain unavailable.
+  Identity version 4 adds independent non-secret session selectors to that inventory,
+  backfilling existing rows without changing tokens or expiry. Rotation replaces
+  the selector rather than creating a stable device-tracking handle.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).

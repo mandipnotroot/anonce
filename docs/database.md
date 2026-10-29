@@ -66,6 +66,14 @@ Identity migration `00002_accounts.sql` adds two owner-created tables:
 | `accounts` | Random 16-byte primary key, active/disabled state, creation time, optional disable time; runtime can select/insert and update state/disable time only |
 | `account_sessions` | 32-byte SHA-256 token digest primary key, account foreign key, creation/absolute-expiry timestamps; runtime can select/insert/delete, never update or extend expiry |
 
+Identity version 4 adds a unique, nonzero UUID `session_id` selector to each session.
+PostgreSQL 18 [`gen_random_uuid`](https://www.postgresql.org/docs/18/functions-uuid.html)
+generates independent random version-4 UUIDs, including backfill of existing rows
+(consulted 2026-10-29). Selectors contain no token/digest material and grant no
+authority. The existing runtime grants do not permit changing stored selectors.
+The account store requires this column at construction; migrate before starting
+the updated store. Existing tokens, account bindings, and timestamps are preserved.
+
 No identifiers, sessions, or account tables enter submission storage. These two
 tables have no credential, vault, member, role, answer, receipt, IP, or user-agent columns. Account
 creation grants no eligibility, and disabling changes no membership quota. The
@@ -140,11 +148,14 @@ uses the same account-first lock order as session changes and member-backup acce
 Revocation, rotation, or disable committed first denies a queued lookup. Expiry is
 checked using the database clock after lock waits, not transaction-start time.
 
-The returned `SessionInfo` entries contain creation and absolute-expiry timestamps
-and a `Current` marker only. No account ID, token, digest, device ID, IP, user agent,
+The returned `SessionInfo` entries contain a non-secret `SessionID`, creation and
+absolute-expiry timestamps, and a `Current` marker. No account ID, token, digest, device ID, IP, user agent,
 or anonymous activity is returned or added to storage. Entries are ordered newest
-first, with expiry and an internal digest tie-breaker; digests never leave the store.
+first, with expiry and selector tie-breakers; digests never leave the store.
 This is session metadata, not a list of devices or a supported HTTP format.
+Selectors remain stable for a stored row and across authorized bearers. Rotation
+creates a new selector and invalidates the old row; selectors do not identify a
+device across sign-ins. Never accept one as a bearer or put it in anonymous data.
 
 The query returns at most 16 live, nonfuture entries as of authorization admission.
 It fetches at most one extra entry to detect excess sessions from direct SQL, older
@@ -160,8 +171,9 @@ CSRF protection, and rate limits before exposing session management.
 This follows the existing PostgreSQL 18
 [row-lock](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS) and
 [Read Committed](https://www.postgresql.org/docs/18/transaction-iso.html#XACT-READ-COMMITTED)
-contract (consulted 2026-10-29). No migration, grant, credential ceremony, or browser
-transport is introduced. See [account checks](testing.md#account-storage-checks).
+contract (consulted 2026-10-29). Selectors use identity migration 4 without new
+grants, credential ceremonies, or browser transport.
+See [account checks](testing.md#account-storage-checks).
 
 ### Session-scoped sibling revocation
 
@@ -393,7 +405,8 @@ with exactly one service-specific row. Runtime gets `SELECT` only. The separate
 `anonce.identity_schema_version` and `anonce.submission_schema_version` Goose tables
 and their sequences remain owner-only. Identity version 2 adds the account/session
 tables described above, initially empty. Identity version 3 adds the member-backup
-slot with narrow runtime update grants. No membership or anonymous records are added.
+slot with narrow runtime update grants. Identity version 4 adds independent session
+selectors without changing existing tokens or timestamps. No membership or anonymous records are added.
 
 The runner accepts exactly `identity` or `submission`, connects to that fixed
 Compose hostname/database as `anonce_migrator`, checks the database name and
@@ -404,8 +417,8 @@ must reacquire the lock and repeat preflight. Each SQL migration and its version
 entry use Goose's transaction. No down/reset or out-of-order option is exposed.
 
 Supported histories are an absent ledger or a contiguous, ordered applied version
-0 baseline through at most identity version 3 or submission version 1. Existing
-version-1/version-2 identity databases upgrade additively without editing published SQL.
+0 baseline through at most identity version 4 or submission version 1. Existing
+version-1/version-2/version-3 identity databases upgrade additively without editing published SQL.
 Future, negative, duplicate, out-of-order, gapped, unapplied, or missing-baseline
 records fail before migration. Already-current runs also require the correct
 single marker row. When adding a migration, extend this explicit supported-history

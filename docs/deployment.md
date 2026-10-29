@@ -203,6 +203,10 @@ single-runtime-secret restrictions. No HTTP service gets vault access or new
 credentials. Deletion affects only live ciphertext; do not treat it as erasure
 from WAL, snapshots, or backups. Real member keys remain prohibited in this stack.
 
+Identity version 4 adds independent non-secret session selectors and backfills
+existing rows without changing their tokens or timestamps. Apply it before using
+the updated internal account store. It enables no HTTP session-management route.
+
 ## Production separation
 
 - Deliver the product through the browser for every role; users install no app,

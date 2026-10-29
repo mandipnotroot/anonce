@@ -306,6 +306,17 @@ def migration_checks(stack):
             result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id; SELECT to_regclass('anonce.accounts') IS NOT NULL AND to_regclass('anonce.account_sessions') IS NOT NULL;")
             require(result.stdout.strip() == b"0\n1\n2\nt", "failed backup migration changed published state")
             stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP TABLE anonce.member_key_backups;")
+            # A version-4 failure must preserve existing session rows and roll
+            # back the selector column as well as the migration history.
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; CREATE INDEX account_sessions_selector_unique ON anonce.account_sessions(expires_at);")
+            stack.migrate(side, image, allowed=False)
+            result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id; SELECT count(*) FROM information_schema.columns WHERE table_schema='anonce' AND table_name='account_sessions' AND column_name='session_id';")
+            require(result.stdout.strip() == b"0\n1\n2\n3\n0", "failed selector migration changed published state")
+            stack.sql(side, "runtime", "INSERT INTO anonce.accounts(id) VALUES (decode(repeat('ef',16),'hex')); INSERT INTO anonce.account_sessions(token_digest,account_id,expires_at) SELECT decode(repeat(value,32),'hex'),decode(repeat('ef',16),'hex'),statement_timestamp()+interval '1 hour' FROM (VALUES ('ab'),('cd')) AS tokens(value);")
+            previous_sessions = stack.sql(side, "runtime", "SELECT encode(token_digest,'hex'),encode(account_id,'hex'),created_at,expires_at FROM anonce.account_sessions ORDER BY token_digest;").stdout
+            stack.migrate(side, image, allowed=False)
+            require(stack.sql(side, "runtime", "SELECT encode(token_digest,'hex'),encode(account_id,'hex'),created_at,expires_at FROM anonce.account_sessions ORDER BY token_digest;").stdout == previous_sessions, "failed selector migration changed session rows")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP INDEX anonce.account_sessions_selector_unique;")
         # Simultaneous pending applications exercise the actual locked Go runner.
         with ThreadPoolExecutor(max_workers=2) as pool:
             list(pool.map(lambda _: stack.migrate(side, image), range(2)))
@@ -313,8 +324,17 @@ def migration_checks(stack):
         result = stack.sql(side, "runtime", "SELECT service FROM anonce.storage_boundary;")
         require(result.stdout.strip() == side.encode(), "wrong storage boundary")
         result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id;")
-        latest = 3 if side == "identity" else 1
-        require(result.stdout.strip() == (b"0\n1\n2\n3" if side == "identity" else b"0\n1"), "unexpected migration history")
+        latest = 4 if side == "identity" else 1
+        require(result.stdout.strip() == (b"0\n1\n2\n3\n4" if side == "identity" else b"0\n1"), "unexpected migration history")
+        if side == "identity":
+            require(stack.sql(side, "runtime", "SELECT encode(token_digest,'hex'),encode(account_id,'hex'),created_at,expires_at FROM anonce.account_sessions ORDER BY token_digest;").stdout == previous_sessions, "selector upgrade changed existing session material")
+            selectors = stack.sql(side, "runtime", "SELECT session_id FROM anonce.account_sessions ORDER BY token_digest;").stdout
+            require(len(set(selectors.splitlines())) == 2, "selector upgrade did not independently backfill existing sessions")
+            stack.migrate(side, image)
+            require(stack.sql(side, "runtime", "SELECT session_id FROM anonce.account_sessions ORDER BY token_digest;").stdout == selectors, "repeated migration changed selectors")
+            # Remove only this migration probe's rows before runtime test suites.
+            stack.sql(side, "runtime", "DELETE FROM anonce.account_sessions WHERE account_id=decode(repeat('ef',16),'hex');")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; DELETE FROM anonce.accounts WHERE id=decode(repeat('ef',16),'hex');")
         result = stack.sql(side, "migrator", "SET ROLE anonce_owner; SELECT bool_and(tableowner = 'anonce_owner') FROM pg_tables WHERE schemaname = 'anonce';")
         require(result.stdout.strip() == b"t", "migration objects have the wrong owner")
         for query in (f"SELECT * FROM {table};", f"DELETE FROM {table};", "DELETE FROM anonce.storage_boundary;",

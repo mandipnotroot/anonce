@@ -53,9 +53,12 @@ per account under its existing account lock. This is a
 to randomness, digest composition, lifetime, or any cryptographic format.
 
 The internal [session inventory](database.md#session-scoped-session-inventory)
-reuses this same digest and account-lock authorization, returning timestamps and a
-current-session marker only. Neither bearer secrets nor stored digests are returned;
-no new primitive, identifier, or cryptographic format is introduced.
+reuses this same digest and account-lock authorization, returning timestamps, a
+current-session marker, and an independent non-secret row selector. Identity
+migration 4 uses PostgreSQL 18's random UUID generator for selectors, not a hash
+or truncation of bearer material. A selector is never accepted as a credential.
+Rotation replaces it. Neither bearer secrets nor stored digests are returned;
+device cryptographic profiles and session secret generation are unchanged.
 
 Internal [session-scoped member-backup access](database.md#session-scoped-member-backup-access)
 reuses this exact digest/expiry profile for owner authorization. It neither derives
