@@ -5,11 +5,42 @@
 
 Audience: storage implementers, database reviewers, and operators.
 
-Status: local PostgreSQL 18.6 bootstrap plus separate Goose migration histories and
-an operator-only pgx runner. Identity version 2 adds account/session persistence
-and version 3 adds an internal encrypted member-backup slot;
-submission version 1 contains only its storage-boundary marker. Product vault,
-credential, membership, and protocol integration remain proposed; HTTP persistence is not implemented.
+Status: PostgreSQL 18.6 bootstrap, independent Goose histories and an operator-only
+pgx runner. Identity versions 2–4 provide accounts, sessions and member backups;
+submission version 2 provides atomic records. The opt-in browser hosts connect
+these through identity migration 5 and submission migration 3. The original
+demonstration commands still perform no application persistence.
+
+## Browser MVP persistence
+
+Identity migration 5 adds bounded WebAuthn public credential metadata, short-lived
+single-use ceremonies, invitation/membership bindings, draft/published rounds,
+issuance challenges and a unique membership/round reservation ledger. It retains
+no unblinded tokens, answers, receipts, reviewer private keys or encrypted reviewer
+backups. Dedicated round RSA signing keys are server-side identity signing
+material; the local MVP stores them in this database, not a protected signing
+service or encrypted-at-rest key store. This limitation prohibits real-data use.
+
+Session-authorized workflow transactions lock the account first and recheck
+session expiry/status after lock waits. Sensitive writes also require creation
+within five minutes. Invitation consumption binds a verified CSR to the fixed
+member-backup public key in the same transaction. Quota reservations use immutable
+membership IDs, not sessions or certificate serials, and commit before blind signing.
+Published round content and keys are never replaced through the workflow API.
+
+Submission migration 3 adds signed public bulletins and digest-only reviewer read
+challenges with round/cursor binding. It adds no identity tables. Public provisioning
+can recover an interrupted insertion only against the existing exact signed
+bulletin digest and immutable schedule. Existing atomic spending and ciphertext
+storage are unchanged. Reviewer proofs are consumed transactionally before bounded
+record retrieval. Reads expose neither precise acceptance times nor spend digests.
+
+Runtime roles receive narrow table/column grants, not ownership or migration-state
+access. Apply these additive migrations before starting browser hosts. Supported
+histories now extend through identity 5 and submission 3; earlier published SQL is
+unchanged. SQL immutability/grants do not constrain a compromised runtime process
+that can use its granted writes directly. PostgreSQL backups and rollback remain
+outside the MVP receipt guarantee.
 
 ## Storage boundary
 
@@ -51,8 +82,8 @@ against database-container or host compromise. Data volumes follow the PostgreSQ
 
 Bootstrap SQL neither upgrades nor repairs existing volumes. Separate embedded
 Goose histories are applied explicitly as described below. Evidence and limits live in
-[container checks](testing.md#container-infrastructure-checks); quota/spend transactions
-and encrypted restoration remain unimplemented.
+[container checks](testing.md#container-infrastructure-checks); issuance quotas,
+protocol verification, and encrypted database restoration remain unimplemented.
 
 ## Identity database
 
@@ -65,6 +96,14 @@ Identity migration `00002_accounts.sql` adds two owner-created tables:
 | --- | --- |
 | `accounts` | Random 16-byte primary key, active/disabled state, creation time, optional disable time; runtime can select/insert and update state/disable time only |
 | `account_sessions` | 32-byte SHA-256 token digest primary key, account foreign key, creation/absolute-expiry timestamps; runtime can select/insert/delete, never update or extend expiry |
+
+Identity version 4 adds a unique, nonzero UUID `session_id` selector to each session.
+PostgreSQL 18 [`gen_random_uuid`](https://www.postgresql.org/docs/18/functions-uuid.html)
+generates independent random version-4 UUIDs, including backfill of existing rows
+(consulted 2026-10-29). Selectors contain no token/digest material and grant no
+authority. The existing runtime grants do not permit changing stored selectors.
+The account store requires this column at construction; migrate before starting
+the updated store. Existing tokens, account bindings, and timestamps are preserved.
 
 No identifiers, sessions, or account tables enter submission storage. These two
 tables have no credential, vault, member, role, answer, receipt, IP, or user-agent columns. Account
@@ -80,6 +119,27 @@ context and cancellation. Failed session creation returns no token; an uncertain
 commit may leave an unreachable session until expiry, never a safe automatic retry.
 
 `StartSession` requires authentication already verified by its trusted caller.
+It admits at most `MaxSessionsPerAccount` (16) unexpired sessions per account.
+After locking the active account, a fresh Read Committed statement counts up to
+the limit using the database clock. Concurrent starts across pools serialize on
+that lock; committed starts, revocation, and expiry during a lock wait are observed
+before admission. At or above capacity, `ErrSessionLimit` returns no token or session
+and leaves existing sessions unchanged. Missing/disabled accounts still return
+`ErrUnavailable`. Expired rows do not count and are not deleted by admission.
+Revocation or expiry frees capacity; rotation replaces one row and remains available
+at capacity without extending expiry. No automatic eviction or retry is performed.
+
+This fixed development bound follows the application-policy approach in
+[OWASP simultaneous-session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#simultaneous-session-logons)
+and PostgreSQL 18's
+[Read Committed semantics](https://www.postgresql.org/docs/18/transaction-iso.html#XACT-READ-COMMITTED)
+(consulted 2026-10-28). It is a package admission rule, not a database constraint:
+direct runtime SQL, older application versions, restored data, or clock rollback
+can exceed it. Existing excess sessions are not recalled; new starts fail until
+capacity is available. It does not bound expired-reference growth, account counts,
+authentication attempts, or total database resources. Hosts still need cleanup,
+rate limits, reviewed product policy, and a safe session-management UX.
+
 `Resolve` always joins the account and checks absolute expiry using PostgreSQL's
 clock; it does not refresh expiry or authorize sensitive actions. `Revoke` locks
 the account before removing one digest. `RevokeAll` and `Disable` serialize with new sessions by locking the
@@ -106,9 +166,172 @@ Require fresh sign-in rather than retrying that operation automatically.
 Revocation removes live session references immediately. Expired references remain
 until `PurgeExpired` is called, bounded to 1–1000 rows per call. No cleanup scheduler,
 account deletion, production retention policy, backup restoration, authentication
-ceremony, per-account session admission limit, or HTTP integration exists. Product
-retention and recovery must be reviewed before real data is admitted. See the
+ceremony or HTTP integration exists. Product retention and recovery must be reviewed
+before real data is admitted. See the
 [real PostgreSQL account checks](testing.md#account-storage-checks).
+
+### Session-scoped session inventory
+
+`ListSessions(ctx, token)` derives the account from the bearer session, locks the
+active account, then rechecks the same token's existence, nonfuture creation, and
+absolute expiry in a fresh Read Committed statement. The five-second transaction
+uses the same account-first lock order as session changes and member-backup access.
+Revocation, rotation, or disable committed first denies a queued lookup. Expiry is
+checked using the database clock after lock waits, not transaction-start time.
+
+The returned `SessionInfo` entries contain a non-secret `SessionID`, creation and
+absolute-expiry timestamps, and a `Current` marker. No account ID, token, digest, device ID, IP, user agent,
+or anonymous activity is returned or added to storage. Entries are ordered newest
+first, with expiry and selector tie-breakers; digests never leave the store.
+This is session metadata, not a list of devices or a supported HTTP format.
+Selectors remain stable for a stored row and across authorized bearers. Rotation
+creates a new selector and invalidates the old row; selectors do not identify a
+device across sign-ins. Never accept one as a bearer or put it in anonymous data.
+
+The query returns at most 16 live, nonfuture entries as of authorization admission.
+It fetches at most one extra entry to detect excess sessions from direct SQL, older
+writers, or restoration. Excess returns `ErrSessionLimit` without a partial list
+or eviction. Malformed, unknown, future-dated, expired, revoked, and disabled bearer
+sessions share `ErrUnavailable` and return no metadata. Older live sessions may
+list without recent authentication. Cancellation or transaction failure returns
+no list. Results are returned only after commit and can immediately become stale;
+cleanup may remove references that expire after admission. Already returned data
+is not recalled by revocation. Hosts still need authentication, protected delivery,
+CSRF protection, and rate limits before exposing session management.
+
+This follows the existing PostgreSQL 18
+[row-lock](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS) and
+[Read Committed](https://www.postgresql.org/docs/18/transaction-iso.html#XACT-READ-COMMITTED)
+contract (consulted 2026-10-29). Selectors use identity migration 4 without new
+grants, credential ceremonies, or browser transport.
+See [account checks](testing.md#account-storage-checks).
+
+### Session-scoped sibling revocation
+
+`RevokeOtherSessions(ctx, token)` derives and authorizes the live bearer's owner
+using the same account-first transaction as inventory. It removes all other session
+references for that account, including expired and future-dated rows, and returns
+the removed-row count only after commit. The current token, creation time, and
+absolute expiry remain unchanged. Other accounts and encrypted backups are not
+modified. No owner override, target digest, timestamp, or caller-asserted freshness
+is accepted. It works at or above the session admission limit without listing first.
+
+Admission additionally requires nonfuture creation strictly within the preceding
+five minutes, checked with the database clock after account-lock waits. The shared
+`accounts.RecentAuthenticationWindow` also supplies the unchanged member-backup
+mutation window. An older live bearer returns `ErrReauthenticationRequired` with
+zero count and no mutation; inventory remains available. Malformed, unknown,
+future-dated, expired, revoked, and disabled bearers return `ErrUnavailable` instead.
+Only independently verified authentication followed by trusted session creation or
+rotation can establish recent admission. Token possession alone cannot renew it.
+Database clock changes can affect both expiry and this age gate.
+
+Concurrent package starts, rotations, revocations, disabling, and session-scoped
+backup access serialize on the account lock. A sibling operation ordered first
+commits before removal; already admitted work and returned data are not recalled.
+A separately authenticated start ordered afterward can create a new session.
+Competing bearers cannot both retain their own session through sibling revocation.
+Repeated calls with the surviving bearer and no siblings succeed with count zero.
+The five-second deadline bounds work, not the number of deleted references.
+Cancellation or failure returns zero count; an uncertain commit may have removed
+siblings and must not trigger a blind retry. Reread inventory or sign in afresh.
+
+This internal policy supports future session management following
+[OWASP simultaneous-session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#simultaneous-session-logons)
+(consulted 2026-10-29), not a product logout endpoint or proof of user intent.
+A recently stolen token can still remove legitimate siblings. Hosts still need
+verified authentication, protected transport, CSRF protection, rate limits, and
+local custody/logout integration. No migration, grant, HTTP/browser interface,
+device-key locking, membership revocation, or recovery mechanism is added.
+
+### Session-scoped selected revocation
+
+`RevokeSession(ctx, token, target)` accepts an inventory `SessionID`, not a token
+digest or owner override. The same account-first transaction derives and authorizes
+the bearer, requiring authentication admission strictly within five minutes after
+lock waits. It deletes at most one matching sibling reference belonging to that
+owner. Expired and future-dated target rows may also be removed. The current row is
+always excluded, preserving the caller's token and absolute expiry.
+
+A zero selector returns `ErrInvalidInput`. A current, missing, already removed,
+rotated, or other-account selector returns `false` without error after successful
+bearer authorization. This does not reveal whether another account has that
+selector. Invalid bearers return `ErrUnavailable`; older live bearers return
+`ErrReauthenticationRequired`, even when the target would be a no-op. Rotation
+replaces the selector, so an old inventory cannot revoke the successor. The method
+works above the session limit without listing first.
+
+Removal is reported only after commit; cancellation or failure returns `false`.
+An uncertain commit may have removed the target. Reread inventory or sign in
+afresh instead of blindly retrying. Account locking serializes selection with
+rotation, revocation, disabling, and member-backup operations. Already admitted
+work, returned data, and unlocked device keys are not recalled. New independently
+authenticated sessions remain possible. A recently stolen bearer can remove
+siblings; this age gate is not proof of intent.
+
+The existing PostgreSQL 18 row-lock/Read Committed contract and shared
+recent-authentication policy apply. No additional migration, grant, HTTP/browser
+transport, device-key operation, or membership authority is introduced. Hosts still
+need verified authentication, CSRF protection, protected delivery, rate limits,
+and local logout integration. See [account checks](testing.md#account-storage-checks).
+
+### Session-scoped sign-out everywhere
+
+`RevokeAllForSession(ctx, token)` derives the owner from a live bearer and removes
+every reference for that account, including the caller, expired rows, and
+future-dated rows. It uses the existing account-first transaction and requires
+authentication admission strictly within five minutes after lock waits. It accepts
+no owner override and works above the session limit without listing first.
+Malformed, missing, expired, future-dated, revoked, rotated, and disabled bearers
+return `ErrUnavailable`; older live bearers return `ErrReauthenticationRequired`.
+
+The removed-row count is returned only after commit. Cancellation or failure
+returns zero, but an uncertain commit may have removed all sessions. Require fresh
+sign-in rather than blindly retrying. A repeat with the removed bearer is denied,
+not an authenticated no-op. The account stays active: a separately verified login
+ordered afterward can create a new session. Other accounts remain unchanged.
+
+Account locking serializes removal with starts, rotation, other revocation,
+disable, and admitted member-backup access. No local keys, already returned data,
+membership, quotas, or encrypted backups are changed. A recently stolen bearer can
+sign out legitimate sessions; recent admission is not proof of intent. Hosts still
+need verified authentication, CSRF protection, rate limits, protected delivery, and
+local lock/logout integration. This is internal storage behavior, not a browser
+endpoint. Existing PostgreSQL 18 transaction semantics, grants, migrations, and
+cryptographic profiles are unchanged. See [account checks](testing.md#account-storage-checks).
+
+### Session-scoped account disabling
+
+`DisableForSession(ctx, token)` derives the active owner from a live bearer, using
+the same account-first transaction and strict five-minute recent-admission gate as
+[sign-out everywhere](#session-scoped-sign-out-everywhere). No owner override,
+target selector, or caller-selected authentication timestamp is accepted. It marks
+the account disabled and removes every session reference, including the caller,
+expired rows, and future-dated rows, in one transaction. It works above admission
+capacity without listing first. Other accounts are unchanged.
+
+Malformed, missing, expired, future-dated, revoked, rotated, or disabled bearers
+return `ErrUnavailable`. Older live bearers return `ErrReauthenticationRequired`.
+Authorization and age are rechecked after account-lock waits, before any change.
+Unlike trusted-owner `Disable`, repeating this operation with the invalidated
+bearer is denied rather than returning an authenticated success.
+
+Success is reported only after commit. Failure or cancellation during session
+deletion rolls back the account-state update too. An uncertain commit may already
+have disabled the account despite returning an error; do not retry blindly. After
+disable commits, new starts, rotation, inventory, and member-backup access fail.
+Already admitted work and returned data are not recalled.
+
+There is no re-enable API. This is not account deletion, encrypted-backup deletion,
+key erasure, membership revocation, quota reset, or recovery. Encrypted backup
+ciphertext, public binding, and revision remain stored but inaccessible through the
+disabled account's store methods. Local workers/keys require separate lock/logout
+integration. A recently stolen bearer can disable the account; recent admission
+does not prove user intent. A future host needs independently verified
+authentication, explicit confirmation, CSRF protection, rate limits, and a reviewed
+product disable/recovery policy before exposure. No browser/API, migration, grant,
+retention policy, or cryptographic format is added. See
+[account checks](testing.md#account-storage-checks).
 
 ### Proposed identity relations
 
@@ -246,6 +469,76 @@ No HTTP route, browser transport, migration, or grant change is introduced.
 
 ## Submission database
 
+### Implemented submission record storage
+
+`internal/submission/records` is an internal persistence boundary, not a submission
+endpoint. Submission migration `00002_submission_records.sql` creates:
+
+| Relation | Implemented fields and grants |
+| --- | --- |
+| `submission_rounds` | 16-byte round ID, 32-byte common bulletin digest, finite opening/closing times, cancellation flag; runtime can select/insert and update only cancellation |
+| `submission_records` | Random 16-byte storage ID, round foreign key, 32-byte canonical spend digest, bounded ciphertext, internal acceptance time; runtime can select/insert, never update/delete |
+
+There are no account, member, certificate, session, raw token, signature, issuer
+operation, address, or user-agent fields. A single row stores the spend and its
+ciphertext atomically; `(round_id, spend_digest)` is unique. Ciphertext has a
+development storage bound of 1–65536 bytes, not a cryptographic envelope profile.
+The store cannot establish that supplied bytes are encrypted.
+
+Construction checks the submission database, non-owner runtime login, boundary
+marker, and required tables. Pools remain caller-owned, on that database and role,
+without SQL parameter/result logging. Every operation has a five-second deadline;
+driver errors are discarded while cancellation remains observable.
+
+`CreateRound` requires an independently verified common bulletin and authorized
+publication by its trusted caller. It stores immutable digest/schedule metadata;
+duplicate IDs conflict rather than overwrite. Times must have microsecond precision
+and fit UTC years 1–9999, with a strictly later closing time. `CancelRound` is permanent
+through this API, idempotent for known rounds, and retains all stored records.
+Both methods use explicit transactions, so cancellation while queued cannot later
+commit an autocommit mutation. Cancellation during commit still has an uncertain
+outcome; retrying cancellation of a known round is safe, while an existing round ID
+continues to conflict on creation. Neither method verifies publication authority
+or bulletin signatures.
+
+`Accept` requires prior token and envelope verification by a trusted caller. The
+caller derives the spend digest from canonical token input, never signature bytes,
+and supplies the independently verified bulletin digest. The store accepts no
+identity-side credential and does not itself grant submission authority.
+
+Acceptance takes a shared round row lock, allowing concurrent accepts while
+ordering cancellation. The insert checks the common digest, cancellation, and
+`opens_at <= statement_timestamp() < closes_at` after that lock. Database time at
+insertion admission governs the window, not transaction start or commit time.
+Cancellation ordered first denies acceptance; already admitted transactions may
+commit before cancellation completes. Database clock rollback can reopen a scheduled
+window, so trusted clock operation remains required.
+
+Only a byte-identical ciphertext retry during the open window returns the original
+storage reference and timestamp. Different ciphertext conflicts without replacing
+the winner or revealing its reference. A separate Read Committed query after
+`ON CONFLICT DO NOTHING` observes a concurrently committed winner that was invisible
+to the insert's snapshot. Unknown, differently bound, unopened, closed, and cancelled
+rounds share `ErrUnavailable`, including retries after closure or cancellation.
+After an uncertain commit, only the exact original input may be retried. Closure
+can prevent reference recovery; no post-close lookup contract is implemented.
+
+References return only after commit and are **not receipts or inclusion proofs**.
+The precise timestamp is internal diagnostics for this storage foundation, not a
+public field; production retention and time minimization remain unresolved. No
+retrieval API, token verification, encryption, log outbox, receipt signing, reviewer
+authorization, cleanup, or HTTP integration is provided. Restoring an older database
+could restore spent-token availability; encrypted restoration and rollback defense
+must be reviewed before product use.
+Per-record bounds do not limit total database growth or request rates.
+
+This follows PostgreSQL 18's [insert conflict behavior](https://www.postgresql.org/docs/18/sql-insert.html#SQL-ON-CONFLICT),
+[Read Committed snapshots](https://www.postgresql.org/docs/18/transaction-iso.html#XACT-READ-COMMITTED),
+and [timestamp resolution](https://www.postgresql.org/docs/18/datatype-datetime.html#DATATYPE-DATETIME-TABLE)
+(consulted 2026-10-29). See [submission storage checks](testing.md#submission-record-storage-checks).
+
+### Remaining submission relations
+
 | Relation | Intended fields and invariants |
 | --- | --- |
 | `round_bulletins` | Public signed schema, key references, times, profile, response limit, release policy, and immutable digest |
@@ -302,7 +595,9 @@ with exactly one service-specific row. Runtime gets `SELECT` only. The separate
 `anonce.identity_schema_version` and `anonce.submission_schema_version` Goose tables
 and their sequences remain owner-only. Identity version 2 adds the account/session
 tables described above, initially empty. Identity version 3 adds the member-backup
-slot with narrow runtime update grants. No membership or anonymous records are added.
+slot with narrow runtime update grants. Identity version 4 adds independent session
+selectors without changing existing tokens or timestamps. Submission version 2 adds
+the independent round and record tables above. No membership tables are added.
 
 The runner accepts exactly `identity` or `submission`, connects to that fixed
 Compose hostname/database as `anonce_migrator`, checks the database name and
@@ -313,8 +608,8 @@ must reacquire the lock and repeat preflight. Each SQL migration and its version
 entry use Goose's transaction. No down/reset or out-of-order option is exposed.
 
 Supported histories are an absent ledger or a contiguous, ordered applied version
-0 baseline through at most identity version 3 or submission version 1. Existing
-version-1/version-2 identity databases upgrade additively without editing published SQL.
+0 baseline through at most identity version 5 or submission version 3. Existing
+version-1/version-2/version-3 identity databases upgrade additively without editing published SQL.
 Future, negative, duplicate, out-of-order, gapped, unapplied, or missing-baseline
 records fail before migration. Already-current runs also require the correct
 single marker row. When adding a migration, extend this explicit supported-history
@@ -331,4 +626,4 @@ This follows [Goose 3.29.0 SQL transaction/version semantics](https://github.com
 and PostgreSQL 18 [session advisory locks](https://www.postgresql.org/docs/18/explicit-locking.html#ADVISORY-LOCKS)
 (consulted 2026-10-28). See [operator commands](deployment.md#local-database-migrations)
 and [executable evidence](testing.md#database-migration-checks). Encrypted restoration,
-quota/spend concurrency, and full `db-test` remain unavailable.
+issuance quota concurrency, protocol verification, and full `db-test` remain unavailable.

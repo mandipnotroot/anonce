@@ -17,14 +17,19 @@ import (
 )
 
 const (
-	TokenSize        = 32
-	MaxLifetime      = 12 * time.Hour
-	operationTimeout = 5 * time.Second
+	TokenSize   = 32
+	MaxLifetime = 12 * time.Hour
+
+	// MaxSessionsPerAccount bounds unexpired sessions admitted by StartSession.
+	// This fixed development limit is not a product authentication policy.
+	MaxSessionsPerAccount = 16
+	operationTimeout      = 5 * time.Second
 )
 
 var (
 	ErrInvalidInput = errors.New("invalid account input")
 	ErrUnavailable  = errors.New("account or session unavailable")
+	ErrSessionLimit = errors.New("account session limit reached")
 )
 
 // ID is a random, identity-side account reference, never a membership or spend ID.
@@ -56,6 +61,9 @@ func New(ctx context.Context, pool *pgxpool.Pool) (*Store, error) {
         AND NOT pg_has_role(current_user, 'anonce_owner', 'MEMBER')
         AND to_regclass('anonce.accounts') IS NOT NULL
         AND to_regclass('anonce.account_sessions') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM pg_attribute
+            WHERE attrelid = to_regclass('anonce.account_sessions')
+            AND attname = 'session_id' AND NOT attisdropped)
         AND (SELECT count(*) = 1 AND bool_and(singleton AND service = 'identity')
              FROM anonce.storage_boundary)
         FROM pg_roles WHERE rolname = current_user`).Scan(&valid)
@@ -86,6 +94,8 @@ func (s *Store) Create(ctx context.Context) (ID, error) {
 // It returns a newly allocated opaque bearer secret exactly once; callers must
 // clear it after protected delivery. Only its SHA-256 digest reaches PostgreSQL.
 // No caller-selected token, idle refresh, or privilege assertion is accepted.
+// At MaxSessionsPerAccount unexpired sessions it returns ErrSessionLimit without
+// evicting existing sessions. Expired references do not consume admission.
 func (s *Store) StartSession(ctx context.Context, id ID, lifetime time.Duration) ([]byte, Session, error) {
 	if id == (ID{}) || lifetime < time.Second || lifetime > MaxLifetime || lifetime%time.Second != 0 {
 		return nil, Session{}, ErrInvalidInput
@@ -102,6 +112,20 @@ func (s *Store) StartSession(ctx context.Context, id ID, lifetime time.Duration)
 	defer func() { _ = tx.Rollback(ctx) }()
 	if err := lockAccount(ctx, tx, id, true); err != nil {
 		return nil, Session{}, err
+	}
+	// Count in a fresh statement after the account lock so both committed starts
+	// and expiry during lock waits are visible. Stop at the limit even if older
+	// code or direct SQL left more sessions. All package starts hold this lock.
+	var count int
+	err = tx.QueryRow(ctx, `SELECT count(*) FROM (
+        SELECT 1 FROM anonce.account_sessions
+        WHERE account_id = $1 AND expires_at > statement_timestamp()
+        LIMIT $2) AS live`, id[:], MaxSessionsPerAccount).Scan(&count)
+	if err != nil {
+		return nil, Session{}, failure(ctx, "check account session limit")
+	}
+	if count >= MaxSessionsPerAccount {
+		return nil, Session{}, ErrSessionLimit
 	}
 	token := make([]byte, TokenSize)
 	rand.Read(token)

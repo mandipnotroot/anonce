@@ -18,3 +18,4 @@ node_modules/
 *.p12
 *.pfx
 *.keystore
+.browser/

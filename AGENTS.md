@@ -13,6 +13,18 @@ infrastructure, a read-only shell, shared device-backup encryption, local
 member/reviewer-key generation/import/export, and an offline encrypted-file CLI exist.
 Distinguish implemented from planned behavior.
 
+- `cmd/browser-identity`, `cmd/browser-submission`, `cmd/browser-init`,
+  `internal/browseridentity`, `internal/browsersubmission`, `web/browser`, and
+  `internal/reviewprofile`: separate opt-in local TLS browser workflow for WebAuthn
+  accounts, existing-worker encrypted member backups, single-use enrollment,
+  one-text/one-reviewer/explicit-one-response publication, blind authorization,
+  anonymous HPKE answers, signed storage acceptance and local reviewer decryption.
+  Identity migration 5 and submission migration 3 connect the existing stores.
+  No production readiness, independent approval, transparency-log inclusion, PRF,
+  recovery, protected signer custody or reviewer server backup. The original
+  demonstration commands remain inert. See the canonical browser startup and API
+  references before extending these boundaries.
+
 - `docs/`: architecture, security, operations, and contributor reference.
 - `docs/dependencies.md`: dependency choices, licensing, and review requirements.
 - `docs/roadmap.md`: current priorities and unresolved implementation questions.
@@ -58,7 +70,9 @@ Distinguish implemented from planned behavior.
   secret-free same-partition lock notifications, and local pagehide/hidden-page
   termination, plus opt-in bounded UTF-8 text passphrases over confirmed setup/export
   and expected-key restoration with synchronous encoding-buffer cleanup;
-  native/Node checks and an isolated synthetic browser-test harness; no product HTTP
+  native/Node checks and an isolated synthetic browser-test harness with a confirmed
+  local setup/unlock form, expected-key restoration, and encrypted/public
+  page-memory output; no product HTTP
   delivery, supported-browser matrix, or account logout integration.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - `Dockerfile`, `compose.yaml`, `deploy/postgres/`, `scripts/containers.py`: local
@@ -70,17 +84,26 @@ Distinguish implemented from planned behavior.
   histories and an operator-only pgx runner for local databases, with owner-created
   boundary markers, explicit migration targets, and opt-in real-PostgreSQL checks;
   identity version 2 adds internal account/session persistence and version 3 adds
-  an encrypted member-backup slot; no credentials, protocol tables or HTTP persistence.
+  an encrypted member-backup slot; version 4 adds independent non-secret session
+  selectors. Submission version 2 adds internal round/spend/ciphertext tables.
+  No credentials, protocol verification, or HTTP persistence.
 - `internal/identity/accounts`: identity runtime-role account/session store, digest-only
   random tokens, absolute expiry, individual/all-session revocation, transactional
   disable, token rotation after caller-verified reauthentication without extending
-  expiry, and bounded expired cleanup; no authentication ceremony, membership,
-  vault, or HTTP integration.
+  expiry, a fixed per-account live-session admission limit, bounded session-scoped
+  active-session metadata with non-secret selectors, recently authenticated
+  all-sibling or selected-sibling revocation, bearer-derived sign-out everywhere,
+  session-authorized atomic account disabling, and bounded expired cleanup;
+  no authentication ceremony, membership, vault, or HTTP integration.
 - `internal/identity/memberbackup`: development-only account-scoped encrypted
   member-backup slots with fixed public binding, compare-and-swap revisions,
   deletion tombstones, and session-derived access serialized with revocation/disable;
   fixed recent-authentication admission for session-scoped mutations;
   no authentication ceremony, enrollment, browser/API integration, PRF, or recovery.
+- `internal/submission/records`: internal submission-runtime round admission and
+  atomic spend/ciphertext persistence with payload-bound retries, immutable records,
+  database-clock windows, and cancellation ordering; submission migration version 2;
+  no token/envelope verification, public receipt, reviewer retrieval, or HTTP integration.
 
 ## Product direction
 
@@ -157,6 +180,7 @@ make wasm-test        # native/WASM public-request compatibility and bridge chec
 make member-wasm      # separate local member-session WASM and matching notices
 make member-wasm-test # native/Node backup compatibility, member bridge/worker checks
 make member-browser-test # opt-in synthetic Chromium checks; requires MEMBER_BROWSER
+make browser-unit-test # reviewer record isolation and cancellation checks in Node
 make container-secrets # generate/validate local database secret files, no replacement
 make container-config # validate normalized Compose settings, no daemon required
 make up              # build/start/wait and verify the local demo stack
@@ -168,6 +192,7 @@ make migrate-submission # explicitly apply local submission database migrations
 make db-migration-test # isolated real-PostgreSQL migration/version/grant checks
 make db-account-test   # real runtime-role account/session race, expiry, grant checks
 make db-member-backup-test # real runtime-role member-backup scope, revision, grant checks
+make db-submission-record-test # real runtime-role spend, retry, round, rollback, grant checks
 ```
 
 See [testing](docs/testing.md) for required full database, browser, container-scan,

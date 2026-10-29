@@ -1,8 +1,27 @@
 // SPDX-FileCopyrightText: 2026 Anonce Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Test-only host. No user entry, uploads, storage, key display, or product routes.
+// Test-only host. Synthetic input only, no uploads, persistence, or product routes.
 import { lockMemberWorkers, MemberWorkerSession } from "/member-client.mjs";
+import { mountMemberForms } from "/member-forms.mjs";
+
+let formBackup = null;
+const mountForms = () => mountMemberForms(document, () => new MemberWorkerSession(), (created) => {
+  formBackup = { backup: created.backup.slice(), publicKey: created.publicKey.slice(), csr: created.csr.slice() };
+}, () => formBackup);
+let disposeForms = mountForms();
+globalThis.addEventListener("pagehide", () => { disposeForms(); formBackup = null; });
+// Only encrypted/public output is available to the synthetic driver.
+export function formRecord() {
+  return formBackup === null ? null : Object.fromEntries(Object.entries(formBackup).map(([name, bytes]) => [name, encode(bytes)]));
+}
+// Synthetic new-page/substitution fixtures only. The expected key is supplied
+// independently by the driver, never extracted from the backup being restored.
+export function seedFormRecord(record) {
+  disposeForms();
+  formBackup = record === null ? null : { backup: decode(record.backup), publicKey: decode(record.publicKey), csr: decode(record.csr) };
+  disposeForms = mountForms();
+}
 
 const decode = (hex) => Uint8Array.from(hex.match(/../g), (pair) => Number.parseInt(pair, 16));
 const encode = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");

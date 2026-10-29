@@ -17,7 +17,7 @@ import (
 
 // RecentAuthenticationWindow is the fixed development admission window for
 // session-scoped backup mutations, not a product authentication assurance claim.
-const RecentAuthenticationWindow = 5 * time.Minute
+const RecentAuthenticationWindow = accounts.RecentAuthenticationWindow
 
 // ErrReauthenticationRequired denotes a live session too old for backup mutation.
 var ErrReauthenticationRequired = errors.New("member backup requires recent authentication")

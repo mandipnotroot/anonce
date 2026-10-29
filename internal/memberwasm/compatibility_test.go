@@ -63,11 +63,14 @@ func testMemberCompatibility(t *testing.T, script string, args ...string) {
 		t.Fatalf("member WASM compatibility: %v\n%s", err, stderr.String())
 	}
 	var result struct {
-		Backup       string `json:"backup"`
-		PublicKey    string `json:"publicKey"`
-		CSR          string `json:"csr"`
-		BackupExport string `json:"backupExport"`
-		TextBackup   string `json:"textBackup"`
+		Backup        string `json:"backup"`
+		PublicKey     string `json:"publicKey"`
+		CSR           string `json:"csr"`
+		BackupExport  string `json:"backupExport"`
+		TextBackup    string `json:"textBackup"`
+		FormBackup    string `json:"formBackup"`
+		FormPublicKey string `json:"formPublicKey"`
+		FormCSR       string `json:"formCSR"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatal("invalid WASM result encoding")
@@ -127,6 +130,27 @@ func testMemberCompatibility(t *testing.T, script string, args ...string) {
 		defer clear(textKey)
 		if !bytes.Equal(textKey, original) {
 			t.Fatal("text-passphrase export changed the member key")
+		}
+	}
+	if script == "member_browser_test.mjs" {
+		formBackup, err := hex.DecodeString(result.FormBackup)
+		if err != nil || len(formBackup) != 108 {
+			t.Fatal("invalid browser form backup encoding")
+		}
+		formPassword := []byte("synthetic browser passphrase é😀")
+		defer clear(formPassword)
+		formKey, err := memberkey.Open(t.Context(), formPassword, formBackup)
+		if err != nil {
+			t.Fatal("open synthetic browser form backup")
+		}
+		defer clear(formKey)
+		request, err := hex.DecodeString(result.FormCSR)
+		if err != nil {
+			t.Fatal("invalid browser form request encoding")
+		}
+		public, err := membercsr.Parse(request)
+		if err != nil || hex.EncodeToString(public) != result.FormPublicKey || !bytes.Equal(formKey[32:], public) {
+			t.Fatal("browser form backup and request key mismatch")
 		}
 	}
 }
