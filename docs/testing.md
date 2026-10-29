@@ -7,8 +7,60 @@ Audience: contributors and security reviewers.
 
 ## Current executable checks
 
+### Connected browser MVP checks
+
+`make browser-test` builds the commands and both matched WASM artifacts, then runs
+`TestBrowserMVP` with real Chromium WebAuthn ceremonies, two fresh real PostgreSQL
+instances, owner-applied migrations and actual runtime roles. It is opt-in, not
+part of `make check`, and fails rather than skips missing prerequisites. Supply
+the reviewed `MEMBER_BROWSER` executable, Node.js 22.23.3 on `PATH`, and
+`BROWSER_TEST_PG` pointing to PostgreSQL 18.6's `bin` directory.
+
+Run it inside an OS sandbox with isolated loopback networking, an empty allowlisted
+environment, read-only source/toolchains, scratch-only writes and explicit CPU,
+memory, process, disk/file and wall-clock limits. Never use existing databases.
+Trust authentication applies only to its disposable synthetic clusters; application
+startup uses independent SCRAM runtime credentials. Test TLS trust pins the fresh
+test certificate public keys, never disabling verification globally. Browser
+sandboxing, CSP, WebAuthn verification, protected cookies and CSRF remain enabled.
+
+The driver uses Chromium's standard virtual-authenticator interface for real
+registration/assertion verification. There is no test login endpoint or server
+success bypass. It exercises administrator publication, member worker/vault and
+enrollment, exact-origin handoff, blind finalization, anonymous encryption and
+signed acceptance, concurrent exact retries, conflicting spending and authorized
+local reviewer decryption. Wire inspection rejects passphrases, plaintext answers,
+account cookies/referrers and unexpected origins. PostgreSQL subtests cover
+persistence, isolation, grants, enrollment races and quota persistence across sessions.
+
+Native `TestProfileJourney`, `TestEnvelopeIsolation`, `TestBulletinBounds`,
+`FuzzProfileRejection`, `TestIdentityGate`, `TestCookieEncoding` and
+`TestAuthenticationLimiter` cover composition/admission. Existing member worker and
+session checks cover cancellation, wrong expected keys and invalid backups. These
+checks are not independent review, a supported-browser/provider matrix, mobile
+costs, manual accessibility, protected signer custody, safe database restoration
+or public transparency-log evidence.
+
+`TestSignedTimestampBounds` rejects correctly signed out-of-profile dates before
+integer conversion. `TestStateFileAdmission` and `TestInitializationDoesNotReplace`
+cover scoped state files, owner-only permissions, rejected symlinks and no-replace
+initialization. `TestBoundedTLSMetadata` checks that connection limiting preserves
+the TLS metadata required by the HTTP gate. Embedded page tests check strict
+runtime manifests, entry-asset integrity and origin-specific content policies.
+
+`make browser-unit-test`, also included in `make check` and runtime CI, checks that
+one malformed or undecryptable answer does not suppress later records or pages.
+It checks plaintext-buffer cleanup and stops without publishing late results when
+the reviewer owner closes, is replaced, becomes hidden, or reaches round expiry.
+These Node checks do not replace the real-browser journey.
+
+The journey also passes a corrupted envelope followed by an actual stored answer
+through the shared reader and real reviewer worker. It requires a rejection
+placeholder followed by the correctly decrypted answer, and checks that reaching
+the review deadline terminates the actual worker.
+
 See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
-**No current check tests a working submission protocol.**
+The original foundation targets below do not test the connected browser protocol.
 
 | Target | Current checks |
 | --- | --- |
@@ -30,6 +82,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make db-migration-test` | Container checks plus separate embedded Goose histories on real PostgreSQL: failed and repeated/concurrent application, owner/runtime grants, wrong-target rejection, invalid/future histories, and missing boundary marker; disposable synthetic volumes only |
 | `make db-account-test` | Migration/container checks plus race-enabled runtime-role account/session persistence, digest-only storage, expiry/cleanup, per-account session limits and concurrent admission, cross-account revocation isolation, concurrent disable, cancellation, SQL constraints/grants, and submission-store rejection |
 | `make db-member-backup-test` | Account/migration/container checks plus race-enabled runtime-role member-backup persistence, owner scoping, revision/binding conflicts, tombstones, concurrent writes/disable, cancellation/rollback, constraints/grants, and submission-store rejection |
+| `make db-submission-record-test` | Migration/container checks plus race-enabled runtime-role atomic submission records, cross-pool duplicate spends, exact-payload retries, round admission/cancellation, post-lock expiry, rollback, constraints/grants, and identity-store rejection; no token verification or HTTP submission |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -37,6 +90,11 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
   See [dependencies](dependencies.md) for device-backup modules and pins/admission.
 
 ### Parser fuzzing and fixtures
+
+`FuzzSubmissionAdmission` bounds round input to 17 bytes, bulletin/spend digests to
+33 bytes, and ciphertext to 65537 bytes. It checks exact admission, unchanged inputs,
+and fail-closed storage without database or cryptographic work. It runs in `make fuzz`;
+regressions belong in `internal/submission/records/testdata/fuzz/FuzzSubmissionAdmission`.
 
 `make fuzz` also runs `FuzzAccountToken`, bounded to 33 raw bytes, checking exact
 32-byte admission and SHA-256 composition without database/network work. Synthetic
@@ -96,6 +154,13 @@ profiles. Key tests generate keys at runtime and clear accessible owned buffers;
 opaque library copies cannot be explicitly cleared. Generic backup tests use
 synthetic non-key payloads; CLI filesystem tests use non-key stand-ins.
 
+Member-key and reviewer-key suites share backup contract checks in
+`internal/client/internal/keytest`. Algorithm-specific validation and compatibility
+tests stay in each wrapper. Wrapper cancellation tests exercise every observed
+checkpoint rather than hard-coded nested call counts; the keystore suite retains
+explicit admission, derivation, and output-boundary checks. CLI publication tests
+share destination snapshots while retaining their command and unsafe-path cases.
+
 Unsafe-file fixtures set and verify their final permissions after creation so
 CI's restrictive `umask 077` cannot make a public-file case owner-only. Tests do
 not change the process-wide mask while parallel tests run. Reproduce CI defaults
@@ -110,6 +175,7 @@ profile-2 nonce prefix and library composition.
 
 | Area | Tests |
 | --- | --- |
+| Submission storage bounds, schedule precision/order, nil/zero-value failure, cancellation, unchanged inputs, and bounded fuzzing | `TestSubmissionAdmission`, `TestSubmissionUnavailableAndCancellation`, `FuzzSubmissionAdmission` |
 | Configuration | `TestConfig`, `TestConfigSourceURL`, `TestRunFailures`, `TestContainerNetwork`, `TestContainerNetworkFlag`, `FuzzContainerListen` |
 | Migration service/credential/command bounds, cancelled/concurrent calls, regular-file/symlink/FIFO rejection, separate embedded files, and bounded admission fuzzing | `TestMigrationAdmission`, `TestMigrationCancellation`, `TestMigrationCredentialFiles`, `TestMigrationFiles`, `FuzzMigrationAdmission` |
 | Account lifetime/token/cleanup admission, zero-value failure, concurrent cancelled calls, digest composition and unchanged inputs | `TestAccountAdmission`, `TestAccountUnavailableAndCancellation`, `TestAccountTokenDigest`, `FuzzAccountToken`, `FuzzAccountSessionAdmission` |
@@ -168,11 +234,14 @@ profile-2 nonce prefix and library composition.
 | Reviewed loader/notice digest rejection, invalid artifact headers and size bounds | `scripts/test_build_wasm.py` |
 | Test-only browser asset bounds, complete manifest/digests, duplicate/traversal rejection, exact routes, hosts/origins, methods/HEAD, headers, and unread bodies | `TestMemberBrowserAssets`, `TestMemberBrowserDelivery`, `FuzzMemberBrowserManifest` |
 | Actual browser member worker, native backup restore and browser backup opened natively, failed restoration without replacement, snapshots, admission, public output, pending disposal, UI event-loop progress, page CSP probes, synthetic-clock expiry/rollback and explicit restoration, same-origin peer lock, background-tab lock/foreground restoration, and navigation termination | `TestMemberNativeBrowserCompatibility` with `scripts/member_browser_test.mjs`, through the opt-in `make member-browser-test` |
+| Synthetic setup form independent entries, immediate field clearing, busy/unlocked/saved admission, safe retention failures, cancellation and late-result rejection | `scripts/member_forms_test.mjs` in `make member-wasm-test`; actual keyboard submission, accessible names, screenshot, and native backup/request validation through `make member-browser-test` |
+| Synthetic restoration form required expected key, bounded snapshots, unchanged record, no setup fallback, source errors, cancellation/closure, and hidden/foreground behavior | `scripts/member_forms_test.mjs`, including a 256-case bounded generated source/text sweep with no KDF/I/O; actual wrong-password, key-substitution, ciphertext-corruption, startup-cancellation, separate-page restoration, and background-lock checks in `scripts/member_browser_test.mjs` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
 Web checks validate allowlists/delivery, not full HTML/CSS grammar or browser execution.
-The shell loads no JavaScript. Screenshots, actual CSP enforcement, keyboard access, assistive
-technology, contrast, and print rendering remain untested.
+The shell loads no JavaScript. Product-shell screenshots, browser CSP enforcement,
+manual keyboard/assistive technology review, contrast, and print rendering remain
+untested; the separate synthetic-form evidence does not cover that shell.
 
 Native backup costs can be measured with:
 
@@ -433,6 +502,39 @@ bearer-derived sign-out/account disabling, authentication-age admission,
 cancellation, and all named runtime-role race checks above. No authentication
 ceremony was exercised.
 
+### Submission record storage checks
+
+`make db-submission-record-test` provisions disposable real PostgreSQL instances,
+checks bootstrap/migrations, and runs `TestPostgresSubmissionRecords` as the runtime
+role against each boundary. Missing configuration fails rather than skips. It uses
+only synthetic ciphertext stand-ins and random test IDs, never real answers or tokens.
+
+Named cases cover:
+
+- `persistence-and-retries`: cross-pool persistence, unchanged bytes, identical
+  retries, changed-payload rejection, distinct spends, and independent round scopes.
+- `concurrent-spending`: 24 cross-pool contenders with three payloads, exactly one
+  stored record, shared references for identical contenders, no replacement.
+- `constraints-and-grants`: SQL size/schedule constraints and denied runtime record
+  changes/deletion, policy replacement, and schema ownership.
+- `round-admission`: unknown/bulletin-mismatched, unopened, closed, and cancelled
+  rounds, immutable provisioning, cancellation retaining accepted records.
+- `post-lock-window-and-cancellation`: real row-lock waits followed by closure,
+  committed cancellation, and context cancellation before any spend is stored.
+- `uncommitted-conflict`: an initially invisible competing insert becomes observable
+  after its commit, returning its original reference through a fresh snapshot.
+- `cancellation-order-and-rollback`: cancellation waits for admitted acceptance;
+  cancelling a queued cancellation leaves the round open and its records unchanged.
+- `round-provisioning-rollback`: cancelled uniqueness waits cannot later create
+  a round after the conflicting transaction rolls back.
+- `cancelled-insert-rollback`: cancelled uniqueness waits and rollback consume no
+  spend; the original input can subsequently be accepted.
+
+Migration checks also force a version-2 table conflict, verifying round/table and
+history rollback before repeated/concurrent upgrades. These tests do not verify
+tokens, ciphertext validity, quotas, browser submission, receipts, outbox recovery,
+or encrypted database restoration. Full `db-test` remains unavailable.
+
 ### WASM verifier checks
 
 `make wasm-test` requires Node.js 22.23.3 on `PATH`, in addition to the pinned Go
@@ -547,7 +649,11 @@ not a working directory or product route. Unknown paths, queries, encoded aliase
 foreign hosts/origins, cross-site requests, and request bodies are rejected without
 reading bodies or reflecting inputs. Responses use `no-store`, no-referrer,
 nosniff, same-origin resource policy, and no cookies/CORS. The disposable page has
-no input controls, uploads, persistence, or key display.
+[synthetic local forms](ui-design.md#synthetic-member-forms), but no uploads,
+persistence, or key display. Their encrypted/public output is page-memory-only;
+never enter real secrets. The driver captures empty fields after lock into
+`.cache/tests/member-forms.png`; the reviewed documentation image is copied from
+that actual browser capture, not substitute rendering.
 
 The page permits same-origin modules/workers but no fetches or WASM compilation.
 Only the worker response permits same-origin fetches and `wasm-unsafe-eval`, never
@@ -566,6 +672,18 @@ for native validation, with fixed failure diagnostics. Page network events are
 checked against a fixed allowlist; this is not a complete browser/worker network
 capture, proxy-log audit, or malicious-site isolation boundary.
 
+The forms additionally use actual keyboard text insertion and Tab/Enter submission.
+Setup confirmation errors leave no backup; successful encrypted/public output is
+checked natively. Restoration preserves that record on wrong-password, substituted
+expected-key, and corrupted-ciphertext failures, without generating a replacement.
+A separate page restores the driver-supplied record with its retained expected key;
+real backgrounding then terminates the owner and reenables explicit restoration.
+Accessible-name checks inspect the browser accessibility tree, not a screen reader.
+Node controller tests cover deterministic startup/pending cancellation, peer closure,
+failed sources, owned snapshot cleanup, and idle-field clearing on visibility loss.
+No additional parser grammar or cryptographic profile is introduced; shared worker,
+UTF-8, backup, and key parsers retain their existing bounded fuzz targets.
+
 These checks cover one headless desktop build and same-origin/same-partition pages.
 Synthetic owner wall-clock advances exercise late startup/operation replies,
 lifetime expiry, backward-clock termination, and explicit same-key restoration.
@@ -582,17 +700,19 @@ Browser abort-controller checks additionally cancel startup, unlocked custody, a
 pending restoration, reject already-aborted startup, and explicitly restore the
 same native backup/key through a new owner. Worker disappearance is checked after
 the cancellation cases; this is not an erasure or hard cancellation-time guarantee.
-On 2026-10-28, `make member-browser-test` passed on Linux x86_64 with the pinned
+On 2026-10-29, `make member-browser-test` passed on Linux x86_64 with the pinned
 Chromium 159.0.8129.0 executable and Go/Node runtimes. This includes the host-signal,
-encrypted-export, password-confirmation, and UTF-8 text passphrase cases. The successful
+encrypted-export, password-confirmation, UTF-8 text passphrase, and synthetic
+setup/restoration form cases. The successful
 run supersedes earlier attempts blocked by missing libraries or an unset executable
 path. The driver retained the browser sandbox and CSP checks.
 
 Navigation and tab-switch checks observe worker disappearance, not memory erasure
 or reliable global revocation. Event-loop progress is not a mobile latency/memory budget.
 Other engines, storage partitions, background suspension, back/forward-cache
-restoration, real logout, provider/passkey compatibility, screenshots, keyboard and
-assistive technology, and the complete account/vault journey remain untested.
+restoration, real logout, provider/passkey compatibility, product screenshots,
+manual keyboard/assistive technology review, and the complete account/vault journey
+remain untested. The test-form screenshot is not product evidence.
 No supported-browser matrix or readiness claim follows from this target.
 
 ## Required runtime command contract

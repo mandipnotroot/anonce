@@ -10,6 +10,32 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Opt-in browser account, member-vault, enrollment, round publication, blind-token
+  authorization, anonymous encrypted response, signed acceptance and local reviewer
+  workflow. Added separate TLS hosts, explicit one-response/free-text scope,
+  additive migrations and a real-browser/PostgreSQL journey target. The receipt
+  attests storage, not transparency-log inclusion. Recovery, reviewer server
+  backups, production operation and independent approval are excluded.
+
+- Submission version-2 round and append-only record tables with an internal
+  runtime-role store for atomic spend/ciphertext persistence, exact-payload retries,
+  immutable round bindings, database-clock windows, and ordered cancellation.
+  Added native admission/fuzz tests and an opt-in `make db-submission-record-test`
+  for real PostgreSQL races, post-lock admission, rollback, grants, and isolation.
+  No token verification, HTTP submission, public receipt, or browser workflow is added.
+- Test-only browser encrypted-backup restoration with a required expected setup key,
+  local passphrase input, bounded pre-startup snapshots, and no replacement-key
+  fallback. Failed unlocking preserves the backup; visibility loss clears fields
+  and requires explicit restoration. Node lifecycle/generated-admission tests and
+  pinned Chromium wrong-password, substitution, corruption, cancellation, and
+  separate-page restoration checks cover the flow. No server vault or account
+  authentication is added.
+- Test-binary-only browser member setup form with independently entered local
+  passphrase confirmation, shared Go/worker cryptography, safe progress/errors,
+  field clearing, and lock/cancellation. Only encrypted/public material remains in
+  page memory; setup cannot overwrite it. Node lifecycle tests and pinned Chromium
+  keyboard, accessible-name, screenshot, and native backup checks cover the form.
+  No product route, authentication, enrollment, durable backup, or new profile is added.
 - Internal session-authorized account disabling with the shared recent-authentication
   gate, atomically removing all sessions without an owner override. Encrypted
   backups remain stored; no re-enable API exists. Native admission/fuzz and real
@@ -254,6 +280,9 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Consolidate key-backup contract tests and CLI destination-preservation checks.
+  Wrapper cancellation tests cover observed checkpoints without fixed nested call
+  counts. Algorithm-specific cases, runtime behavior, and formats are unchanged.
 - Breaking development bridge/worker method-set expansion for opt-in password
   confirmation. Rebuild and deploy all member assets together; mixed method sets
   fail closed. Existing methods, command envelopes, HTTP, CLI, and backup formats
@@ -325,6 +354,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Browser reviewer reads reject malformed or undecryptable answers individually
+  and continue with later records. Lock, visibility loss, round expiry, and owner
+  replacement still stop reading without publishing late plaintext; owned buffers
+  are cleared.
+- Policy, Pages, and nightly CI explicitly install and verify ExifTool before
+  inspecting asset metadata, keeping missing inspection a failure.
 - Pages CI now installs the pinned development Node.js runtime before running
   WASM checks instead of relying on the runner's preinstalled version.
 - Backup inspection now reports short public-key writes as failures, rather than

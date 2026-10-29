@@ -13,6 +13,15 @@ Unstable `0.y.z` changes still require compatibility review.
 
 ## Public API boundary
 
+The opt-in browser MVP introduces unreleased `/api/browser/` routes,
+[browser profile 1](cryptography.md#browser-mvp-profile-1), identity migration 5 and
+submission migration 3. These are not replacements for the proposed `/api/v1/`
+schemas. Existing demonstration routes and key-backup bytes remain unchanged.
+The additive fixed-profile worker `authorize` method requires matched
+loader/worker/WASM rebuilds, with no mixed-artifact fallback. Changes to signed
+encodings, bindings, limits or schemas are breaking unless an explicit reviewed
+compatibility mechanism exists. No stable release exists.
+
 Public contracts include:
 
 - CLI commands, flags, exits; HTTP paths, statuses, schemas.
@@ -30,7 +39,7 @@ explicit breaking review.
 
 The opt-in [local migration commands](deployment.md#local-database-migrations) are
 additive development interfaces requiring `semver:minor` review. The independent
-histories support contiguous versions 0 through identity 4 or submission 1 and reject
+histories support contiguous versions 0 through identity 4 or submission 2 and reject
 unsupported state; published SQL is immutable. Identity version 2 is an additive
 account/session migration over version 1, with no automatic downgrade. The internal
 account store and its session storage profile add no browser wire format, credentials,
@@ -42,6 +51,12 @@ device cryptographic profiles are unchanged. Identity version 4 adds independent
 session selectors with automatic backfill and no token/timestamp changes, requiring
 `semver:minor` review. Updated account-store construction requires version 4;
 apply migrations before using it. Published earlier SQL remains unchanged.
+
+Submission version 2 additively creates internal round admission and atomic
+submission records over version 1, requiring `semver:minor` review. The updated
+record store requires this migration; existing histories upgrade without rewriting
+published SQL. Its ciphertext size bound and reference are internal storage
+contracts, not admitted token/envelope or receipt formats. HTTP remains unchanged.
 
 The internal [session-scoped backup methods](database.md#session-scoped-member-backup-access)
 add no public API or automatic release bump. Individual session revocation now uses
@@ -241,6 +256,11 @@ The opt-in [browser check target](testing.md#member-worker-browser-checks) adds 
 test-binary delivery and external development-tool setup. It changes no product
 HTTP route, shell CSP, worker contract, or cryptographic format, and carries no
 automatic release bump under the test-change policy below.
+
+The harness's [synthetic member forms](ui-design.md#synthetic-member-forms) add only
+test-binary markup, a local controller, and tests. Product HTTP/OpenAPI, shared Go,
+worker commands, cryptographic formats, and release versions remain unchanged.
+This is not a supported browser account/vault API.
 
 Requiring a visible owner document with visibility events and terminating on
 backgrounding is a breaking development lifecycle change requiring `semver:major`

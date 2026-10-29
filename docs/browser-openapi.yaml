@@ -1,0 +1,441 @@
+# SPDX-FileCopyrightText: 2026 Anonce Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+# Audience: implementers of the opt-in browser MVP transport.
+openapi: 3.1.0
+info:
+  title: anonce opt-in browser MVP API
+  version: 0.0.0
+  description: >-
+    Unreleased, synthetic-only browser profile 1. Identity and anonymous servers
+    are separate processes/databases. No plaintext-answer or private-key API.
+    Application binary fields use canonical unpadded base64url. JSON bodies are
+    bounded to 32768 bytes, with no unknown fields or trailing values outside
+    standard WebAuthn parsing. All responses use no-store. Identity POSTs require
+    exact Origin, Sec-Fetch-Site same-origin and X-Anonce-CSRF 1. Submission APIs
+    reject cookies and Authorization headers. Only publication/review allow
+    exact-origin identity CORS without credentials. Errors have code and message.
+  license:
+    name: AGPL-3.0-only
+    identifier: AGPL-3.0-only
+servers:
+  - url: https://identity.localhost:8443
+    description: Identity browser host
+  - url: https://submit.localhost:8444
+    description: Anonymous browser host
+paths:
+  /api/browser/config:
+    get:
+      operationId: browserConfiguration
+      description: Public configuration on either host. No authentication.
+      responses:
+        '200':
+          description: Configured peer origin and publication verification key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  identity_origin: {type: string, format: uri}
+                  submission_origin: {type: string, format: uri}
+                  bulletin_key: {$ref: '#/components/schemas/Bytes32'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/auth/{kind}/begin:
+    post:
+      operationId: beginBrowserAuthentication
+      description: Identity only. Creates a two-minute single-use cookie-bound ceremony.
+      parameters:
+        - {$ref: '#/components/parameters/Kind'}
+        - {$ref: '#/components/parameters/CSRF'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: {type: string, pattern: '^[a-z0-9_]{3,32}$'}
+                bootstrap:
+                  type: string
+                  maxLength: 43
+                  description: Optional first-administrator invitation; never a member unlock secret.
+      responses:
+        '200':
+          description: Standard WebAuthn CredentialCreation or CredentialAssertion JSON publicKey options
+          headers:
+            Set-Cookie: {schema: {type: string}, description: Secure HttpOnly host-only SameSite Strict ceremony cookie, 120 seconds}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [publicKey]
+                properties:
+                  publicKey: {type: object}
+        '429': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/auth/{kind}/finish:
+    post:
+      operationId: finishBrowserAuthentication
+      description: Identity only. Consumes ceremony before verification, including failed attempts. Requires UP and UV.
+      parameters:
+        - {$ref: '#/components/parameters/Kind'}
+        - {$ref: '#/components/parameters/CSRF'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Standard WebAuthn JSON response; no PRF or arbitrary extension serialization.
+              required: [id, rawId, type, response, clientExtensionResults]
+              properties:
+                id: {type: string}
+                rawId: {type: string}
+                type: {const: public-key}
+                clientExtensionResults: {type: object, maxProperties: 0}
+                response: {type: object}
+      responses:
+        '200':
+          description: Independently verified authentication and fresh one-hour session
+          headers:
+            Set-Cookie: {schema: {type: string}, description: Secure HttpOnly host-only SameSite Strict __Host-anonce-session cookie}
+          content:
+            application/json:
+              schema: {type: object, properties: {authenticated: {const: true}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/me:
+    get:
+      operationId: browserCurrentAccount
+      description: Identity only. Live session required, no membership assertion.
+      security: [{Session: []}]
+      responses:
+        '200':
+          description: Own account name and administrator flag
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, administrator]
+                properties:
+                  name: {type: string}
+                  administrator: {type: boolean}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/logout:
+    post:
+      operationId: browserLogout
+      security: [{Session: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      requestBody: {$ref: '#/components/requestBodies/Empty'}
+      responses:
+        '200': {description: Current session revoked; client locks local workers separately}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/backup:
+    get:
+      operationId: getBrowserMemberBackup
+      description: Identity only; session-derived owner, including revision tombstones.
+      security: [{Session: []}]
+      responses:
+        '200':
+          description: Public/encrypted slot only; never an unlock secret
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Backup'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      operationId: putBrowserMemberBackup
+      description: Identity only; authentication within five minutes, fixed binding and compare-and-swap revision.
+      security: [{Session: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Backup'}
+      responses:
+        '200': {description: Committed new revision; uncertain results require rereading, not blind retry}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/invitations:
+    post:
+      operationId: createBrowserMembershipInvitation
+      description: Identity only. Recently authenticated administrator; 24-hour, one-use invitation.
+      security: [{Session: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      requestBody: {$ref: '#/components/requestBodies/Empty'}
+      responses:
+        '201':
+          description: Invitation returned once; only its digest is persisted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: {$ref: '#/components/schemas/Bytes32'}
+                  expires: {const: 24 hours}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/enroll:
+    post:
+      operationId: browserMembershipEnrollment
+      description: Identity only. Recently authenticated session, valid CSR and matching stored backup binding. Code consumption and enrollment are atomic.
+      security: [{Session: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code, csr]
+              properties:
+                code: {$ref: '#/components/schemas/Bytes32'}
+                csr: {type: string, minLength: 172, maxLength: 172, pattern: '^[A-Za-z0-9_-]+$'}
+      responses:
+        '201': {description: Bounded empty-subject membership certificate in base64url certificate field}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/rounds:
+    get:
+      operationId: listBrowserRounds
+      description: Identity only. At most 100 published, own assigned or administrator drafts. No submission history.
+      security: [{Session: []}]
+      responses:
+        '200': {description: Round metadata with base64url id, reviewer_key and bulletin; assigned flag and common question/schedule}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createBrowserRound
+      description: Identity only. Recently authenticated administrator; one free-text question and one assigned account.
+      security: [{Session: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [question, reviewer, opens, closes, review_until, response_limit]
+              properties:
+                question: {type: string, minLength: 1, maxLength: 1024, description: Also bounded to 1024 UTF-8 bytes}
+                reviewer: {type: string, pattern: '^[a-z0-9_]{3,32}$'}
+                opens: {type: string, format: date-time}
+                closes: {type: string, format: date-time}
+                review_until: {type: string, format: date-time, description: After closing and at most 30 days later}
+                response_limit: {type: integer, const: 1}
+      responses:
+        '201': {description: New common round id, not yet published}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/reviewer:
+    post:
+      operationId: attachBrowserReviewerPublicKey
+      description: Identity only. Recently authenticated assigned reviewer. No key replacement after attachment/publication.
+      security: [{Session: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [round, public_key]
+              properties:
+                round: {$ref: '#/components/schemas/ID'}
+                public_key: {$ref: '#/components/schemas/Bytes32'}
+      responses:
+        '200': {description: Public round key attached; encrypted reviewer backup remains browser-local}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/publish:
+    post:
+      operationId: publishBrowserRound
+      description: >-
+        On identity, a recently authenticated administrator freezes and signs a
+        prepared draft. On submission, any caller may deliver that exact signed
+        public bulletin, verified with the configured publication key and receipt
+        key. Submission accepts no session credentials. Delivery is idempotent;
+        it cannot replace published keys, question or schedule.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [round, response_limit]
+                  properties:
+                    round: {$ref: '#/components/schemas/ID'}
+                    response_limit: {type: integer, const: 1}
+                - type: object
+                  additionalProperties: false
+                  required: [bulletin]
+                  properties:
+                    bulletin: {$ref: '#/components/schemas/Bulletin'}
+      responses:
+        '201': {description: Identity publication, base64url bulletin field}
+        '200': {description: Exact public signed bulletin provisioned on submission}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/challenge:
+    post:
+      operationId: browserIssuanceChallenge
+      description: Identity only. Current active membership/session and open round. Two-minute session/round/blinded-request-bound challenge.
+      security: [{Session: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [round, blinded]
+              properties:
+                round: {$ref: '#/components/schemas/ID'}
+                blinded: {$ref: '#/components/schemas/RSAValue'}
+      responses:
+        '200': {description: Exactly 113 challenge bytes in base64url challenge field}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/issue:
+    post:
+      operationId: issueBrowserBlindToken
+      description: Identity only. Verify member proof and current certificate/membership, reserve membership/round atomically, commit before signing. Loss consumes quota; never refund or re-sign.
+      security: [{Session: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [challenge, signature, blinded]
+              properties:
+                challenge: {type: string, minLength: 151, maxLength: 151, pattern: '^[A-Za-z0-9_-]+$'}
+                signature: {type: string, minLength: 86, maxLength: 86, pattern: '^[A-Za-z0-9_-]+$'}
+                blinded: {$ref: '#/components/schemas/RSAValue'}
+      responses:
+        '200': {description: Exactly 384 blind-signature bytes in base64url signature field}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/bulletin:
+    get:
+      operationId: browserPublicBulletin
+      description: Submission only. Public common bulletin, no identity credentials.
+      parameters: [{$ref: '#/components/parameters/RoundQuery'}]
+      responses:
+        '200':
+          description: Signed common bulletin
+          content:
+            application/json:
+              schema: {type: object, properties: {bulletin: {$ref: '#/components/schemas/Bulletin'}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/submit:
+    post:
+      operationId: browserAnonymousSubmission
+      description: Submission only. Verify round/profile/token/envelope, atomically persist spend and exact ciphertext, then sign acceptance. Identical open-round retries return identical acceptance; changed payload or closed/cancelled round fails.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [round, token, envelope]
+              properties:
+                round: {$ref: '#/components/schemas/ID'}
+                token: {type: string, minLength: 672, maxLength: 672, pattern: '^[A-Za-z0-9_-]+$'}
+                envelope: {type: string, minLength: 5527, maxLength: 5527, pattern: '^[A-Za-z0-9_-]+$'}
+      responses:
+        '200':
+          description: Signed durable acceptance, not a transparency proof; verify locally against the exact request
+          content:
+            application/json:
+              schema: {type: object, properties: {receipt: {type: string, minLength: 267, maxLength: 267}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/review/challenge:
+    post:
+      operationId: browserReviewerChallenge
+      description: Submission only. Two-minute encrypted proof challenge bound to round/cursor. At most 16 live challenges per round.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [round, cursor]
+              properties:
+                round: {$ref: '#/components/schemas/ID'}
+                cursor: {$ref: '#/components/schemas/ID'}
+      responses:
+        '200': {description: Exactly 81 HPKE challenge bytes in base64url challenge field}
+        default: {$ref: '#/components/responses/Error'}
+  /api/browser/review/read:
+    post:
+      operationId: browserReviewerRead
+      description: Submission only. Atomically consume decrypted proof, enforce review expiry, return at most 50 ciphertexts after its bound cursor. No identity/session authorization or plaintext API.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [round, proof]
+              properties:
+                round: {$ref: '#/components/schemas/ID'}
+                proof: {$ref: '#/components/schemas/Bytes32'}
+      responses:
+        '200': {description: records array of base64url id/envelope objects and last cursor; no identities, spends or precise timestamps}
+        default: {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    Session:
+      type: apiKey
+      in: cookie
+      name: __Host-anonce-session
+  parameters:
+    Kind:
+      name: kind
+      in: path
+      required: true
+      schema: {type: string, enum: [register, login]}
+    CSRF:
+      name: X-Anonce-CSRF
+      in: header
+      required: true
+      schema: {type: string, const: '1'}
+    RoundQuery:
+      name: round
+      in: query
+      required: true
+      schema: {$ref: '#/components/schemas/ID'}
+  requestBodies:
+    Empty:
+      required: true
+      content:
+        application/json:
+          schema: {type: object, additionalProperties: false, maxProperties: 0}
+  responses:
+    Error:
+      description: Safe generic denial, malformed input, conflict, unavailable state or rate limit; no internal diagnostics
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [code, message]
+            properties:
+              code: {type: string}
+              message: {type: string}
+  schemas:
+    ID: {type: string, minLength: 22, maxLength: 22, pattern: '^[A-Za-z0-9_-]+$'}
+    Bytes32: {type: string, minLength: 43, maxLength: 43, pattern: '^[A-Za-z0-9_-]+$'}
+    RSAValue: {type: string, minLength: 512, maxLength: 512, pattern: '^[A-Za-z0-9_-]+$'}
+    Bulletin: {type: string, minLength: 752, maxLength: 2116, pattern: '^[A-Za-z0-9_-]+$'}
+    Backup:
+      type: object
+      additionalProperties: false
+      required: [public_key, backup, revision]
+      properties:
+        public_key: {$ref: '#/components/schemas/Bytes32'}
+        backup: {type: string, minLength: 144, maxLength: 144, pattern: '^[A-Za-z0-9_-]+$'}
+        revision: {type: integer, minimum: 0, maximum: 9223372036854775806}

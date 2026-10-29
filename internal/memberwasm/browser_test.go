@@ -21,7 +21,7 @@ import (
 // This delivery harness exists only in test binaries. Product services never
 // import it or serve executable assets on the anonymous submission origin.
 //
-//go:embed testdata/browser.html testdata/browser.mjs
+//go:embed testdata/browser.html testdata/browser.mjs testdata/member-forms.mjs
 var browserFiles embed.FS
 
 const browserPageCSP = "default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
@@ -29,7 +29,7 @@ const browserPageCSP = "default-src 'none'; script-src 'self'; worker-src 'self'
 const browserWorkerCSP = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; worker-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 
 var browserAssetNames = []string{
-	"LICENSE", "LICENSE.anonce", "LICENSE.x-crypto", "LICENSE.x-sys",
+	"LICENSE", "LICENSE.anonce", "LICENSE.circl", "LICENSE.x-crypto", "LICENSE.x-sys",
 	"PATENTS", "PATENTS.x-crypto", "PATENTS.x-sys", "client.wasm",
 	"member-client.mjs", "member-worker.mjs", "protocol.mjs", "wasm_exec.js",
 }
@@ -83,7 +83,7 @@ func browserAssets(files fs.FS) (map[string][]byte, error) {
 	if len(assets) != len(browserAssetNames)+1 {
 		return nil, errors.New("incomplete browser test manifest")
 	}
-	for path, name := range map[string]string{"/": "browser.html", "/browser.mjs": "browser.mjs"} {
+	for path, name := range map[string]string{"/": "browser.html", "/browser.mjs": "browser.mjs", "/member-forms.mjs": "member-forms.mjs"} {
 		data, err := browserFiles.ReadFile("testdata/" + name)
 		if err != nil {
 			return nil, errors.New("missing browser test page")
@@ -198,7 +198,7 @@ func TestMemberBrowserAssets(t *testing.T) {
 			}
 			assets, err := browserAssets(files)
 			if name == "valid" {
-				if err != nil || len(assets) != len(browserAssetNames)+3 {
+				if err != nil || len(assets) != len(browserAssetNames)+4 {
 					t.Fatalf("valid assets: %v", err)
 				}
 			} else if err == nil || assets != nil {
@@ -226,6 +226,7 @@ func TestMemberBrowserDelivery(t *testing.T) {
 	}{
 		{name: "page", path: "/", status: 200},
 		{name: "worker", path: "/member-worker.mjs", status: 200},
+		{name: "forms", path: "/member-forms.mjs", status: 200},
 		{name: "wasm", path: "/client.wasm", status: 200},
 		{name: "head", method: "HEAD", path: "/", status: 200},
 		{name: "head-wasm", method: "HEAD", path: "/client.wasm", status: 200},
@@ -281,7 +282,7 @@ func TestMemberBrowserDelivery(t *testing.T) {
 				switch tc.path {
 				case "/client.wasm":
 					contentType = "application/wasm"
-				case "/member-worker.mjs":
+				case "/member-worker.mjs", "/member-forms.mjs":
 					contentType = "text/javascript; charset=utf-8"
 				}
 				if w.Header().Get("Content-Type") != contentType {

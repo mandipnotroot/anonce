@@ -5,11 +5,42 @@
 
 Audience: storage implementers, database reviewers, and operators.
 
-Status: local PostgreSQL 18.6 bootstrap plus separate Goose migration histories and
-an operator-only pgx runner. Identity version 2 adds account/session persistence
-and version 3 adds an internal encrypted member-backup slot;
-submission version 1 contains only its storage-boundary marker. Product vault,
-credential, membership, and protocol integration remain proposed; HTTP persistence is not implemented.
+Status: PostgreSQL 18.6 bootstrap, independent Goose histories and an operator-only
+pgx runner. Identity versions 2–4 provide accounts, sessions and member backups;
+submission version 2 provides atomic records. The opt-in browser hosts connect
+these through identity migration 5 and submission migration 3. The original
+demonstration commands still perform no application persistence.
+
+## Browser MVP persistence
+
+Identity migration 5 adds bounded WebAuthn public credential metadata, short-lived
+single-use ceremonies, invitation/membership bindings, draft/published rounds,
+issuance challenges and a unique membership/round reservation ledger. It retains
+no unblinded tokens, answers, receipts, reviewer private keys or encrypted reviewer
+backups. Dedicated round RSA signing keys are server-side identity signing
+material; the local MVP stores them in this database, not a protected signing
+service or encrypted-at-rest key store. This limitation prohibits real-data use.
+
+Session-authorized workflow transactions lock the account first and recheck
+session expiry/status after lock waits. Sensitive writes also require creation
+within five minutes. Invitation consumption binds a verified CSR to the fixed
+member-backup public key in the same transaction. Quota reservations use immutable
+membership IDs, not sessions or certificate serials, and commit before blind signing.
+Published round content and keys are never replaced through the workflow API.
+
+Submission migration 3 adds signed public bulletins and digest-only reviewer read
+challenges with round/cursor binding. It adds no identity tables. Public provisioning
+can recover an interrupted insertion only against the existing exact signed
+bulletin digest and immutable schedule. Existing atomic spending and ciphertext
+storage are unchanged. Reviewer proofs are consumed transactionally before bounded
+record retrieval. Reads expose neither precise acceptance times nor spend digests.
+
+Runtime roles receive narrow table/column grants, not ownership or migration-state
+access. Apply these additive migrations before starting browser hosts. Supported
+histories now extend through identity 5 and submission 3; earlier published SQL is
+unchanged. SQL immutability/grants do not constrain a compromised runtime process
+that can use its granted writes directly. PostgreSQL backups and rollback remain
+outside the MVP receipt guarantee.
 
 ## Storage boundary
 
@@ -51,8 +82,8 @@ against database-container or host compromise. Data volumes follow the PostgreSQ
 
 Bootstrap SQL neither upgrades nor repairs existing volumes. Separate embedded
 Goose histories are applied explicitly as described below. Evidence and limits live in
-[container checks](testing.md#container-infrastructure-checks); quota/spend transactions
-and encrypted restoration remain unimplemented.
+[container checks](testing.md#container-infrastructure-checks); issuance quotas,
+protocol verification, and encrypted database restoration remain unimplemented.
 
 ## Identity database
 
@@ -438,6 +469,76 @@ No HTTP route, browser transport, migration, or grant change is introduced.
 
 ## Submission database
 
+### Implemented submission record storage
+
+`internal/submission/records` is an internal persistence boundary, not a submission
+endpoint. Submission migration `00002_submission_records.sql` creates:
+
+| Relation | Implemented fields and grants |
+| --- | --- |
+| `submission_rounds` | 16-byte round ID, 32-byte common bulletin digest, finite opening/closing times, cancellation flag; runtime can select/insert and update only cancellation |
+| `submission_records` | Random 16-byte storage ID, round foreign key, 32-byte canonical spend digest, bounded ciphertext, internal acceptance time; runtime can select/insert, never update/delete |
+
+There are no account, member, certificate, session, raw token, signature, issuer
+operation, address, or user-agent fields. A single row stores the spend and its
+ciphertext atomically; `(round_id, spend_digest)` is unique. Ciphertext has a
+development storage bound of 1–65536 bytes, not a cryptographic envelope profile.
+The store cannot establish that supplied bytes are encrypted.
+
+Construction checks the submission database, non-owner runtime login, boundary
+marker, and required tables. Pools remain caller-owned, on that database and role,
+without SQL parameter/result logging. Every operation has a five-second deadline;
+driver errors are discarded while cancellation remains observable.
+
+`CreateRound` requires an independently verified common bulletin and authorized
+publication by its trusted caller. It stores immutable digest/schedule metadata;
+duplicate IDs conflict rather than overwrite. Times must have microsecond precision
+and fit UTC years 1–9999, with a strictly later closing time. `CancelRound` is permanent
+through this API, idempotent for known rounds, and retains all stored records.
+Both methods use explicit transactions, so cancellation while queued cannot later
+commit an autocommit mutation. Cancellation during commit still has an uncertain
+outcome; retrying cancellation of a known round is safe, while an existing round ID
+continues to conflict on creation. Neither method verifies publication authority
+or bulletin signatures.
+
+`Accept` requires prior token and envelope verification by a trusted caller. The
+caller derives the spend digest from canonical token input, never signature bytes,
+and supplies the independently verified bulletin digest. The store accepts no
+identity-side credential and does not itself grant submission authority.
+
+Acceptance takes a shared round row lock, allowing concurrent accepts while
+ordering cancellation. The insert checks the common digest, cancellation, and
+`opens_at <= statement_timestamp() < closes_at` after that lock. Database time at
+insertion admission governs the window, not transaction start or commit time.
+Cancellation ordered first denies acceptance; already admitted transactions may
+commit before cancellation completes. Database clock rollback can reopen a scheduled
+window, so trusted clock operation remains required.
+
+Only a byte-identical ciphertext retry during the open window returns the original
+storage reference and timestamp. Different ciphertext conflicts without replacing
+the winner or revealing its reference. A separate Read Committed query after
+`ON CONFLICT DO NOTHING` observes a concurrently committed winner that was invisible
+to the insert's snapshot. Unknown, differently bound, unopened, closed, and cancelled
+rounds share `ErrUnavailable`, including retries after closure or cancellation.
+After an uncertain commit, only the exact original input may be retried. Closure
+can prevent reference recovery; no post-close lookup contract is implemented.
+
+References return only after commit and are **not receipts or inclusion proofs**.
+The precise timestamp is internal diagnostics for this storage foundation, not a
+public field; production retention and time minimization remain unresolved. No
+retrieval API, token verification, encryption, log outbox, receipt signing, reviewer
+authorization, cleanup, or HTTP integration is provided. Restoring an older database
+could restore spent-token availability; encrypted restoration and rollback defense
+must be reviewed before product use.
+Per-record bounds do not limit total database growth or request rates.
+
+This follows PostgreSQL 18's [insert conflict behavior](https://www.postgresql.org/docs/18/sql-insert.html#SQL-ON-CONFLICT),
+[Read Committed snapshots](https://www.postgresql.org/docs/18/transaction-iso.html#XACT-READ-COMMITTED),
+and [timestamp resolution](https://www.postgresql.org/docs/18/datatype-datetime.html#DATATYPE-DATETIME-TABLE)
+(consulted 2026-10-29). See [submission storage checks](testing.md#submission-record-storage-checks).
+
+### Remaining submission relations
+
 | Relation | Intended fields and invariants |
 | --- | --- |
 | `round_bulletins` | Public signed schema, key references, times, profile, response limit, release policy, and immutable digest |
@@ -495,7 +596,8 @@ with exactly one service-specific row. Runtime gets `SELECT` only. The separate
 and their sequences remain owner-only. Identity version 2 adds the account/session
 tables described above, initially empty. Identity version 3 adds the member-backup
 slot with narrow runtime update grants. Identity version 4 adds independent session
-selectors without changing existing tokens or timestamps. No membership or anonymous records are added.
+selectors without changing existing tokens or timestamps. Submission version 2 adds
+the independent round and record tables above. No membership tables are added.
 
 The runner accepts exactly `identity` or `submission`, connects to that fixed
 Compose hostname/database as `anonce_migrator`, checks the database name and
@@ -506,7 +608,7 @@ must reacquire the lock and repeat preflight. Each SQL migration and its version
 entry use Goose's transaction. No down/reset or out-of-order option is exposed.
 
 Supported histories are an absent ledger or a contiguous, ordered applied version
-0 baseline through at most identity version 4 or submission version 1. Existing
+0 baseline through at most identity version 5 or submission version 3. Existing
 version-1/version-2/version-3 identity databases upgrade additively without editing published SQL.
 Future, negative, duplicate, out-of-order, gapped, unapplied, or missing-baseline
 records fail before migration. Already-current runs also require the correct
@@ -524,4 +626,4 @@ This follows [Goose 3.29.0 SQL transaction/version semantics](https://github.com
 and PostgreSQL 18 [session advisory locks](https://www.postgresql.org/docs/18/explicit-locking.html#ADVISORY-LOCKS)
 (consulted 2026-10-28). See [operator commands](deployment.md#local-database-migrations)
 and [executable evidence](testing.md#database-migration-checks). Encrypted restoration,
-quota/spend concurrency, and full `db-test` remain unavailable.
+issuance quota concurrency, protocol verification, and full `db-test` remain unavailable.

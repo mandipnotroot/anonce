@@ -128,6 +128,7 @@ export class MemberWorkerSession {
   unlockWithPassphrase(...inputs) { return this.#callWithPassphrase("unlock", inputs, 1); }
   backupWithPassphrase(...inputs) { return this.#callWithPassphrase("backupConfirmed", inputs, 2); }
   request(...inputs) { return this.#call("request", inputs); }
+  authorize(...inputs) { return this.#call("authorize", inputs); }
   lock(...args) {
     if (args.length !== 0 || this.#closed) return null;
     try {
