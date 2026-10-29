@@ -321,14 +321,7 @@ func TestClientCSRFileRejectsUnsafePaths(t *testing.T) {
 				t.Fatal(err)
 			}
 			path := tc.setup(t, dir, input)
-			before, statErr := os.Lstat(path)
-			var existing []byte
-			if statErr == nil && before.Mode().IsRegular() {
-				existing, err = os.ReadFile(path)
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
+			checkDestination := unchangedPath(t, path)
 			var stdout bytes.Buffer
 			err := run(t.Context(), []string{"csr", "-kind=member", "-in", input, "-out", path}, passwordFile(t, "synthetic\n"), &stdout)
 			if err == nil || stdout.Len() != 0 {
@@ -337,20 +330,7 @@ func TestClientCSRFileRejectsUnsafePaths(t *testing.T) {
 			if strings.Contains(err.Error(), path) || strings.Contains(err.Error(), "synthetic") {
 				t.Fatal("publication failure reflected input")
 			}
-			after, err := os.Lstat(path)
-			if statErr == nil {
-				if err != nil || !os.SameFile(before, after) {
-					t.Fatal("existing destination was replaced")
-				}
-				if existing != nil {
-					data, err := os.ReadFile(path)
-					if err != nil || !bytes.Equal(data, existing) {
-						t.Fatal("existing destination contents changed")
-					}
-				}
-			} else if !errors.Is(err, os.ErrNotExist) {
-				t.Fatal("failed request created a destination")
-			}
+			checkDestination()
 			data, err := os.ReadFile(input)
 			if err != nil || !bytes.Equal(data, backup) {
 				t.Fatal("failed request export changed the backup")

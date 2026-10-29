@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -34,6 +35,22 @@ func Run(ctx context.Context, cfg Config) error {
 	return serve(ctx, listener, handler)
 }
 
+// RunTLS reuses the bounded, silent lifecycle for a separately configured browser
+// handler. It does not change the inert demonstration commands or their routes.
+func RunTLS(ctx context.Context, cfg Config, handler http.Handler, certificate tls.Certificate) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	if handler == nil {
+		return errors.New("browser handler unavailable")
+	}
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Listen)
+	if err != nil {
+		return errors.New("browser listener unavailable")
+	}
+	return serveTransport(ctx, listener, handler, &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate}})
+}
+
 func newServer(ctx context.Context, handler http.Handler) *http.Server {
 	return &http.Server{
 		Handler:                      handler,
@@ -51,9 +68,18 @@ func newServer(ctx context.Context, handler http.Handler) *http.Server {
 }
 
 func serve(ctx context.Context, listener net.Listener, handler http.Handler) error {
+	return serveTransport(ctx, listener, handler, nil)
+}
+
+func serveTransport(ctx context.Context, listener net.Listener, handler http.Handler, tlsConfig *tls.Config) error {
 	ctx, cancelRequests := context.WithCancel(ctx)
 	defer cancelRequests()
-	bounded := newLimitedListener(listener, maxConnections)
+	var bounded net.Listener = newLimitedListener(listener, maxConnections)
+	if tlsConfig != nil {
+		// TLS must be the outer listener. net/http recognizes the concrete
+		// *tls.Conn to populate Request.TLS before the browser gate runs.
+		bounded = tls.NewListener(bounded, tlsConfig)
+	}
 	server := newServer(ctx, handler)
 	result := make(chan error, 1)
 	go func() { result <- server.Serve(bounded) }()

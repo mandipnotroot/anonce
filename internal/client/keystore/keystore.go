@@ -125,6 +125,17 @@ func validInput(purpose Purpose, password []byte) bool {
 	return (purpose == MemberKey || purpose == ReviewerKey) && len(password) > 0 && len(password) <= MaxPasswordSize
 }
 
+// ValidateEnvelope checks only the bounded public envelope, without deriving a
+// key or authenticating ciphertext. Success proves neither encryption nor payload
+// validity. Restore with the typed key importer before using any stored backup.
+// Inputs remain caller-owned and must not be mutated during the call.
+func ValidateEnvelope(purpose Purpose, backup []byte) error {
+	if !validBackup(purpose, backup) {
+		return ErrInvalidBackup
+	}
+	return nil
+}
+
 // validBackup is allocation-free and never performs password-derived work.
 func validBackup(purpose Purpose, backup []byte) bool {
 	if len(backup) < headerSize+overhead+1 || len(backup) > MaxBackupSize {

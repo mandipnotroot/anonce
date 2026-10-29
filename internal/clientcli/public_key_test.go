@@ -190,34 +190,13 @@ func TestClientPublicKeyFileRejectsUnsafePaths(t *testing.T) {
 					case "missing parent":
 						path = filepath.Join(parent, "missing", "public")
 					}
-					before, statErr := os.Lstat(path)
-					var existing []byte
-					if statErr == nil && before.Mode().IsRegular() {
-						var err error
-						existing, err = os.ReadFile(path)
-						if err != nil {
-							t.Fatal(err)
-						}
-					}
+					checkDestination := unchangedPath(t, path)
 					var stdout bytes.Buffer
 					flags := append(slices.Clone(args), "-out", path)
 					if err := run(t.Context(), flags, publicKeyPassword(t, command), &stdout); err == nil || stdout.Len() != 0 || strings.Contains(err.Error(), path) {
 						t.Fatal("unsafe publication succeeded, wrote stdout, or reflected a path")
 					}
-					after, err := os.Lstat(path)
-					if statErr == nil {
-						if err != nil || !os.SameFile(before, after) {
-							t.Fatal("existing destination was replaced")
-						}
-						if existing != nil {
-							data, err := os.ReadFile(path)
-							if err != nil || !bytes.Equal(data, existing) {
-								t.Fatal("existing destination was modified")
-							}
-						}
-					} else if !errors.Is(err, os.ErrNotExist) {
-						t.Fatal("failed publication created a destination")
-					}
+					checkDestination()
 					if _, err := os.Lstat(filepath.Join(parent, "missing")); !errors.Is(err, os.ErrNotExist) {
 						t.Fatal("publication created a missing parent or symlink target")
 					}

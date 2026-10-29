@@ -34,6 +34,7 @@ globalThis.onmessage = async (event) => {
       case "backup": output = await api.backup(...message.inputs); break;
       case "backupConfirmed": output = await api.backupConfirmed(...message.inputs); break;
       case "request": output = await api.request(); break;
+      case "authorize": output = await api.authorize(...message.inputs); break;
     }
     if (!result(output, message.method)) { fail(); return; }
     wipe(message.inputs); // Clear worker snapshots before the owner can settle.
@@ -75,7 +76,7 @@ async function boot() {
   const { instance } = await WebAssembly.instantiate(bytes.subarray(0, size), go.importObject);
   const running = go.run(instance);
   api = globalThis.anonceMember;
-  if (!record(api, ["create", "createConfirmed", "unlock", "backup", "backupConfirmed", "request", "lock", "close"])) throw new Error("unavailable bridge");
+  if (!record(api, ["create", "createConfirmed", "unlock", "backup", "backupConfirmed", "request", "authorize", "lock", "close"])) throw new Error("unavailable bridge");
   globalThis.postMessage({ version, type: "ready" });
   // Any runtime exit is terminal. Recovery needs a new explicit instance.
   await running;
