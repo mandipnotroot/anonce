@@ -29,7 +29,7 @@ const browserPageCSP = "default-src 'none'; script-src 'self'; worker-src 'self'
 const browserWorkerCSP = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; worker-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 
 var browserAssetNames = []string{
-	"LICENSE", "LICENSE.anonce", "LICENSE.x-crypto", "LICENSE.x-sys",
+	"LICENSE", "LICENSE.anonce", "LICENSE.circl", "LICENSE.x-crypto", "LICENSE.x-sys",
 	"PATENTS", "PATENTS.x-crypto", "PATENTS.x-sys", "client.wasm",
 	"member-client.mjs", "member-worker.mjs", "protocol.mjs", "wasm_exec.js",
 }

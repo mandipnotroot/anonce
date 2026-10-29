@@ -13,6 +13,18 @@ infrastructure, a read-only shell, shared device-backup encryption, local
 member/reviewer-key generation/import/export, and an offline encrypted-file CLI exist.
 Distinguish implemented from planned behavior.
 
+- `cmd/browser-identity`, `cmd/browser-submission`, `cmd/browser-init`,
+  `internal/browseridentity`, `internal/browsersubmission`, `web/browser`, and
+  `internal/reviewprofile`: separate opt-in local TLS browser workflow for WebAuthn
+  accounts, existing-worker encrypted member backups, single-use enrollment,
+  one-text/one-reviewer/explicit-one-response publication, blind authorization,
+  anonymous HPKE answers, signed storage acceptance and local reviewer decryption.
+  Identity migration 5 and submission migration 3 connect the existing stores.
+  No production readiness, independent approval, transparency-log inclusion, PRF,
+  recovery, protected signer custody or reviewer server backup. The original
+  demonstration commands remain inert. See the canonical browser startup and API
+  references before extending these boundaries.
+
 - `docs/`: architecture, security, operations, and contributor reference.
 - `docs/dependencies.md`: dependency choices, licensing, and review requirements.
 - `docs/roadmap.md`: current priorities and unresolved implementation questions.
@@ -168,6 +180,7 @@ make wasm-test        # native/WASM public-request compatibility and bridge chec
 make member-wasm      # separate local member-session WASM and matching notices
 make member-wasm-test # native/Node backup compatibility, member bridge/worker checks
 make member-browser-test # opt-in synthetic Chromium checks; requires MEMBER_BROWSER
+make browser-unit-test # reviewer record isolation and cancellation checks in Node
 make container-secrets # generate/validate local database secret files, no replacement
 make container-config # validate normalized Compose settings, no daemon required
 make up              # build/start/wait and verify the local demo stack

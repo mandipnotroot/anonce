@@ -317,6 +317,11 @@ def migration_checks(stack):
             stack.migrate(side, image, allowed=False)
             require(stack.sql(side, "runtime", "SELECT encode(token_digest,'hex'),encode(account_id,'hex'),created_at,expires_at FROM anonce.account_sessions ORDER BY token_digest;").stdout == previous_sessions, "failed selector migration changed session rows")
             stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP INDEX anonce.account_sessions_selector_unique;")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; CREATE TABLE anonce.browser_credentials(id integer);")
+            stack.migrate(side, image, allowed=False)
+            result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id; SELECT to_regclass('anonce.browser_rounds') IS NULL;")
+            require(result.stdout.strip() == b"0\n1\n2\n3\n4\nt", "failed browser migration changed published identity state")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP TABLE anonce.browser_credentials;")
         else:
             # A record-table conflict must roll back round creation and leave the
             # published boundary history unchanged.
@@ -325,6 +330,11 @@ def migration_checks(stack):
             result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id; SELECT to_regclass('anonce.submission_rounds') IS NULL;")
             require(result.stdout.strip() == b"0\n1\nt", "failed submission migration changed published state")
             stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP TABLE anonce.submission_records;")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; CREATE TABLE anonce.browser_review_challenges(id integer);")
+            stack.migrate(side, image, allowed=False)
+            result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id; SELECT to_regclass('anonce.browser_bulletins') IS NULL;")
+            require(result.stdout.strip() == b"0\n1\n2\nt", "failed browser migration changed published submission state")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP TABLE anonce.browser_review_challenges;")
         # Simultaneous pending applications exercise the actual locked Go runner.
         with ThreadPoolExecutor(max_workers=2) as pool:
             list(pool.map(lambda _: stack.migrate(side, image), range(2)))
@@ -332,8 +342,8 @@ def migration_checks(stack):
         result = stack.sql(side, "runtime", "SELECT service FROM anonce.storage_boundary;")
         require(result.stdout.strip() == side.encode(), "wrong storage boundary")
         result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id;")
-        latest = 4 if side == "identity" else 2
-        require(result.stdout.strip() == (b"0\n1\n2\n3\n4" if side == "identity" else b"0\n1\n2"), "unexpected migration history")
+        latest = 5 if side == "identity" else 3
+        require(result.stdout.strip() == (b"0\n1\n2\n3\n4\n5" if side == "identity" else b"0\n1\n2\n3"), "unexpected migration history")
         if side == "identity":
             require(stack.sql(side, "runtime", "SELECT encode(token_digest,'hex'),encode(account_id,'hex'),created_at,expires_at FROM anonce.account_sessions ORDER BY token_digest;").stdout == previous_sessions, "selector upgrade changed existing session material")
             selectors = stack.sql(side, "runtime", "SELECT session_id FROM anonce.account_sessions ORDER BY token_digest;").stdout

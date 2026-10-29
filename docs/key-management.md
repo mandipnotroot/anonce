@@ -5,15 +5,43 @@
 
 Audience: implementers, reviewers, and operators responsible for secret custody.
 
-Status: shared in-memory device-backup encryption and local member/reviewer-key
-generation, encrypted export, validated import, and an offline backup CLI are
-implemented, along with local member certificate requests and in-memory member
-sessions, a separate development-only WASM member bridge, and a local dedicated-worker
-host with a separate synthetic browser-test harness. Product browser custody,
-round binding, recovery, enrollment, and signing
-services are not implemented.
+Status: shared key/backup/session components, the optional offline CLI, local WASM
+bridges and the separate opt-in browser MVP are implemented. The latter connects
+local custody, enrollment, encrypted member backup and round review. Recovery,
+protected signing custody and broader production key-lifecycle policy remain
+unimplemented.
 
 ## Browser account vault
+
+### Implemented local-passphrase MVP
+
+The opt-in [browser hosts](deployment.md#browser-mvp-local-startup) now use the
+existing member worker for automatic confirmed setup, session-authorized encrypted
+backup upload, expected-key restoration and fixed issuance signing. No ordinary
+user handles a key file, CSR, developer console or CLI. The new `authorize` worker
+method accepts the 113-byte challenge, signed common bulletin, configured
+publication key and blinded request. Shared Go validates all context bindings
+before signing; the original general message-signing prohibition remains.
+
+Passkeys authenticate the identity account only. The browser separately collects
+a local unlock passphrase, clears its fields and uses unchanged backup profile 2.
+Only the 108-byte encrypted member backup, public binding and revision enter the
+identity vault. CSRF-protected writes require recent authentication. An existing
+same-browser public pin rejects a changed server binding; new-device restoration
+must trust service metadata. This does not solve malicious-service substitution,
+rollback detection, account recovery or encrypted-key recovery.
+
+Reviewer keys are fresh per round, generated through shared `reviewerkey` in a
+separate worker. Their unchanged encrypted 108-byte backups are stored only in
+identity-origin IndexedDB under account/round context, before public-key attachment.
+Publication freezes that public binding, and restoration matches it before use.
+No reviewer key or encrypted reviewer backup is uploaded. Clearing browser storage,
+losing its passphrase or changing device loses reviewer access. The service's read
+deadline does not erase cached encrypted backups or recall already obtained keys.
+Explicit lock/logout, hidden-page disposal and worker deadlines limit local custody;
+runtime copies and suspended pages prevent an erasure or hard-expiry guarantee.
+
+The earlier design requirements below remain relevant where not implemented.
 
 ### Product decision
 

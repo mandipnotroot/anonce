@@ -6,7 +6,6 @@ package memberwasm
 import (
 	"syscall/js"
 
-	"github.com/mandipnotroot/anonce/internal/client/keystore"
 	"github.com/mandipnotroot/anonce/internal/client/membersession"
 )
 
@@ -45,11 +44,14 @@ func Run() {
 		} else if confirmed {
 			count = 2
 		}
+		if method == "authorize" {
+			count = 4
+		}
 		if len(args) != count {
 			return rejected()
 		}
 		views := make([]js.Value, count)
-		sizes := make([]int, 3)
+		sizes := make([]int, 4)
 		for i, arg := range args {
 			view, size, ok := arrays.view(arg)
 			if !ok {
@@ -58,6 +60,9 @@ func Run() {
 			views[i], sizes[i] = view, size
 		}
 		valid := validSizes(sizes[0], sizes[1], sizes[2], unlock)
+		if method == "authorize" {
+			valid = sizes[0] == 113 && sizes[1] >= 564 && sizes[1] <= 1587 && sizes[2] == 32 && sizes[3] == 384
+		}
 		if confirmed {
 			valid = validConfirmationSizes(sizes[0], sizes[1])
 		}
@@ -79,8 +84,11 @@ func Run() {
 				defer h.finish(op)
 				var enrollment *membersession.Enrollment
 				var backup []byte
+				var signature []byte
 				var err error
 				switch method {
+				case "authorize":
+					signature, err = h.session.AuthorizeForRound(op.ctx, inputs[0], inputs[1], inputs[2], inputs[3])
 				case "backup":
 					backup, err = h.session.Backup(op.ctx, inputs[0])
 				case "backupConfirmed":
@@ -105,10 +113,15 @@ func Run() {
 				// Lock after publication cannot retract already public output.
 				if !h.accepted(op) || err != nil {
 					clear(backup)
+					clear(signature)
 					resolve.Invoke(js.Null())
 					return
 				}
 				result := make(map[string]any)
+				if signature != nil {
+					result["signature"] = arrays.output(signature)
+					clear(signature)
+				}
 				if enrollment != nil {
 					result = arrays.enrollment(enrollment)
 				}
@@ -128,6 +141,7 @@ func Run() {
 	unlock := bind(func(args []js.Value) any { return work(args, "unlock") })
 	backup := bind(func(args []js.Value) any { return work(args, "backup") })
 	backupConfirmed := bind(func(args []js.Value) any { return work(args, "backupConfirmed") })
+	authorize := bind(func(args []js.Value) any { return work(args, "authorize") })
 	request := bind(func(args []js.Value) any {
 		if len(args) != 0 {
 			return rejected()
@@ -158,6 +172,7 @@ func Run() {
 	global.Set("anonceMember", map[string]any{
 		"create": create, "unlock": unlock, "backup": backup, "request": request, "lock": lock, "close": closeBridge,
 		"createConfirmed": createConfirmed, "backupConfirmed": backupConfirmed,
+		"authorize": authorize,
 	})
 	defer global.Delete("anonceMember")
 	<-h.done
@@ -203,7 +218,7 @@ func (a byteArrays) view(value js.Value) (js.Value, int, bool) {
 	}
 	size := a.get(a.length, value).Int()
 	// Empty/detached arrays and oversized arrays fail before constructing a view.
-	if size < 1 || size > keystore.MaxPasswordSize {
+	if size < 1 || size > 1587 {
 		return js.Undefined(), 0, false
 	}
 	return a.uint8.New(buffer, a.get(a.offset, value), size), size, true

@@ -7,8 +7,60 @@ Audience: contributors and security reviewers.
 
 ## Current executable checks
 
+### Connected browser MVP checks
+
+`make browser-test` builds the commands and both matched WASM artifacts, then runs
+`TestBrowserMVP` with real Chromium WebAuthn ceremonies, two fresh real PostgreSQL
+instances, owner-applied migrations and actual runtime roles. It is opt-in, not
+part of `make check`, and fails rather than skips missing prerequisites. Supply
+the reviewed `MEMBER_BROWSER` executable, Node.js 22.23.3 on `PATH`, and
+`BROWSER_TEST_PG` pointing to PostgreSQL 18.6's `bin` directory.
+
+Run it inside an OS sandbox with isolated loopback networking, an empty allowlisted
+environment, read-only source/toolchains, scratch-only writes and explicit CPU,
+memory, process, disk/file and wall-clock limits. Never use existing databases.
+Trust authentication applies only to its disposable synthetic clusters; application
+startup uses independent SCRAM runtime credentials. Test TLS trust pins the fresh
+test certificate public keys, never disabling verification globally. Browser
+sandboxing, CSP, WebAuthn verification, protected cookies and CSRF remain enabled.
+
+The driver uses Chromium's standard virtual-authenticator interface for real
+registration/assertion verification. There is no test login endpoint or server
+success bypass. It exercises administrator publication, member worker/vault and
+enrollment, exact-origin handoff, blind finalization, anonymous encryption and
+signed acceptance, concurrent exact retries, conflicting spending and authorized
+local reviewer decryption. Wire inspection rejects passphrases, plaintext answers,
+account cookies/referrers and unexpected origins. PostgreSQL subtests cover
+persistence, isolation, grants, enrollment races and quota persistence across sessions.
+
+Native `TestProfileJourney`, `TestEnvelopeIsolation`, `TestBulletinBounds`,
+`FuzzProfileRejection`, `TestIdentityGate`, `TestCookieEncoding` and
+`TestAuthenticationLimiter` cover composition/admission. Existing member worker and
+session checks cover cancellation, wrong expected keys and invalid backups. These
+checks are not independent review, a supported-browser/provider matrix, mobile
+costs, manual accessibility, protected signer custody, safe database restoration
+or public transparency-log evidence.
+
+`TestSignedTimestampBounds` rejects correctly signed out-of-profile dates before
+integer conversion. `TestStateFileAdmission` and `TestInitializationDoesNotReplace`
+cover scoped state files, owner-only permissions, rejected symlinks and no-replace
+initialization. `TestBoundedTLSMetadata` checks that connection limiting preserves
+the TLS metadata required by the HTTP gate. Embedded page tests check strict
+runtime manifests, entry-asset integrity and origin-specific content policies.
+
+`make browser-unit-test`, also included in `make check` and runtime CI, checks that
+one malformed or undecryptable answer does not suppress later records or pages.
+It checks plaintext-buffer cleanup and stops without publishing late results when
+the reviewer owner closes, is replaced, becomes hidden, or reaches round expiry.
+These Node checks do not replace the real-browser journey.
+
+The journey also passes a corrupted envelope followed by an actual stored answer
+through the shared reader and real reviewer worker. It requires a rejection
+placeholder followed by the correctly decrypted answer, and checks that reaching
+the review deadline terminates the actual worker.
+
 See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
-**No current check tests a working submission protocol.**
+The original foundation targets below do not test the connected browser protocol.
 
 | Target | Current checks |
 | --- | --- |
@@ -101,6 +153,13 @@ Backup, key, and CLI unit tests use real profile costs, not reduced-cost test
 profiles. Key tests generate keys at runtime and clear accessible owned buffers;
 opaque library copies cannot be explicitly cleared. Generic backup tests use
 synthetic non-key payloads; CLI filesystem tests use non-key stand-ins.
+
+Member-key and reviewer-key suites share backup contract checks in
+`internal/client/internal/keytest`. Algorithm-specific validation and compatibility
+tests stay in each wrapper. Wrapper cancellation tests exercise every observed
+checkpoint rather than hard-coded nested call counts; the keystore suite retains
+explicit admission, derivation, and output-boundary checks. CLI publication tests
+share destination snapshots while retaining their command and unsafe-path cases.
 
 Unsafe-file fixtures set and verify their final permissions after creation so
 CI's restrictive `umask 077` cannot make a public-file case owner-only. Tests do

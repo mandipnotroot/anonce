@@ -5,12 +5,15 @@
 
 Audience: implementers, reviewers, and operators evaluating system boundaries.
 
-Status: proposed application architecture. Local HTTP services, a read-only shell,
-device-backup encryption, local member/reviewer keys, and an offline key CLI exist.
-A local public-only WASM request verifier exists without browser page integration.
-Local identity account/session and encrypted member-backup persistence exist without
-HTTP integration. Domain policy, browser key custody, product vault access, and the
-submission protocol are unimplemented.
+Status: the opt-in [browser MVP](deployment.md#browser-mvp-local-startup) connects
+accounts, encrypted member backups, enrollment, rounds, issuance, anonymous
+acceptance and local review. The sections marked proposed describe the broader
+product, not additional MVP guarantees. The original local HTTP services and shell
+remain independently available without these routes.
+
+Shared key/session/store packages remain transport-independent. The browser hosts
+compose them without changing the original demonstration commands. Protected
+signing custody, recovery, transparency and broader product policy remain proposed.
 
 ## Components and ownership
 
@@ -62,6 +65,35 @@ a trusted checkpoint or independent copy. Signatures alone cannot detect differe
 validly signed forms served to different members.
 
 ## Account and anonymous flow
+
+### Implemented browser MVP boundary
+
+`browser-identity` opens only the identity runtime database. `browser-submission`
+opens only the independent submission runtime database and imports no identity
+persistence. The original demonstration commands do not change behavior.
+Browser paths use the explicit `/api/browser/` namespace, not the unavailable
+`/api/v1/` protocol proposal.
+
+The anonymous page prepares blind state in its own Go worker, opens the configured
+identity origin with a common round ID, and exchanges only a bounded blinded
+request and blind signature. Both contexts validate exact sender origin and window,
+message keys, round, and byte lengths. There is no wildcard messaging, token URL,
+CORS credential sharing or account call from the anonymous page. Identity-side
+member signing checks the signed bulletin and blinded-request hash in shared Go.
+The account popup performs explicit local unlocking and issuance consent.
+
+The anonymous worker finalizes the signature, pads/encrypts one answer, and verifies
+the [signed storage acceptance](cryptography.md#browser-mvp-profile-1). Tokens,
+answers, retry payloads and receipts remain anonymous-page memory, not the account
+vault. Closing/reloading/expiry loses this state; issuance has no refund. The
+identity service sees issuance participation and timing, not an acceptance index.
+
+Review uses a round-scoped proof of X25519 decryption, not identity cookies, at the
+submission interface. The assigned reviewer's encrypted backup is kept only in
+its identity-side browser database. Server ciphertext access expires at the signed
+review deadline. Previously obtained keys/plaintext/ciphertext cannot be recalled.
+Publication signatures use a configured trust key, without independent checkpoint
+or split-view detection. These are explicit MVP limitations.
 
 The identity origin owns sign-in, enrollment, the eligible-round dashboard, and
 the [encrypted member-key vault](key-management.md#browser-account-vault).

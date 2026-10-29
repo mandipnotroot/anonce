@@ -102,3 +102,5 @@ jobs:
         run: make wasm-test
       - name: Build and test local member-session WASM bridge
         run: make member-wasm-test
+      - name: Check browser reviewer record handling
+        run: make browser-unit-test

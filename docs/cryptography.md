@@ -7,10 +7,83 @@ Audience: cryptographic reviewers and client implementers.
 
 Status: device-backup encryption, local member/reviewer-key generation/import/export,
 and identity-free member certificate requests are implemented as shared Go packages.
-Identity-side session references also use the storage profile below. Submission,
-enrollment, and public-proof protocols remain prospective.
+Identity-side session references use the storage profile below. The opt-in browser
+hosts use MVP profile 1 for enrollment, blind authorization, encryption and signed
+storage acceptance. Broader public-proof protocols remain prospective.
 
 ## Chosen implementation boundaries
+
+### Browser MVP profile 1
+
+This unreleased, opt-in composition uses the primary RFC 9474 and RFC 9180
+references below, consulted 2026-10-29, CIRCL 1.6.5 `blindrsa`, and Go 1.27.3
+`crypto/hpke`, `crypto/ed25519`, and `crypto/x509`. It is not independently approved
+or Privacy Pass wire-compatible. Unknown versions and lengths fail closed. No
+fallback algorithm is allowed. All integer fields below are unsigned big-endian;
+byte strings are concatenated in the stated order, without delimiters.
+
+- Bulletin: ASCII `ANONCER1`, random round ID (16), opening, closing and review
+  expiry Unix seconds (8 each), explicit response limit (1, must equal one), fresh
+  round reviewer X25519 public key (32), dedicated round RSA modulus (384), receipt
+  Ed25519 public key (32), question byte length (2), well-formed UTF-8 question
+  (1–1024). RSA is exactly 3072 bits, odd modulus, exponent 65537. Times are within
+  2026–2100 with integral-second precision, opening precedes closing, and review expires after closing within 30
+  days. The publication signature is pure Ed25519 over ASCII
+  `anonce/bulletin/v1` followed by NUL and these bytes. Append its 64 bytes.
+  The bulletin digest is SHA-256 of the complete signed bulletin. The publication
+  verification key is operator-configured, not accepted from the bulletin.
+- Token input: ASCII `ANONCET1`, round ID (16), bulletin digest (32), fresh random
+  nonce (32). CIRCL prepares this with its own fresh 32-byte random prefix and
+  uses `SHA384PSSRandomized`, including the 48-byte PSS salt. The token is the
+  resulting prepared message (120) followed by its finalized signature (384).
+  Verify exact context and signature before storage. Spend identity is SHA-256
+  of ASCII `anonce/spend/v1`, NUL, and the prepared message, never signature bytes.
+- Issuance challenge: version byte one, round ID (16), bulletin digest (32), fresh
+  random nonce (32), SHA-256 of blinded request (32). The member signs only these
+  113 bytes prefixed by ASCII `anonce/issuance/v1` and NUL. Challenges expire after
+  two minutes, are session/member-bound, and are consumed before quota reservation.
+  The identity ledger retains membership/round reservation only, not transcripts.
+  Lost signing/delivery consumes the sole allowance without refund or re-signing.
+- Answers: HPKE base mode, DHKEM(X25519, HKDF-SHA256), HKDF-SHA256,
+  ChaCha20-Poly1305, one fresh sender context per answer. `info` is ASCII
+  `anonce/answer/v1`, NUL, bulletin digest; AAD is empty. Plaintext is exactly 4096
+  bytes: a two-byte text length (1–4000), well-formed UTF-8 text, and zero padding.
+  Envelope is byte one followed by `enc || ciphertext`; exactly 4145 bytes.
+  Decryption validates length, UTF-8 and every padding byte before exposing text.
+- Reviewer read authorization: the server generates 32 random bytes, retains only
+  their SHA-256 digest bound to round and pagination cursor for two minutes, and
+  HPKE-encrypts them to the bulletin reviewer key. `info` is ASCII
+  `anonce/review/v1`, NUL, bulletin digest. Envelope is byte two followed by
+  `enc || ciphertext`, exactly 81 bytes. Returning the decrypted 32 bytes consumes
+  that challenge atomically before a bounded ciphertext read. No account cookie,
+  member credential or identity identifier is accepted by this interface. This
+  online proof of decryption adds no signing primitive and cannot decrypt answers
+  for the server. Compromise of the reviewer key grants both read and decrypt access.
+- Acceptance: ASCII `ANONCEA1`, round ID (16), bulletin digest (32), durable record
+  ID (16), spend digest (32), SHA-256 of the exact envelope (32), followed by a pure
+  Ed25519 signature (64). Sign only after the atomic record store commits. Verify
+  all fields and the bulletin's receipt key locally. Exact-payload open-round
+  retries reproduce acceptance; changed payloads and closed-round retries fail.
+  This is a signed storage attestation, not inclusion, append-only consistency,
+  external anchoring, or a guarantee against database rollback. The broader
+  transparency-log contract remains Next work, not a property of this MVP.
+
+Enrollment reuses CSR profile 1. A dedicated Ed25519 CA issues an empty-subject
+X.509 leaf with random positive 16-byte serial, digital-signature usage, no CA
+authority, and one-year validity. Only the exact stored certificate/public binding
+for an active membership is eligible. Issuance checks the signature, validity and
+current membership state online inside the identity boundary; it does not rely on
+an absent CRL endpoint. An authorized administrator delivers a random 32-byte,
+expiring, single-use enrollment code. Only its SHA-256 digest is stored. Consuming
+it and binding the verified CSR to the account's fixed backup key is atomic.
+
+WebAuthn authentication follows the selected Level 3 reference in
+[key management](key-management.md#authentication-and-unlocking), verified by
+go-webauthn 0.18.2 with exact HTTPS origin/RP ID, user presence and user verification
+required, no cross-origin ceremonies, no attestation identity requirement, and no
+PRF extension. Two-minute ceremonies are cookie-bound and single-use, including
+failed verification. One credential per account and no account recovery are the
+initial compatibility limits. Login does not unlock a device key.
 
 | Purpose | Proposed implementation/profile |
 | --- | --- |
