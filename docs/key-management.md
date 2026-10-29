@@ -175,6 +175,10 @@ does not resolve these requirements. Acceptance requirements live in
 
 ## In-memory member sessions
 
+The test-binary-only [synthetic browser form](ui-design.md#synthetic-member-forms)
+now composes confirmed setup through the worker. It retains encrypted/public output
+in page memory only. It is not account onboarding or a durable backup facility.
+
 `internal/client/membersession` is a shared Go foundation for automatic member-key
 setup, not a browser account vault. A zero-value `Session` is locked. Its API never
 returns plaintext private bytes, accepts arbitrary messages to sign, or performs

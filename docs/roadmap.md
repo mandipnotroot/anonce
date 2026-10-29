@@ -129,6 +129,11 @@ Available foundations:
   explicit foreground restoration, and navigation termination in pinned headless
   Chromium. Product delivery, partition/suspension coverage, and account binding/logout
   integration remain unavailable.
+  A test-binary-only confirmed setup form now composes the existing worker with
+  independent passphrase fields, safe progress/errors, and lock/cancellation. Only
+  encrypted/public material remains in page memory. Keyboard and accessible-name
+  checks plus a real harness screenshot do not establish product onboarding or
+  durable account backup. See [synthetic forms](ui-design.md#synthetic-member-forms).
 
 These foundations do not establish protocol or storage security. Browser custody,
 enrollment, signing-service integration, reviewer round binding, expiry, submission

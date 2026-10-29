@@ -242,6 +242,11 @@ test-binary delivery and external development-tool setup. It changes no product
 HTTP route, shell CSP, worker contract, or cryptographic format, and carries no
 automatic release bump under the test-change policy below.
 
+The harness's [synthetic member forms](ui-design.md#synthetic-member-forms) add only
+test-binary markup, a local controller, and tests. Product HTTP/OpenAPI, shared Go,
+worker commands, cryptographic formats, and release versions remain unchanged.
+This is not a supported browser account/vault API.
+
 Requiring a visible owner document with visibility events and terminating on
 backgrounding is a breaking development lifecycle change requiring `semver:major`
 review. Hosts must construct only while visible, handle interrupted operations,

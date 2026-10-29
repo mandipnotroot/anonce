@@ -5,7 +5,7 @@
 // debugging TCP listener, sandbox bypass, CSP bypass, or persisted test secrets.
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { readFileSync, readSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, readSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -102,7 +102,7 @@ async function until(check) {
   throw new Error("browser condition timed out");
 }
 let unexpectedRequest = false;
-const allowedPaths = new Set(["/", "/browser.mjs", "/member-client.mjs", "/member-worker.mjs", "/protocol.mjs", "/wasm_exec.js", "/client.wasm"]);
+const allowedPaths = new Set(["/", "/browser.mjs", "/member-forms.mjs", "/member-client.mjs", "/member-worker.mjs", "/protocol.mjs", "/wasm_exec.js", "/client.wasm"]);
 listeners.add((message) => {
   if (message.method !== "Network.requestWillBeSent") return;
   const request = message.params.request;
@@ -129,6 +129,45 @@ async function workersGone(workers) {
   await until(async () => !(await workerIDs()).some((id) => workers.includes(id)));
 }
 const moduleCall = (call) => `import('/browser.mjs').then(m => m.${call})`;
+async function enter(session, id, text) {
+  await evaluate(session, `document.getElementById(${JSON.stringify(id)}).focus()`);
+  await send("Input.insertText", { text }, session);
+}
+async function press(session, key) {
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, text: key === "Enter" ? "\r" : "", windowsVirtualKeyCode: key === "Enter" ? 13 : 9 }, session);
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: key === "Enter" ? 13 : 9 }, session);
+}
+async function setupForm(session) {
+  const passphrase = "synthetic browser passphrase é😀";
+  const clear = "document.querySelectorAll('input[type=password]').values().every(e => e.value === '')";
+  // Real keyboard input/submit, with distinct confirmation fields and safe errors.
+  await enter(session, "setup-passphrase", passphrase);
+  await press(session, "Tab");
+  assert.equal(await evaluate(session, "document.activeElement.id"), "setup-confirmation");
+  await send("Input.insertText", { text: "different synthetic passphrase" }, session);
+  await press(session, "Enter");
+  assert.equal(await evaluate(session, clear), true);
+  await until(async () => await evaluate(session, "document.getElementById('form-status').textContent.startsWith('Setup failed.')"));
+  assert.equal(await evaluate(session, moduleCall("formRecord()")), null);
+  await enter(session, "setup-passphrase", passphrase);
+  await enter(session, "setup-confirmation", passphrase);
+  await press(session, "Enter");
+  assert.equal(await evaluate(session, clear), true);
+  await until(async () => await evaluate(session, "document.getElementById('form-status').textContent.startsWith('Synthetic member key unlocked.')"));
+  assert.equal(await evaluate(session, "document.activeElement.id"), "member-lock");
+  const record = await evaluate(session, moduleCall("formRecord()"));
+  assert.ok(record !== null && Object.keys(record).sort().join() === "backup,csr,publicKey");
+  await press(session, "Enter"); // Explicit lock keeps only encrypted/public page data.
+  await until(async () => await evaluate(session, "document.getElementById('member-lock').disabled"));
+  assert.equal(await evaluate(session, clear), true);
+  const tree = await send("Accessibility.getFullAXTree", {}, session);
+  for (const name of ["Local unlock passphrase", "Confirm local unlock passphrase", "Lock / cancel local work"]) {
+    assert.ok(tree.nodes.some((node) => node.name?.value === name), "missing accessible form control name");
+  }
+  const screenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }, session);
+  writeFileSync(join(scratch, "member-forms.png"), Buffer.from(screenshot.data, "base64"));
+  return { formBackup: record.backup, formPublicKey: record.publicKey, formCSR: record.csr };
+}
 let output;
 try {
   await send("Target.setDiscoverTargets", { discover: true });
@@ -137,6 +176,7 @@ try {
   output = await evaluate(main.sessionId, moduleCall(`run(${JSON.stringify(input)})`));
   assert.equal(await evaluate(main.sessionId, moduleCall(`deadlines(${JSON.stringify(input)})`)), true, "owner deadline checks failed");
   assert.equal(await evaluate(main.sessionId, moduleCall(`cancellation(${JSON.stringify(input)})`)), true, "owner cancellation checks failed");
+  Object.assign(output, await setupForm(main.sessionId));
   await until(async () => (await workerIDs()).length === 0);
   const peer = await page();
   assert.equal(await evaluate(peer.sessionId, moduleCall("openPeer()")), true);

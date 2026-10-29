@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Test-binary-only browser member setup form with independently entered local
+  passphrase confirmation, shared Go/worker cryptography, safe progress/errors,
+  field clearing, and lock/cancellation. Only encrypted/public material remains in
+  page memory; setup cannot overwrite it. Node lifecycle tests and pinned Chromium
+  keyboard, accessible-name, screenshot, and native backup checks cover the form.
+  No product route, authentication, enrollment, durable backup, or new profile is added.
 - Internal session-authorized account disabling with the shared recent-authentication
   gate, atomically removing all sessions without an owner override. Encrypted
   backups remain stored; no re-enable API exists. Native admission/fuzz and real

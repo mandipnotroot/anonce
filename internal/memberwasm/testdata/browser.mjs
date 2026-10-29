@@ -1,8 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Anonce Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Test-only host. No user entry, uploads, storage, key display, or product routes.
+// Test-only host. Synthetic input only, no uploads, persistence, or product routes.
 import { lockMemberWorkers, MemberWorkerSession } from "/member-client.mjs";
+import { mountMemberForms } from "/member-forms.mjs";
+
+let formBackup = null;
+const disposeForms = mountMemberForms(document, () => new MemberWorkerSession(), (created) => {
+  formBackup = { backup: created.backup.slice(), publicKey: created.publicKey.slice(), csr: created.csr.slice() };
+});
+globalThis.addEventListener("pagehide", () => { disposeForms(); formBackup = null; });
+// Only encrypted/public output is available to the synthetic driver.
+export function formRecord() {
+  return formBackup === null ? null : Object.fromEntries(Object.entries(formBackup).map(([name, bytes]) => [name, encode(bytes)]));
+}
 
 const decode = (hex) => Uint8Array.from(hex.match(/../g), (pair) => Number.parseInt(pair, 16));
 const encode = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");

@@ -68,6 +68,7 @@ member-wasm:
 
 member-wasm-test: member-wasm
 	node --test scripts/member_worker_test.mjs
+	node --test scripts/member_forms_test.mjs
 	$(GO) test -race -count=1 -tags=wasmintegration ./internal/memberwasm
 
 member-browser-test: member-wasm

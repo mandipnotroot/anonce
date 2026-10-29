@@ -385,6 +385,14 @@ erase backups, reset quotas, or recover encrypted keys.
 
 ## Browser account and vault risks
 
+The [synthetic local setup form](ui-design.md#synthetic-member-forms) is test-only.
+Its separately entered passphrases clear before worker startup, and lifecycle
+generation checks reject late output after lock/closure/disposal. Only encrypted
+backups and public request material remain in page memory. This is neither durable
+backup nor enrollment; reload loses the synthetic data. Hostile page code, browser
+autofill, immutable strings, and runtime copies remain outside erasure guarantees.
+No product service accepts these inputs or delivers this form.
+
 The [account vault](key-management.md#browser-account-vault) and
 [account-to-anonymous flow](architecture.md#account-and-anonymous-flow) are planned,
 not current controls. Assess them against these boundaries:

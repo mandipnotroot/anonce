@@ -58,7 +58,8 @@ Distinguish implemented from planned behavior.
   secret-free same-partition lock notifications, and local pagehide/hidden-page
   termination, plus opt-in bounded UTF-8 text passphrases over confirmed setup/export
   and expected-key restoration with synchronous encoding-buffer cleanup;
-  native/Node checks and an isolated synthetic browser-test harness; no product HTTP
+  native/Node checks and an isolated synthetic browser-test harness with a confirmed
+  local setup form and encrypted/public page-memory output; no product HTTP
   delivery, supported-browser matrix, or account logout integration.
 - `web/`: embedded read-only demonstration templates and first-party CSS.
 - `Dockerfile`, `compose.yaml`, `deploy/postgres/`, `scripts/containers.py`: local

@@ -168,6 +168,7 @@ profile-2 nonce prefix and library composition.
 | Reviewed loader/notice digest rejection, invalid artifact headers and size bounds | `scripts/test_build_wasm.py` |
 | Test-only browser asset bounds, complete manifest/digests, duplicate/traversal rejection, exact routes, hosts/origins, methods/HEAD, headers, and unread bodies | `TestMemberBrowserAssets`, `TestMemberBrowserDelivery`, `FuzzMemberBrowserManifest` |
 | Actual browser member worker, native backup restore and browser backup opened natively, failed restoration without replacement, snapshots, admission, public output, pending disposal, UI event-loop progress, page CSP probes, synthetic-clock expiry/rollback and explicit restoration, same-origin peer lock, background-tab lock/foreground restoration, and navigation termination | `TestMemberNativeBrowserCompatibility` with `scripts/member_browser_test.mjs`, through the opt-in `make member-browser-test` |
+| Synthetic setup form independent entries, immediate field clearing, busy/unlocked/saved admission, safe retention failures, cancellation and late-result rejection | `scripts/member_forms_test.mjs` in `make member-wasm-test`; actual keyboard submission, accessible names, screenshot, and native backup/request validation through `make member-browser-test` |
 
 These establish neither database isolation, anonymity, nor protocol attack results.
 Web checks validate allowlists/delivery, not full HTML/CSS grammar or browser execution.
@@ -547,7 +548,11 @@ not a working directory or product route. Unknown paths, queries, encoded aliase
 foreign hosts/origins, cross-site requests, and request bodies are rejected without
 reading bodies or reflecting inputs. Responses use `no-store`, no-referrer,
 nosniff, same-origin resource policy, and no cookies/CORS. The disposable page has
-no input controls, uploads, persistence, or key display.
+[synthetic local forms](ui-design.md#synthetic-member-forms), but no uploads,
+persistence, or key display. Their encrypted/public output is page-memory-only;
+never enter real secrets. The driver captures empty fields after lock into
+`.cache/tests/member-forms.png`; the reviewed documentation image is copied from
+that actual browser capture, not substitute rendering.
 
 The page permits same-origin modules/workers but no fetches or WASM compilation.
 Only the worker response permits same-origin fetches and `wasm-unsafe-eval`, never
