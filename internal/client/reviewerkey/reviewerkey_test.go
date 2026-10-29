@@ -5,20 +5,22 @@ package reviewerkey
 
 import (
 	"bytes"
-	"context"
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/subtle"
 	"crypto/x509"
 	"errors"
-	"sync"
-	"sync/atomic"
 	"testing"
 
+	"github.com/mandipnotroot/anonce/internal/client/internal/keytest"
 	"github.com/mandipnotroot/anonce/internal/client/keystore"
 	"github.com/mandipnotroot/anonce/internal/client/memberkey"
 )
+
+var backupProfile = keytest.Profile[[]byte]{
+	Purpose: keystore.ReviewerKey, Generate: Generate, Seal: Seal, Open: Open,
+}
 
 // All keys are generated during tests; no private-key fixtures are retained.
 func testKey(t *testing.T) []byte {
@@ -65,49 +67,9 @@ func TestReviewerKeyGenerate(t *testing.T) {
 }
 
 func TestReviewerKeyRoundTrip(t *testing.T) {
-	key := testKey(t)
-	original := bytes.Clone(key)
-	defer clear(original)
-	password := []byte("synthetic test password")
-	defer clear(password)
-	backup, err := Seal(t.Context(), password, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(backup) != 108 || backup[8] != 1 || backup[9] != 2 || backup[10] != byte(keystore.ReviewerKey) {
-		t.Fatal("unexpected reviewer-key backup size, profile, or purpose")
-	}
-	backupCopy := bytes.Clone(backup)
-	opened, err := Open(t.Context(), password, backup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer clear(opened)
-	if subtle.ConstantTimeCompare(key, opened) != 1 || subtle.ConstantTimeCompare(key, original) != 1 ||
-		!bytes.Equal(backup, backupCopy) || string(password) != "synthetic test password" {
-		t.Fatal("round trip changed key or caller-owned inputs")
-	}
+	key, opened := backupProfile.RoundTrip(t)
 	if !libraryKey(t, key).PublicKey().Equal(libraryKey(t, opened).PublicKey()) {
 		t.Fatal("imported key does not match original public key")
-	}
-	clear(opened)
-	if subtle.ConstantTimeCompare(key, original) != 1 {
-		t.Fatal("import returned an alias of caller-owned private bytes")
-	}
-	again, err := Open(t.Context(), password, backup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer clear(again)
-	if subtle.ConstantTimeCompare(again, original) != 1 {
-		t.Fatal("clearing imported key changed backup or later imports")
-	}
-	second, err := Seal(t.Context(), password, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Equal(backup, second) || bytes.Equal(backup[12:28], second[12:28]) || bytes.Equal(backup[32:44], second[32:44]) {
-		t.Fatal("re-export reused backup randomness")
 	}
 }
 
@@ -279,35 +241,7 @@ func TestReviewerKeyRejectsInvalidPayloads(t *testing.T) {
 }
 
 func TestReviewerKeyRejectsUnauthenticatedBackup(t *testing.T) {
-	key := testKey(t)
-	password := []byte("synthetic test password")
-	defer clear(password)
-	backup, err := Seal(t.Context(), password, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wrongPurpose := bytes.Clone(backup)
-	wrongPurpose[10] = byte(keystore.MemberKey)
-	tampered := bytes.Clone(backup)
-	tampered[len(tampered)-1] ^= 1
-	cases := []struct {
-		name     string
-		password []byte
-		backup   []byte
-	}{
-		{"wrong password", []byte("different synthetic test password"), backup},
-		{"wrong purpose", password, wrongPurpose},
-		{"tampered ciphertext", password, tampered},
-		{"missing backup", password, nil},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			opened, err := Open(t.Context(), tc.password, tc.backup)
-			if opened != nil || !errors.Is(err, keystore.ErrInvalidBackup) {
-				t.Fatalf("unauthenticated backup returned key or wrong error: %v", err)
-			}
-		})
-	}
+	backupProfile.RejectUnauthenticatedBackup(t)
 }
 
 func TestReviewerKeyPurposeIsolation(t *testing.T) {
@@ -342,77 +276,11 @@ func TestReviewerKeyPurposeIsolation(t *testing.T) {
 }
 
 func TestReviewerKeyCancellation(t *testing.T) {
-	key := testKey(t)
-	password := []byte("synthetic test password")
-	defer clear(password)
-	backup, err := Seal(t.Context(), password, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cases := []struct {
-		name    string
-		check   int32
-		operate func(context.Context) ([]byte, error)
-	}{
-		{"generate at entry", 1, Generate},
-		{"generate before output", 2, Generate},
-		{"seal at entry", 1, func(ctx context.Context) ([]byte, error) { return Seal(ctx, password, key) }},
-		{"seal before output", 5, func(ctx context.Context) ([]byte, error) { return Seal(ctx, password, key) }},
-		{"open at entry", 1, func(ctx context.Context) ([]byte, error) { return Open(ctx, password, backup) }},
-		{"open after validation", 5, func(ctx context.Context) ([]byte, error) { return Open(ctx, password, backup) }},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			parent, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			ctx := &cancelOnCheck{Context: parent, cancel: cancel, trigger: tc.check}
-			output, err := tc.operate(ctx)
-			if output != nil || !errors.Is(err, context.Canceled) {
-				clear(output)
-				t.Fatalf("cancelled operation returned output or wrong error: %v", err)
-			}
-		})
-	}
-}
-
-type cancelOnCheck struct {
-	context.Context
-	cancel  context.CancelFunc
-	trigger int32
-	checks  atomic.Int32
-}
-
-func (c *cancelOnCheck) Err() error {
-	if c.checks.Add(1) == c.trigger {
-		c.cancel()
-	}
-	return c.Context.Err()
+	backupProfile.Cancellation(t)
 }
 
 func TestReviewerKeyConcurrent(t *testing.T) {
-	key := testKey(t)
-	password := []byte("synthetic test password")
-	defer clear(password)
-	var wg sync.WaitGroup
-	for range 4 {
-		wg.Go(func() {
-			backup, err := Seal(t.Context(), password, key)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			opened, err := Open(t.Context(), password, backup)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			defer clear(opened)
-			if subtle.ConstantTimeCompare(key, opened) != 1 {
-				t.Error("concurrent import changed key")
-			}
-		})
-	}
-	wg.Wait()
+	backupProfile.Concurrent(t)
 }
 
 func FuzzReviewerKeyPayload(f *testing.F) {

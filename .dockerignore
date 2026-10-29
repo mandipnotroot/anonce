@@ -24,6 +24,8 @@
 !internal/identity/accounts/session_disable_postgres_test.go
 !internal/identity/memberbackup/store_test.go
 !internal/identity/memberbackup/postgres_test.go
+!internal/submission/records/store_test.go
+!internal/submission/records/postgres_test.go
 **/testdata/
 **/.env
 **/.env.*

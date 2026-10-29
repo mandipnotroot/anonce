@@ -52,6 +52,13 @@ USER 65532:65532
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 ENTRYPOINT ["/out/memberbackup.test", "-test.run=^TestPostgresMemberBackups$", "-test.v", "-test.timeout=90s"]
 
+FROM build AS submission-record-test
+RUN CGO_ENABLED=1 go test -race -c -tags=databaseintegration -o /out/submissionrecords.test ./internal/submission/records && test -x /out/submissionrecords.test
+COPY LICENSES/AGPL-3.0-only.txt /licenses/anonce-LICENSE
+USER 65532:65532
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+ENTRYPOINT ["/out/submissionrecords.test", "-test.run=^TestPostgresSubmissionRecords$", "-test.v", "-test.timeout=90s"]
+
 FROM scratch AS application
 COPY --from=build /out/ /app/
 COPY --from=build /usr/local/go/LICENSE /licenses/Go-LICENSE

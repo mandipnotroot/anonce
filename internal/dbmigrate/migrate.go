@@ -100,9 +100,9 @@ func checkHistory(ctx context.Context, conn *pgx.Conn, side string) error {
 	if !exists {
 		return nil
 	}
-	latest := int64(1)
+	latest := int64(3)
 	if side == "identity" {
-		latest = 4
+		latest = 5
 	}
 	rows, err := conn.Query(ctx, "SELECT version_id, is_applied FROM "+table+" ORDER BY id LIMIT $1", latest+2)
 	if err != nil {

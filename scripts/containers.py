@@ -229,7 +229,7 @@ PGPASSFILE="$passfile" PGCONNECT_TIMEOUT=3 psql -XwqAt -v ON_ERROR_STOP=1 -v VER
         return instances
 
     def migration_image(self, target="migration"):
-        require(target in ("migration", "account-test", "member-backup-test"), "invalid database image target")
+        require(target in ("migration", "account-test", "member-backup-test", "submission-record-test"), "invalid database image target")
         image = self.run(["docker", "build", "--target", target, "--quiet", "."], timeout=600).stdout.decode().strip()
         require(re.fullmatch(r"sha256:[0-9a-f]{64}", image) is not None, "invalid migration image identity")
         return image
@@ -317,6 +317,24 @@ def migration_checks(stack):
             stack.migrate(side, image, allowed=False)
             require(stack.sql(side, "runtime", "SELECT encode(token_digest,'hex'),encode(account_id,'hex'),created_at,expires_at FROM anonce.account_sessions ORDER BY token_digest;").stdout == previous_sessions, "failed selector migration changed session rows")
             stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP INDEX anonce.account_sessions_selector_unique;")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; CREATE TABLE anonce.browser_credentials(id integer);")
+            stack.migrate(side, image, allowed=False)
+            result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id; SELECT to_regclass('anonce.browser_rounds') IS NULL;")
+            require(result.stdout.strip() == b"0\n1\n2\n3\n4\nt", "failed browser migration changed published identity state")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP TABLE anonce.browser_credentials;")
+        else:
+            # A record-table conflict must roll back round creation and leave the
+            # published boundary history unchanged.
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; CREATE TABLE anonce.submission_records(id integer);")
+            stack.migrate(side, image, allowed=False)
+            result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id; SELECT to_regclass('anonce.submission_rounds') IS NULL;")
+            require(result.stdout.strip() == b"0\n1\nt", "failed submission migration changed published state")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP TABLE anonce.submission_records;")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; CREATE TABLE anonce.browser_review_challenges(id integer);")
+            stack.migrate(side, image, allowed=False)
+            result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id; SELECT to_regclass('anonce.browser_bulletins') IS NULL;")
+            require(result.stdout.strip() == b"0\n1\n2\nt", "failed browser migration changed published submission state")
+            stack.sql(side, "migrator", "SET ROLE anonce_owner; DROP TABLE anonce.browser_review_challenges;")
         # Simultaneous pending applications exercise the actual locked Go runner.
         with ThreadPoolExecutor(max_workers=2) as pool:
             list(pool.map(lambda _: stack.migrate(side, image), range(2)))
@@ -324,8 +342,8 @@ def migration_checks(stack):
         result = stack.sql(side, "runtime", "SELECT service FROM anonce.storage_boundary;")
         require(result.stdout.strip() == side.encode(), "wrong storage boundary")
         result = stack.sql(side, "migrator", f"SET ROLE anonce_owner; SELECT version_id FROM {table} ORDER BY id;")
-        latest = 4 if side == "identity" else 1
-        require(result.stdout.strip() == (b"0\n1\n2\n3\n4" if side == "identity" else b"0\n1"), "unexpected migration history")
+        latest = 5 if side == "identity" else 3
+        require(result.stdout.strip() == (b"0\n1\n2\n3\n4\n5" if side == "identity" else b"0\n1\n2\n3"), "unexpected migration history")
         if side == "identity":
             require(stack.sql(side, "runtime", "SELECT encode(token_digest,'hex'),encode(account_id,'hex'),created_at,expires_at FROM anonce.account_sessions ORDER BY token_digest;").stdout == previous_sessions, "selector upgrade changed existing session material")
             selectors = stack.sql(side, "runtime", "SELECT session_id FROM anonce.account_sessions ORDER BY token_digest;").stdout
@@ -370,7 +388,7 @@ def migration_checks(stack):
 
 
 def account_checks(stack, target="account-test"):
-    require(target in ("account-test", "member-backup-test"), "invalid runtime test target")
+    require(target in ("account-test", "member-backup-test", "submission-record-test"), "invalid runtime test target")
     image = stack.migration_image(target)
     config = stack.config()
     for side in ("identity", "submission"):
@@ -387,11 +405,13 @@ def account_checks(stack, target="account-test"):
             stack.run(["docker", "rm", "--force", name], success=False)
     result = stack.sql("submission", "migrator", "SET ROLE anonce_owner; SELECT to_regclass('anonce.accounts') IS NULL AND to_regclass('anonce.account_sessions') IS NULL AND to_regclass('anonce.member_key_backups') IS NULL;")
     require(result.stdout.strip() == b"t", "identity account tables entered submission storage")
+    result = stack.sql("identity", "migrator", "SET ROLE anonce_owner; SELECT to_regclass('anonce.submission_rounds') IS NULL AND to_regclass('anonce.submission_records') IS NULL;")
+    require(result.stdout.strip() == b"t", "submission records entered identity storage")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("secrets", "config", "up", "down", "smoke", "test", "migration-test", "account-test", "member-backup-test", "migrate-identity", "migrate-submission"))
+    parser.add_argument("action", choices=("secrets", "config", "up", "down", "smoke", "test", "migration-test", "account-test", "member-backup-test", "submission-record-test", "migrate-identity", "migrate-submission"))
     action = parser.parse_args().action
     directory = Path(os.environ.get("ANONCE_SECRETS_DIR", ROOT / ".secrets"))
     if action == "secrets":
@@ -404,7 +424,7 @@ def main():
         print("Compose configuration checks passed; no container execution.")
         return
     check_engine_version(stack.run(["docker", "info", "--format", "{{.ServerVersion}}"]).stdout.decode())
-    if action in ("test", "migration-test", "account-test", "member-backup-test"):
+    if action in ("test", "migration-test", "account-test", "member-backup-test", "submission-record-test"):
         scratch = ROOT / ".cache/tests"
         scratch.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="containers-", dir=scratch) as temporary:
@@ -417,22 +437,26 @@ def main():
             try:
                 isolated.compose("up", "--build", "--wait", "--wait-timeout", "120", timeout=600)
                 database_checks(isolated, isolated.smoke())
-                if action in ("migration-test", "account-test", "member-backup-test"):
+                if action in ("migration-test", "account-test", "member-backup-test", "submission-record-test"):
                     migration_checks(isolated)
                 if action in ("account-test", "member-backup-test"):
                     account_checks(isolated)
                 if action == "member-backup-test":
                     account_checks(isolated, "member-backup-test")
+                if action == "submission-record-test":
+                    account_checks(isolated, "submission-record-test")
             finally:
                 # Remove only this invocation's fresh disposable project and volumes.
                 isolated.compose("down", "--volumes", "--remove-orphans")
         print("Real container liveness, isolation, PostgreSQL authentication and privilege checks passed.")
-        if action in ("migration-test", "account-test", "member-backup-test"):
+        if action in ("migration-test", "account-test", "member-backup-test", "submission-record-test"):
             print("Separate database migration, concurrency, failure, version and grant checks passed; full db-test remains unavailable.")
         if action in ("account-test", "member-backup-test"):
             print("Account/session persistence, expiry, revocation, concurrent disable, cancellation and runtime grant checks passed; browser authentication remains unavailable.")
         if action == "member-backup-test":
             print("Encrypted member backup persistence, owner scope, revision conflicts, deletion tombstones, disable, cancellation and runtime grant checks passed; product vault access remains unavailable.")
+        if action == "submission-record-test":
+            print("Atomic submission records, payload-bound retries, concurrent spends, round admission, cancellation, rollback and runtime grants passed; token verification and product submissions remain unavailable.")
         return
     if action.startswith("migrate-"):
         prepare_secrets(directory)

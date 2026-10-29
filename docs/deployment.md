@@ -5,11 +5,101 @@
 
 Audience: operators, maintainers, and organizations planning a demo or deployment.
 
-Status: local HTTP infrastructure, read-only shell, and an opt-in Docker Compose
-stack with separate PostgreSQL instances. Application persistence, production
-deployment, and the submission protocol remain unavailable. Do not collect real data.
+Status: the separate opt-in browser hosts connect a limited local MVP using the
+existing independent PostgreSQL databases. Original demonstration hosts remain
+inert. Production deployment and the broader protocol remain unavailable.
+Do not collect real data.
 
 ## Local development
+
+### Browser MVP local startup
+
+The separate browser hosts connect the limited MVP. **Use synthetic data only.**
+This is not production readiness or independent security approval. The original
+demonstration commands below retain their inert behavior.
+
+Use Linux, Go 1.27.3, PostgreSQL 18.6 through the pinned Compose databases, and a
+browser supporting WebAuthn JSON conversion, module workers, BroadcastChannel,
+IndexedDB and a user-verifying passkey authenticator. The commands here are
+operator setup. Ordinary administrators, members and reviewers use browser forms.
+
+Prepare `.env` from `.env.example` without replacing existing configuration and set
+its source URL. Export that same HTTPS URL for this exact modified source in the
+operator shell, then run:
+
+```sh
+export ANONCE_SOURCE_URL=https://your-source-host.example/your-exact-source
+make container-secrets
+docker compose -f compose.yaml -f compose.browser.yaml up -d --wait identity-db submission-db
+make migrate-identity migrate-submission
+make browser-build
+./bin/browser-init .browser
+```
+
+The explicit overlay publishes database loopback ports `55431` and `55432` for the
+native hosts. Never expose them externally. The base infrastructure checks
+intentionally reject database publication; `make smoke` does not describe this
+overlay. Applications receive only their own runtime credentials, not migration
+or administrator passwords.
+
+Initialization creates a new owner-only directory and never replaces existing
+files. It prepares a local trust root, separate TLS keys/certificates,
+membership/publication/receipt keys, public cross-service trust files and one
+administrator invitation. Each command opens only its own `identity/` or
+`submission/` subdirectory and runtime database. Native processes share the
+operator's OS identity; this is not process-compromise containment or independent
+operation. These plaintext development signing files are not
+protected production custody. TLS leaves expire after 30 days.
+
+Import `.browser/local-root.crt` into the test browser's trusted certificate
+authorities through its certificate settings. Trust only this local test root.
+Do not disable certificate verification, browser sandboxing, CSP, user verification,
+Secure cookies or CSRF controls. Remove this test trust when finished.
+Run each host in its own terminal:
+
+```sh
+./bin/browser-identity -source-url "$ANONCE_SOURCE_URL"
+./bin/browser-submission -source-url "$ANONCE_SOURCE_URL"
+```
+
+Open `https://identity.localhost:8443/`. For the first administrator only, obtain
+the code from `.browser/identity/administrator-invitation` through the operator's
+private file viewer and enter it at registration. Services never print it. Database
+uniqueness prevents a second administrator claim. Members leave that field empty.
+
+Browser journey:
+
+- Register administrator, reviewer and member accounts with passkeys. Separate
+  browser profiles are useful for local role testing, not required for ordinary use.
+- The administrator creates and privately delivers a membership invitation. The
+  member sets up its encrypted key with two local passphrase entries, then verifies
+  membership by entering the invitation.
+- The administrator creates a draft with one question, reviewer account,
+  opening/closing/review-expiry times and the explicitly selected response limit of one.
+- The assigned reviewer refreshes and prepares its round key. The encrypted copy
+  stays only in that browser's IndexedDB. Do not clear it.
+- The administrator refreshes, confirms publication and shares the common response
+  link. After interrupted delivery, **Deliver signed publication** sends the same
+  signed bulletin without changing its keys or schedule.
+- The member opens the link, unlocks and authorizes in the identity popup, returns
+  to the anonymous page, completes the answer and explicitly submits. Keep the
+  anonymous page open while it verifies signed durable acceptance locally.
+- The reviewer refreshes, unlocks the round key and reads locally decrypted answers.
+  Identifying text can reveal its author.
+
+Passkey login is not vault unlocking. Lost passphrases or reviewer browser storage
+can permanently lose keys. There is no PRF, credential addition, recovery,
+account-linked receipt history or reviewer server backup. Issuance interruption
+can consume the one response without acceptance. Only an unchanged pending
+ciphertext can be retried while open. Signed acceptance is not a transparency proof.
+
+The browser command flags are `-listen`, `-origin`, `-peer-origin`, `-state`,
+`-database`, `-password-file`, `-runtime` and required `-source-url`. Listeners and
+database connections remain loopback; database URLs must select the correct
+runtime role/database without passwords. Credentials come from files, never URL
+arguments. No proxy headers are trusted or request/IP/SQL-parameter logs enabled.
+Protected signers, independent checkpoints, retention/restoration, distributed
+abuse controls and a supported-browser matrix remain unavailable.
 
 Build with `make build` (Go 1.27.3). Run each command in a separate terminal or
 supervisor. The separate offline `bin/client` is documented under
@@ -153,7 +243,7 @@ docker compose down --volumes
 ```
 
 This does not delete `.secrets`. Never use volume deletion as recovery for real data.
-Credential/protocol tables, product vault integration, encrypted backup/restore exercises, container scanning,
+Credential/membership tables, protocol verification, product vault integration, encrypted backup/restore exercises, container scanning,
 SBOMs, and production deployment remain Next work. Kubernetes/Helm stays optional.
 
 ### Local database migrations
@@ -211,6 +301,15 @@ table lock. Allow local downtime and sufficient disk space; the runner's existin
 timeouts still apply. Large-table or online upgrades have not been demonstrated.
 See PostgreSQL 18 [`ALTER TABLE` notes](https://www.postgresql.org/docs/18/sql-altertable.html#SQL-ALTERTABLE-NOTES)
 (consulted 2026-10-29).
+
+Submission version 2 creates the internal
+[submission record tables](database.md#implemented-submission-record-storage).
+Apply `make migrate-submission` before constructing that store. Existing version-1
+databases upgrade additively; no existing records are rewritten. The normal HTTP
+services still receive no runtime credential and accept no submissions.
+`make db-submission-record-test` uses a separate race-enabled `submission-record-test`
+image on disposable databases with one network/runtime secret at a time. Do not
+deploy the test image or treat a storage reference as a cryptographic receipt.
 
 ## Production separation
 

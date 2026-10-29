@@ -9,6 +9,40 @@ Status: design analysis, not a completed security assessment.
 
 ## Current controls and limits
 
+### Connected local browser MVP
+
+The [separate browser hosts](deployment.md#browser-mvp-local-startup) add verified
+WebAuthn ceremonies, protected sessions, CSRF checks, bounded authentication
+attempts/input, existing-worker member custody, owner-scoped encrypted backups,
+single-use invitations, authorized publication, blind-token quotas, anonymous HPKE
+answers, signed acceptance and local review. Earlier foundation-only statements
+below continue to describe the original demonstration commands.
+
+This is source composition, not independent approval. Exact-origin/window checks
+and omitted credentials constrain handoff, not global traffic correlation. The
+website distributor and local host remain trusted. Timing, identifying content and
+small cohorts can reveal members. Publication trust is operator-configured; no
+independent checkpoint detects split views.
+
+Signed acceptance attests committed exact ciphertext under a canonical token spend.
+It does not prove log inclusion or prevent privileged database rollback, lost
+storage or a compromised receipt signer. Reviewer read expiry does not recall
+plaintext/ciphertext or erase browser backups. Lost reviewer browser storage or
+passphrases is unrecoverable. New-device member restoration trusts service binding
+metadata; same-browser pins do not defeat malicious delivery or rollback.
+
+A member can submit a structurally valid envelope that the reviewer cannot
+decrypt. Reviewer pages reject that record individually and continue with later
+records. Worker closure, round expiry, hidden-page state, and owner replacement
+still stop the read. This does not authenticate answer contents or prevent
+identifying text.
+
+Rate counters are per process. Local signing files and round RSA keys stored in
+the identity database lack protected signer custody. Retention/restoration,
+externally anchored audit/transparency, recovery, revocation administration,
+incident handling and broad browser evidence remain incomplete. Use synthetic
+data only and never expose these local hosts publicly.
+
 These controls cover local development only. They do not establish the protocol
 properties described below.
 
@@ -51,11 +85,30 @@ properties described below.
   operator image with only one database network and migration credential. It
   explicitly assumes ownership, serializes application with a bounded session lock,
   and rejects unsupported histories. Runtime can read the boundary marker and has
-  explicit identity account/session/member-backup grants, never migration-state access. The runner
+  explicit identity account/session/member-backup and submission round/record grants,
+  never migration-state access. The runner
   has schema-owner authority; its SQL and image are
   trusted operator inputs. Version records are not tamper evidence or checksums.
   Password buffers are cleared where owned, but driver/runtime copies remain.
   Plaintext database TCP is local-only, with no hostile-host or production TLS claim.
+
+### Submission record storage
+
+- The [internal store](database.md#implemented-submission-record-storage) admits only
+  the separate submission runtime database. One append-only record atomically binds
+  each round-scoped spend digest to ciphertext. A unique constraint arbitrates
+  concurrent spending; only exact-payload retries return the original reference.
+  Runtime grants prevent record replacement/deletion and schedule/digest updates.
+- Shared round locks order acceptance against cancellation, with the database
+  clock checked after lock waits. Cancelled/closed rounds admit nothing new; stored
+  data is retained. Clock rollback, privileged SQL, compromised runtime code, and
+  old database restoration remain outside this package's protection.
+- Its trusted caller must verify tokens, derive canonical spend digests, validate
+  envelopes and common bulletins, and authorize provisioning/cancellation. The
+  store cannot prove ciphertext validity, anonymity, or quota compliance. No HTTP
+  path, reviewer retrieval, outbox, public receipt, or inclusion proof exists.
+  Internal precise timestamps need a reviewed retention/minimization policy.
+  Database/driver logging must not record parameters, results, or request addresses.
 
 ### Identity account storage
 
