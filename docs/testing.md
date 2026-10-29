@@ -15,7 +15,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make build` | All Go commands with Go 1.27.3 |
 | `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no native-package exclusions, including wrappers and signal handling. JS-only code is checked separately below |
 | `make lint` | Native and WASM entry-point vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
-| `make fuzz` | `FuzzConfig`, `FuzzContainerListen`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzMemberWASMSizes`, `FuzzMemberBrowserManifest`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
+| `make fuzz` | `FuzzMigrationAdmission`, `FuzzConfig`, `FuzzContainerListen`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzMemberWASMSizes`, `FuzzMemberBrowserManifest`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
 | `make vuln` | govulncheck, gosec, module verification/inventory, redacted current-file Gitleaks scan |
 | `make web-lint` | Build/start loopback submission with/without development flag; inert markup, headings/landmarks, fragment/description targets, links, CSS restrictions, asset hashes, headers, unavailable protocol/readiness, bounded shutdown |
 | `make wasm` | Go `js/wasm` public-request verifier; matching reviewed loader/notices, SHA-256 manifest, 8 MiB uncompressed size gate |
@@ -27,6 +27,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make container-config` | Validate the real Compose parser's normalized configuration, image pin, loopback publication, networks, secret scopes, volumes, resource bounds, and hardening; requires Docker Compose but not a daemon |
 | `make up`, `make smoke`, `make down` | Start/build/wait and check the demo stack, inspect the running stack, or stop without deleting database volumes; requires local Docker access |
 | `make container-test` | Opt-in fresh Compose project with actual app containers and PostgreSQL: liveness/unavailable readiness, live isolation/hardening, authenticated runtime access, denied escalation/DDL/default function access, explicit table grants, and cross-instance TCP rejection; disposable synthetic volumes only |
+| `make db-migration-test` | Container checks plus separate embedded Goose histories on real PostgreSQL: failed and repeated/concurrent application, owner/runtime grants, wrong-target rejection, invalid/future histories, and missing boundary marker; disposable synthetic volumes only |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -38,6 +39,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | Parser | Input/work bounds |
 | --- | --- |
 | Configuration | 8192 bytes before parsing; separate listen/source-URL limits |
+| Migration admission | `FuzzMigrationAdmission`: 1025-byte target and 65-byte credential caps; fixed service/hex admission only, no database or network work |
 | Container bind opt-in | `FuzzContainerListen`: 129-byte listen input cap and one Boolean; only native loopback or explicitly opted-in IPv4 unspecified binding |
 | Backup structure | Maximum backup size plus one byte; allocation-free parser, no Argon2id |
 | Member/reviewer payload | 49-byte input cap, 48-byte ASN.1 profile; no KDF work |
@@ -56,6 +58,7 @@ Review and license synthetic regression inputs before committing. Retain failure
 in the relevant package's `testdata/fuzz/<target>` directory:
 
 - `internal/service`: `FuzzConfig` and `FuzzContainerListen`.
+- `internal/dbmigrate`: `FuzzMigrationAdmission`, synthetic nonsecret admission only.
 - `internal/web`: `FuzzLookup`.
 - `internal/client/keystore`: `FuzzBackup`.
 - `internal/client/memberkey`: `FuzzMemberKeyPayload`.
@@ -95,6 +98,7 @@ profile-2 nonce prefix and library composition.
 | Area | Tests |
 | --- | --- |
 | Configuration | `TestConfig`, `TestConfigSourceURL`, `TestRunFailures`, `TestContainerNetwork`, `TestContainerNetworkFlag`, `FuzzContainerListen` |
+| Migration service/credential/command bounds, cancelled/concurrent calls, regular-file/symlink/FIFO rejection, separate embedded files, and bounded admission fuzzing | `TestMigrationAdmission`, `TestMigrationCancellation`, `TestMigrationCredentialFiles`, `TestMigrationFiles`, `FuzzMigrationAdmission` |
 | Fixed-target local liveness probe, exact bounded body/status, no redirect/credentials, response-header limit, cancellation, and unavailable targets | `TestProbe`, `TestProbeCancellationAndFailures` |
 | No-replace/distinct secret generation, existing-file preservation, directory/file permissions, malformed/missing/duplicate files, symlinks/FIFOs, engine version boundary, and unsafe normalized Compose model rejection | `scripts/test_containers.py`, included in `make policy-test` |
 | Routing and input isolation | `TestInfrastructureRoutes`, `TestInfrastructureMethods`, `TestUnavailableRoutesRespectServiceBoundary`, `TestInfrastructureDoesNotReadOrReflectRequestData`, `TestServeRejectsBodyBeforeContinue` |
@@ -199,6 +203,28 @@ The stack was exercised on Linux x86_64 with Engine 29.9.2 and Compose 5.6.1 on
 rootless/Podman support, application migrations, concurrent quota/spend transactions,
 encrypted backup restoration, OS-package vulnerability scanning, SBOMs, or the full
 account/vault/submission journey. Those remain required work.
+
+### Database migration checks
+
+`make db-migration-test` uses the same local Docker prerequisites and disposable
+stack as `make container-test`, including all infrastructure checks. It also builds
+the separate migration image and executes its actual Go/pgx/Goose runner against
+both PostgreSQL instances with only their respective migration credentials.
+
+`migration_checks` in `scripts/containers.py` checks failed migration without history
+advancement, simultaneous/repeated application, separate version tables, owner-created
+objects, runtime marker reads, denied runtime DML/DDL and ledger access, wrong-target
+rejection, future/duplicate/negative/unapplied histories, and a missing marker.
+No SQL privilege result is inferred from unit tests. `TestMigrationAdmission`,
+`TestMigrationCancellation`, `TestMigrationCredentialFiles`, and `TestMigrationFiles`
+run under native race coverage; bounded admission fuzzing is included in `make fuzz`.
+`MigrationOperatorTests` checks command scope and failure cleanup without Docker;
+it does not establish live database or network isolation.
+
+On 2026-10-28, `make db-migration-test` passed on Linux x86_64 with PostgreSQL 18.6,
+Engine 29.9.2, and Compose 5.6.1. This is not application persistence, quota/spend
+concurrency, crash-at-commit testing, encrypted restoration, or the full `db-test`.
+Those remain unavailable. Missing tools or failed assertions fail rather than skip.
 
 ### WASM verifier checks
 

@@ -10,6 +10,14 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Separate embedded identity/submission Goose SQL migration histories and a
+  development-only pgx operator runner, with owner-created boundary markers,
+  runtime read-only marker access, bounded session locking, and fail-closed history
+  checks. Explicit `make migrate-identity` and `make migrate-submission` use isolated
+  one-shot containers with only the selected migration credential. Opt-in
+  `make db-migration-test` exercises real PostgreSQL application, repeated/concurrent
+  runs, failure, history rejection, ownership, and grants. No account/vault/protocol
+  tables, HTTP persistence, encrypted restoration, or product readiness are added.
 - Local Docker Compose stack for non-root Go HTTP services and independent
   PostgreSQL 18.6 instances, with pinned images, separate credentials/volumes/networks,
   owner/migration/runtime bootstrap roles, loopback host publication, bounded
@@ -17,7 +25,7 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
   Explicit `-container-network` enables container binding without changing native
   defaults. Add no-replace secret preparation, configuration/lifecycle/smoke targets,
   and opt-in real-container SQL privilege/isolation checks. Application persistence,
-  migrations, product readiness, encrypted database recovery, image scanning, and
+  account/vault/protocol tables, product readiness, encrypted database recovery, image scanning, and
   production deployment remain unavailable.
 - Development member-worker `createWithPassphrase`, `backupWithPassphrase`, and
   `unlockWithPassphrase` for strict, bounded UTF-8 text over existing confirmed

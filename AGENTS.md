@@ -65,8 +65,11 @@ Distinguish implemented from planned behavior.
   non-root HTTP containers and separate PostgreSQL instances/volumes/credentials;
   empty-volume role/schema bootstrap, loopback host publication, liveness probes,
   secret preparation, and opt-in real-container checks; no application database
-  integration, migrations, encrypted database restoration, image scan, or product readiness.
-- Planned runtime layout also includes `migrations/`.
+  integration, encrypted database restoration, image scan, or product readiness.
+- `migrations/`, `internal/dbmigrate`, `cmd/migrate`: separate embedded Goose SQL
+  histories and an operator-only pgx runner for local databases, with owner-created
+  boundary markers, explicit migration targets, and opt-in real-PostgreSQL checks;
+  no account/vault/protocol tables or HTTP persistence.
 
 ## Product direction
 
@@ -149,6 +152,9 @@ make up              # build/start/wait and verify the local demo stack
 make smoke           # inspect a running stack and its HTTP/database boundaries
 make down            # stop the demo stack without deleting database volumes
 make container-test  # isolated real-container/PostgreSQL checks; disposable test data
+make migrate-identity # explicitly apply local identity database migrations
+make migrate-submission # explicitly apply local submission database migrations
+make db-migration-test # isolated real-PostgreSQL migration/version/grant checks
 ```
 
 See [testing](docs/testing.md) for required full database, browser, container-scan,

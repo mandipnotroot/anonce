@@ -153,8 +153,39 @@ docker compose down --volumes
 ```
 
 This does not delete `.secrets`. Never use volume deletion as recovery for real data.
-Application migrations, encrypted backup/restore exercises, container scanning,
+Account/vault/protocol tables, encrypted backup/restore exercises, container scanning,
 SBOMs, and production deployment remain Next work. Kubernetes/Helm stays optional.
+
+### Local database migrations
+
+After `make up`, explicitly apply each independent history:
+
+```sh
+make migrate-identity
+make migrate-submission
+```
+
+These commands build the Dockerfile's separate `migration` target, then run a
+non-root, read-only, resource-bounded, logging-disabled one-shot operator container.
+It attaches only to the selected internal database network, publishes no ports,
+and mounts only that database's migration password read-only. Neither the admin nor
+runtime credential is supplied. The normal HTTP image and services receive no
+migration binary, module notices, or database secrets. Nothing migrates at HTTP
+startup; `/readyz` stays `503`.
+
+The binary accepts only a fixed service name, reads exactly 64 lowercase hexadecimal
+credential bytes from `/run/secrets/migration_password`, and rejects symlinks and
+nonregular files. It has no arbitrary connection string or SQL-directory argument.
+Failure returns a fixed secret-free diagnostic; do not enable driver/SQL logging to
+investigate it. Inspect the selected database's schema/history as an authorized
+operator instead. A timeout removes only the invocation's randomly named operator
+container. Forced termination or daemon failure can leave it for manual inspection.
+
+The [migration contract](database.md#local-migration-runner) defines ownership,
+locking, supported versions, timeouts, and immutable SQL. Repeated runs are safe for
+an unchanged valid history; corruption or unsupported versions fail rather than
+repairing, downgrading, or deleting data. Use `make db-migration-test` for disposable
+[real-PostgreSQL checks](testing.md#database-migration-checks), never normal volumes.
 
 ## Production separation
 

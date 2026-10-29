@@ -6,7 +6,7 @@ GO ?= go
 export GOTOOLCHAIN := go1.27.3
 FUZZTIME ?= 15s
 
-.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test member-browser-test container-secrets container-config up down smoke container-test
+.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test member-browser-test container-secrets container-config up down smoke container-test migrate-identity migrate-submission db-migration-test
 help:
 	@echo 'setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check'
 	@echo 'build test lint fuzz vuln web-lint'
@@ -14,6 +14,7 @@ help:
 	@echo 'member-wasm member-wasm-test'
 	@echo 'member-browser-test (requires MEMBER_BROWSER; see docs/testing.md)'
 	@echo 'container-secrets container-config up down smoke container-test (see docs/deployment.md)'
+	@echo 'migrate-identity migrate-submission db-migration-test (local PostgreSQL only)'
 
 setup:
 	git config --local core.hooksPath .githooks
@@ -90,6 +91,15 @@ smoke:
 container-test:
 	python3 scripts/containers.py test
 
+migrate-identity:
+	python3 scripts/containers.py migrate-identity
+
+migrate-submission:
+	python3 scripts/containers.py migrate-submission
+
+db-migration-test:
+	python3 scripts/containers.py migration-test
+
 test:
 	mkdir -p coverage
 	$(GO) test -race -coverprofile=coverage/out ./...
@@ -98,13 +108,14 @@ test:
 lint:
 	$(GO) vet ./...
 	GOOS=js GOARCH=wasm $(GO) vet ./cmd/wasm ./internal/clientwasm ./cmd/memberwasm ./internal/memberwasm
-	$(GO) run mvdan.cc/gofumpt@v0.12.0 -d cmd internal web
-	test -z "$$($(GO) run mvdan.cc/gofumpt@v0.12.0 -l cmd internal web)"
+	$(GO) run mvdan.cc/gofumpt@v0.12.0 -d cmd internal migrations web
+	test -z "$$($(GO) run mvdan.cc/gofumpt@v0.12.0 -l cmd internal migrations web)"
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run
 	$(GO) mod tidy -diff
 	$(GO) mod verify
 
 fuzz:
+	$(GO) test ./internal/dbmigrate -run='^$$' -fuzz='^FuzzMigrationAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/service -run='^$$' -fuzz='^FuzzConfig$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/service -run='^$$' -fuzz='^FuzzContainerListen$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/web -run='^$$' -fuzz='^FuzzLookup$$' -fuzztime=$(FUZZTIME) -parallel=2

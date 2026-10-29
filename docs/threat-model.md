@@ -47,6 +47,14 @@ properties described below.
   are not independent operators or proof of anonymity. The stack has no TLS,
   production authentication, encrypted database backup/restore evidence, container
   vulnerability scan, or SBOM. It must not receive real data.
+- The [local migration runner](database.md#local-migration-runner) is a separate
+  operator image with only one database network and migration credential. It
+  explicitly assumes ownership, serializes application with a bounded session lock,
+  and rejects unsupported histories. Runtime can read only the boundary marker,
+  not migration state. The runner has schema-owner authority; its SQL and image are
+  trusted operator inputs. Version records are not tamper evidence or checksums.
+  Password buffers are cleared where owned, but driver/runtime copies remain.
+  Plaintext database TCP is local-only, with no hostile-host or production TLS claim.
 
 ### Device keys and backups
 

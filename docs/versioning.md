@@ -28,6 +28,12 @@ must use `/vN` module/import paths for breaking v2+ releases, even in a monorepo
 are unreleased, not stable wire profiles or a product. Future crypto formats need
 explicit breaking review.
 
+The opt-in [local migration commands](deployment.md#local-database-migrations) are
+additive development interfaces requiring `semver:minor` review. The independent
+histories support version 0 through 1 and reject unsupported state; published SQL
+is immutable. This adds boundary markers, not account/vault/protocol compatibility.
+Existing HTTP, CLI key tooling, WASM, and cryptographic profiles are unchanged.
+
 The [browser account/vault direction](key-management.md#browser-account-vault)
 is a documentation requirement, not a new supported API or cryptographic profile.
 Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional

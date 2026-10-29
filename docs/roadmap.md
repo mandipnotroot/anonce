@@ -40,8 +40,11 @@ Available foundations:
   for non-root Go services and independent PostgreSQL 18.6 instances, with separate
   volumes/credentials, owner/migration/runtime bootstrap roles, loopback publication,
   liveness checks, and opt-in real-container privilege/isolation checks. Application
-  persistence, migrations, encrypted restoration, image scanning, and product readiness
-  remain unavailable.
+  persistence, encrypted restoration, image scanning, and product readiness
+  remain unavailable. Separate embedded Goose histories now have an explicit
+  owner-scoped [local migration runner](database.md#local-migration-runner) and
+  real-PostgreSQL version/grant checks. Only boundary markers are migrated, not
+  account/vault/protocol tables or HTTP persistence.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).
