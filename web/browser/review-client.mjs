@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Anonce Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { byteView } from "/assets/bytes.mjs";
+import { byteView } from "./bytes.mjs";
 
 let active = null;
 export class ReviewWorker {
@@ -32,6 +32,7 @@ export class ReviewWorker {
     } catch { this.close(); }
   }
   get ready() { return this.#ready; }
+  get closed() { return !this.#live(); }
   #live() { if (this.#closed) return false; const now=Date.now(),mono=performance.now(),wall=now-this.#born,elapsed=mono-this.#monotonic; if (!Number.isFinite(wall) || !Number.isFinite(elapsed) || now<this.#lastWall || mono<this.#lastMono || wall >= 300000 || elapsed >= 300000 || this.#secret && document.visibilityState !== "visible") { this.close(); return false; } this.#lastWall=now;this.#lastMono=mono;return true; }
   call(method, ...inputs) {
     if (!this.#live() || !this.#started || this.#pending || inputs.length > 4 || typeof method !== "string" || inputs.some((v) => !byteView(v, 1, 8192))) return Promise.resolve(null);

@@ -31,6 +31,11 @@ plaintext/ciphertext or erase browser backups. Lost reviewer browser storage or
 passphrases is unrecoverable. New-device member restoration trusts service binding
 metadata; same-browser pins do not defeat malicious delivery or rollback.
 
+A member can submit a structurally valid envelope that the reviewer cannot
+decrypt. Reviewer pages reject that record individually and continue with later
+records. Worker closure, hidden-page state, and owner replacement still stop the
+read. This does not authenticate answer contents or prevent identifying text.
+
 Rate counters are per process. Local signing files and round RSA keys stored in
 the identity database lack protected signer custody. Retention/restoration,
 externally anchored audit/transparency, recovery, revocation administration,

@@ -17,6 +17,7 @@ help:
 	@echo 'migrate-identity migrate-submission db-migration-test db-account-test db-member-backup-test (local PostgreSQL only)'
 	@echo 'db-submission-record-test (atomic ciphertext persistence; local PostgreSQL only)'
 	@echo 'browser-build browser-test (opt-in connected browser MVP; see docs/deployment.md and docs/testing.md)'
+	@echo 'browser-unit-test (reviewer record isolation and cancellation checks)'
 
 setup:
 	git config --local core.hooksPath .githooks
@@ -58,7 +59,10 @@ labels:
 build:
 	$(GO) build -trimpath -o bin/ ./cmd/...
 
-.PHONY: browser-build browser-test browser-profile-test
+.PHONY: browser-build browser-test browser-profile-test browser-unit-test
+browser-unit-test:
+	node --test scripts/review_records_test.mjs scripts/review_worker_test.mjs
+
 browser-build: build member-wasm
 	python3 scripts/build_wasm.py --go '$(GO)' --component review
 	python3 scripts/browser_notices.py
@@ -179,4 +183,4 @@ vuln:
 	$(GO) list -m all
 	$(GO) run github.com/zricethezav/gitleaks/v8@v8.30.1 dir --redact --no-banner .
 
-check: policy-test attribution commitlint reuse docs-lint docs-links build test lint fuzz vuln web-lint wasm-test member-wasm-test
+check: policy-test attribution commitlint reuse docs-lint docs-links build test lint fuzz vuln web-lint wasm-test member-wasm-test browser-unit-test

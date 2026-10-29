@@ -354,6 +354,11 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Browser reviewer reads reject malformed or undecryptable answers individually
+  and continue with later records. Lock, visibility loss, and owner replacement
+  still stop reading without publishing late plaintext; owned buffers are cleared.
+- Policy, Pages, and nightly CI explicitly install and verify ExifTool before
+  inspecting asset metadata, keeping missing inspection a failure.
 - Pages CI now installs the pinned development Node.js runtime before running
   WASM checks instead of relying on the runner's preinstalled version.
 - Backup inspection now reports short public-key writes as failures, rather than

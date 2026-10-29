@@ -3,6 +3,7 @@
 
 import { MemberWorkerSession, lockMemberWorkers } from "/runtime/member/member-client.mjs";
 import { ReviewWorker } from "./review-client.mjs";
+import { readReviewRecords } from "./review-records.mjs";
 import { $, api, decode, encode, handle, localRecord, say, textBytes } from "./common.mjs";
 
 let config, account, member = null, unlocked = false, backup = null, review = null, incoming = null, rounds = [], authentication = null;
@@ -78,20 +79,22 @@ function renderRounds() {
       const submit = document.createElement("button"); submit.textContent = r.bulletin ? "Unlock and read encrypted answers" : "Prepare round reviewer key"; form.append(submit);
       const output = document.createElement("div"); output.className = "plaintext";
       form.onsubmit = handle(async () => {
-        const p = pass.value, c = confirmation?.value; form.reset(); review?.close(); review = new ReviewWorker(true); if (!await review.ready) throw new Error("worker unavailable");
+        const p = pass.value, c = confirmation?.value; form.reset(); review?.close(); const current = new ReviewWorker(true); review = current; if (!await current.ready) throw new Error("worker unavailable");
         const key = `review:${account.name}:${r.id}`; let stored = await localRecord(key); const password = textBytes(p);
         try {
           if (!r.bulletin) {
-            if (!stored) { const confirm = textBytes(c); let generated; try { const operation = review.call("reviewerCreate",password,confirm,decode(r.id,16)); password.fill(0); confirm.fill(0); generated = await operation; } finally { confirm.fill(0); } if (!generated) throw new Error("setup failed"); stored = {public_key:encode(generated.publicKey),backup:encode(generated.backup)}; await localRecord(key,stored); }
-            await api("/api/browser/reviewer",{round:r.id,public_key:stored.public_key}); review.close(); await refresh(); say("Round reviewer key prepared. Its encrypted copy is only in this browser. Do not clear browser storage; no server backup or recovery exists.");
+            if (!stored) { const confirm = textBytes(c); let generated; try { const operation = current.call("reviewerCreate",password,confirm,decode(r.id,16)); password.fill(0); confirm.fill(0); generated = await operation; } finally { confirm.fill(0); } if (!generated) throw new Error("setup failed"); stored = {public_key:encode(generated.publicKey),backup:encode(generated.backup)}; await localRecord(key,stored); }
+            await api("/api/browser/reviewer",{round:r.id,public_key:stored.public_key}); current.close(); await refresh(); say("Round reviewer key prepared. Its encrypted copy is only in this browser. Do not clear browser storage; no server backup or recovery exists.");
           } else {
-            if (!stored) throw new Error("review key is unavailable in this browser"); const raw = decode(r.bulletin,564,1587); const operation = review.call("reviewerUnlock",password,decode(stored.backup,108),raw,decode(config.bulletin_key,32)); password.fill(0); const unlocked = await operation; if (!unlocked) throw new Error("unlock failed");
-            output.replaceChildren(); let cursor = encode(new Uint8Array(16));
-            while (true) { const challenge = await api("/api/browser/review/challenge",{round:r.id,cursor},config.submission_origin); const proof = await review.call("proof",decode(challenge.challenge,81)); if (!proof) throw new Error("locked"); let page; try { page = await api("/api/browser/review/read",{round:r.id,proof:encode(proof.bytes)},config.submission_origin); } finally { proof.bytes.fill(0); }
-              for (const record of page.records ?? []) { const result = await review.call("decrypt",decode(record.envelope,4145)); if (!result) throw new Error("invalid ciphertext or locked key"); const text = new TextDecoder("utf-8",{fatal:true}).decode(result.bytes); result.bytes.fill(0); const paragraph = document.createElement("p"); paragraph.textContent = text; output.append(paragraph); }
+            if (!stored) throw new Error("review key is unavailable in this browser"); const raw = decode(r.bulletin,564,1587); const operation = current.call("reviewerUnlock",password,decode(stored.backup,108),raw,decode(config.bulletin_key,32)); password.fill(0); const unlocked = await operation; if (!unlocked) throw new Error("unlock failed");
+            const isActive = () => review === current && document.visibilityState === "visible" && !current.closed;
+            output.replaceChildren(); let cursor = encode(new Uint8Array(16)), rejected = 0;
+            while (true) { if (!isActive()) throw new Error("locked"); const challenge = await api("/api/browser/review/challenge",{round:r.id,cursor},config.submission_origin); const proof = await current.call("proof",decode(challenge.challenge,81)); if (!proof) throw new Error("locked"); let page; try { page = await api("/api/browser/review/read",{round:r.id,proof:encode(proof.bytes)},config.submission_origin); } finally { proof.bytes.fill(0); }
+              rejected += await readReviewRecords(current, page.records ?? [], isActive, (text) => { const paragraph = document.createElement("p"); paragraph.textContent = text ?? "Encrypted answer unavailable: this record could not be decrypted."; output.append(paragraph); });
               if (!page.records || page.records.length < 50) break; cursor = page.cursor;
             }
-            say("Answers decrypted locally. Text may identify its author. Results clear when this page is hidden or locked.");
+            if (!isActive()) throw new Error("locked");
+            say(`Answers decrypted locally.${rejected ? ` ${rejected} encrypted answer(s) could not be decrypted; other records were still read.` : ""} Text may identify its author. Results clear when this page is hidden or locked.`);
           }
         } finally { password.fill(0); }
       }); card.append(form,output);

@@ -48,6 +48,16 @@ initialization. `TestBoundedTLSMetadata` checks that connection limiting preserv
 the TLS metadata required by the HTTP gate. Embedded page tests check strict
 runtime manifests, entry-asset integrity and origin-specific content policies.
 
+`make browser-unit-test`, also included in `make check` and runtime CI, checks that
+one malformed or undecryptable answer does not suppress later records or pages.
+It checks plaintext-buffer cleanup and stops without publishing late results when
+the reviewer owner closes, is replaced, or becomes hidden. These Node checks do
+not replace the real-browser journey.
+
+The journey also passes a corrupted envelope followed by an actual stored answer
+through the shared reader and real reviewer worker. It requires a rejection
+placeholder followed by the correctly decrypted answer.
+
 See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 The original foundation targets below do not test the connected browser protocol.
 
