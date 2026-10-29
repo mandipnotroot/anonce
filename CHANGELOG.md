@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Submission version-2 round and append-only record tables with an internal
+  runtime-role store for atomic spend/ciphertext persistence, exact-payload retries,
+  immutable round bindings, database-clock windows, and ordered cancellation.
+  Added native admission/fuzz tests and an opt-in `make db-submission-record-test`
+  for real PostgreSQL races, post-lock admission, rollback, grants, and isolation.
+  No token verification, HTTP submission, public receipt, or browser workflow is added.
 - Test-only browser encrypted-backup restoration with a required expected setup key,
   local passphrase input, bounded pre-startup snapshots, and no replacement-key
   fallback. Failed unlocking preserves the backup; visibility loss clears fields

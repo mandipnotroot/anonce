@@ -5,8 +5,11 @@
 
 Audience: protocol implementers and security reviewers.
 
-Status: design only, not a frozen wire format. All protocol APIs are unimplemented
-and must reject requests rather than simulate success.
+Status: design only, not a frozen wire format. An internal
+[submission record store](database.md#implemented-submission-record-storage) provides
+atomic persistence and exact-ciphertext retries for already verified inputs, not
+protocol verification. All protocol APIs remain unimplemented and must reject
+requests rather than simulate success.
 
 ## Enrollment and authentication
 

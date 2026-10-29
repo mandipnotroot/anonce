@@ -229,6 +229,13 @@ the existing opaque-byte methods remain unchanged.
 
 ## Encryption and public proofs
 
+The internal [submission record store](database.md#implemented-submission-record-storage)
+adds no cryptographic primitive or wire profile. Its caller must verify tokens and
+derive canonical spend digests before storage. Byte-identical ciphertext comparison
+binds retries without a new public hash construction. Storage references and
+timestamps are not signed receipts, commitments, or inclusion proofs. The 64 KiB
+storage ceiling does not admit an HPKE encoding or replace envelope validation.
+
 - HPKE base mode avoids identifying sender keys; token verification authorizes submission.
 - Bind protocol version, round ID, bulletin/form digest, and purpose through the
   reviewed HPKE context/authenticated-data contract. No custom KEM combiner or signing scheme.

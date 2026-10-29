@@ -7,7 +7,7 @@ Audience: maintainers, redistributors, and license reviewers.
 
 Accessed: 2026-10-26. Proposed versions below are observations, not a transitive
 license or vulnerability audit. HTTP commands use only the standard library;
-the shared device-backup, account-store, and separate migration packages import the admitted modules below. No runtime
+the shared device-backup, identity/submission stores, and separate migration packages import the admitted modules below. No runtime
 dependencies or assets are vendored. Recheck artifacts, hashes, licenses, and
 advisories before further imports.
 
@@ -69,7 +69,8 @@ may reject this algorithm; there is no algorithm fallback or FIPS-validation cla
 ### Database migration modules
 
 Admitted on 2026-10-28 for the separate local operator runner and internal identity
-account store. The latter uses pgx/pgxpool, not Goose or the SQL adapter. HTTP services,
+account store, also used by the internal submission record store from 2026-10-29.
+The stores use pgx/pgxpool, not Goose or the SQL adapter. HTTP services,
 device cryptography, and WASM import none of these modules. The native driver and
 Goose Provider avoid custom PostgreSQL wire handling and migration parsing. Exact
 direct/transitive pins and checksums are in `go.mod` and `go.sum`.
@@ -104,6 +105,11 @@ The `account-test` Docker target is development-only and retains the existing Go
 builder image, including its upstream notices, to run a compiled race-enabled
 PostgreSQL test binary. It is not the scratch application image or a release asset.
 No new module version or product dependency is introduced.
+
+The `submission-record-test` target uses the same builder and admitted pgx graph
+for race-enabled runtime-role storage checks. Its test binary links no additional
+module or cryptographic package. Like the account/backup test images, it is not an
+application or release asset. Original builder and module notices remain unchanged.
 
 ### WASM runtime support
 

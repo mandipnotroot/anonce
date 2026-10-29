@@ -36,6 +36,13 @@ See the [user flow](ui-design.md#account-and-review-workflow) and
 
 Available foundations:
 
+- **Submission persistence:** separate submission version-2 round/record tables and
+  an [internal atomic store](database.md#implemented-submission-record-storage) with
+  unique round/spend binding, immutable ciphertext, exact-payload retries, and
+  database-clock admission serialized with cancellation. The opt-in
+  `make db-submission-record-test` checks real runtime-role races, lock waits,
+  rollback, constraints, and service isolation. Token/envelope verification, log
+  outbox, public receipts, reviewer retrieval, and HTTP integration remain unavailable.
 - **Container infrastructure:** [local Compose stack](deployment.md#container-stack)
   for non-root Go services and independent PostgreSQL 18.6 instances, with separate
   volumes/credentials, owner/migration/runtime bootstrap roles, loopback publication,
@@ -50,7 +57,7 @@ Available foundations:
   [member-backup slot](database.md#local-member-backup-storage-contract) with bounded
   encrypted envelopes, fixed public binding, revision-checked updates/deletion,
   retained tombstones, and disable serialization. Credentials, product vault access,
-  protocol tables, and HTTP persistence remain unavailable.
+  protocol verification, and HTTP persistence remain unavailable.
   Internal session-scoped backup methods now derive the owner from a live session,
   recheck expiry after lock waits, and serialize with revocation/disable. Mutations
   require authentication admission within five minutes. Caller-verified

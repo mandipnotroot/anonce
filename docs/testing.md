@@ -30,6 +30,7 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
 | `make db-migration-test` | Container checks plus separate embedded Goose histories on real PostgreSQL: failed and repeated/concurrent application, owner/runtime grants, wrong-target rejection, invalid/future histories, and missing boundary marker; disposable synthetic volumes only |
 | `make db-account-test` | Migration/container checks plus race-enabled runtime-role account/session persistence, digest-only storage, expiry/cleanup, per-account session limits and concurrent admission, cross-account revocation isolation, concurrent disable, cancellation, SQL constraints/grants, and submission-store rejection |
 | `make db-member-backup-test` | Account/migration/container checks plus race-enabled runtime-role member-backup persistence, owner scoping, revision/binding conflicts, tombstones, concurrent writes/disable, cancellation/rollback, constraints/grants, and submission-store rejection |
+| `make db-submission-record-test` | Migration/container checks plus race-enabled runtime-role atomic submission records, cross-pool duplicate spends, exact-payload retries, round admission/cancellation, post-lock expiry, rollback, constraints/grants, and identity-store rejection; no token verification or HTTP submission |
 
 - Signal handling also requires manual execution checks; coverage is not lifecycle evidence.
 - `.gitleaks.toml` excludes only Git internals and disposable tool/build outputs.
@@ -37,6 +38,11 @@ See [commands](../AGENTS.md#commands) and [setup](../CONTRIBUTING.md).
   See [dependencies](dependencies.md) for device-backup modules and pins/admission.
 
 ### Parser fuzzing and fixtures
+
+`FuzzSubmissionAdmission` bounds round input to 17 bytes, bulletin/spend digests to
+33 bytes, and ciphertext to 65537 bytes. It checks exact admission, unchanged inputs,
+and fail-closed storage without database or cryptographic work. It runs in `make fuzz`;
+regressions belong in `internal/submission/records/testdata/fuzz/FuzzSubmissionAdmission`.
 
 `make fuzz` also runs `FuzzAccountToken`, bounded to 33 raw bytes, checking exact
 32-byte admission and SHA-256 composition without database/network work. Synthetic
@@ -110,6 +116,7 @@ profile-2 nonce prefix and library composition.
 
 | Area | Tests |
 | --- | --- |
+| Submission storage bounds, schedule precision/order, nil/zero-value failure, cancellation, unchanged inputs, and bounded fuzzing | `TestSubmissionAdmission`, `TestSubmissionUnavailableAndCancellation`, `FuzzSubmissionAdmission` |
 | Configuration | `TestConfig`, `TestConfigSourceURL`, `TestRunFailures`, `TestContainerNetwork`, `TestContainerNetworkFlag`, `FuzzContainerListen` |
 | Migration service/credential/command bounds, cancelled/concurrent calls, regular-file/symlink/FIFO rejection, separate embedded files, and bounded admission fuzzing | `TestMigrationAdmission`, `TestMigrationCancellation`, `TestMigrationCredentialFiles`, `TestMigrationFiles`, `FuzzMigrationAdmission` |
 | Account lifetime/token/cleanup admission, zero-value failure, concurrent cancelled calls, digest composition and unchanged inputs | `TestAccountAdmission`, `TestAccountUnavailableAndCancellation`, `TestAccountTokenDigest`, `FuzzAccountToken`, `FuzzAccountSessionAdmission` |
@@ -435,6 +442,39 @@ session selectors, rotation, all-sibling/selected-sibling revocation,
 bearer-derived sign-out/account disabling, authentication-age admission,
 cancellation, and all named runtime-role race checks above. No authentication
 ceremony was exercised.
+
+### Submission record storage checks
+
+`make db-submission-record-test` provisions disposable real PostgreSQL instances,
+checks bootstrap/migrations, and runs `TestPostgresSubmissionRecords` as the runtime
+role against each boundary. Missing configuration fails rather than skips. It uses
+only synthetic ciphertext stand-ins and random test IDs, never real answers or tokens.
+
+Named cases cover:
+
+- `persistence-and-retries`: cross-pool persistence, unchanged bytes, identical
+  retries, changed-payload rejection, distinct spends, and independent round scopes.
+- `concurrent-spending`: 24 cross-pool contenders with three payloads, exactly one
+  stored record, shared references for identical contenders, no replacement.
+- `constraints-and-grants`: SQL size/schedule constraints and denied runtime record
+  changes/deletion, policy replacement, and schema ownership.
+- `round-admission`: unknown/bulletin-mismatched, unopened, closed, and cancelled
+  rounds, immutable provisioning, cancellation retaining accepted records.
+- `post-lock-window-and-cancellation`: real row-lock waits followed by closure,
+  committed cancellation, and context cancellation before any spend is stored.
+- `uncommitted-conflict`: an initially invisible competing insert becomes observable
+  after its commit, returning its original reference through a fresh snapshot.
+- `cancellation-order-and-rollback`: cancellation waits for admitted acceptance;
+  cancelling a queued cancellation leaves the round open and its records unchanged.
+- `round-provisioning-rollback`: cancelled uniqueness waits cannot later create
+  a round after the conflicting transaction rolls back.
+- `cancelled-insert-rollback`: cancelled uniqueness waits and rollback consume no
+  spend; the original input can subsequently be accepted.
+
+Migration checks also force a version-2 table conflict, verifying round/table and
+history rollback before repeated/concurrent upgrades. These tests do not verify
+tokens, ciphertext validity, quotas, browser submission, receipts, outbox recovery,
+or encrypted database restoration. Full `db-test` remains unavailable.
 
 ### WASM verifier checks
 

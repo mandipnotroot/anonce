@@ -100,7 +100,7 @@ func checkHistory(ctx context.Context, conn *pgx.Conn, side string) error {
 	if !exists {
 		return nil
 	}
-	latest := int64(1)
+	latest := int64(2)
 	if side == "identity" {
 		latest = 4
 	}

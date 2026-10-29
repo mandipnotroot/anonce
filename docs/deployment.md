@@ -153,7 +153,7 @@ docker compose down --volumes
 ```
 
 This does not delete `.secrets`. Never use volume deletion as recovery for real data.
-Credential/protocol tables, product vault integration, encrypted backup/restore exercises, container scanning,
+Credential/membership tables, protocol verification, product vault integration, encrypted backup/restore exercises, container scanning,
 SBOMs, and production deployment remain Next work. Kubernetes/Helm stays optional.
 
 ### Local database migrations
@@ -211,6 +211,15 @@ table lock. Allow local downtime and sufficient disk space; the runner's existin
 timeouts still apply. Large-table or online upgrades have not been demonstrated.
 See PostgreSQL 18 [`ALTER TABLE` notes](https://www.postgresql.org/docs/18/sql-altertable.html#SQL-ALTERTABLE-NOTES)
 (consulted 2026-10-29).
+
+Submission version 2 creates the internal
+[submission record tables](database.md#implemented-submission-record-storage).
+Apply `make migrate-submission` before constructing that store. Existing version-1
+databases upgrade additively; no existing records are rewritten. The normal HTTP
+services still receive no runtime credential and accept no submissions.
+`make db-submission-record-test` uses a separate race-enabled `submission-record-test`
+image on disposable databases with one network/runtime secret at a time. Do not
+deploy the test image or treat a storage reference as a cryptographic receipt.
 
 ## Production separation
 

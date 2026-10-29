@@ -73,7 +73,8 @@ Distinguish implemented from planned behavior.
   boundary markers, explicit migration targets, and opt-in real-PostgreSQL checks;
   identity version 2 adds internal account/session persistence and version 3 adds
   an encrypted member-backup slot; version 4 adds independent non-secret session
-  selectors. No credentials, protocol tables or HTTP persistence.
+  selectors. Submission version 2 adds internal round/spend/ciphertext tables.
+  No credentials, protocol verification, or HTTP persistence.
 - `internal/identity/accounts`: identity runtime-role account/session store, digest-only
   random tokens, absolute expiry, individual/all-session revocation, transactional
   disable, token rotation after caller-verified reauthentication without extending
@@ -87,6 +88,10 @@ Distinguish implemented from planned behavior.
   deletion tombstones, and session-derived access serialized with revocation/disable;
   fixed recent-authentication admission for session-scoped mutations;
   no authentication ceremony, enrollment, browser/API integration, PRF, or recovery.
+- `internal/submission/records`: internal submission-runtime round admission and
+  atomic spend/ciphertext persistence with payload-bound retries, immutable records,
+  database-clock windows, and cancellation ordering; submission migration version 2;
+  no token/envelope verification, public receipt, reviewer retrieval, or HTTP integration.
 
 ## Product direction
 
@@ -174,6 +179,7 @@ make migrate-submission # explicitly apply local submission database migrations
 make db-migration-test # isolated real-PostgreSQL migration/version/grant checks
 make db-account-test   # real runtime-role account/session race, expiry, grant checks
 make db-member-backup-test # real runtime-role member-backup scope, revision, grant checks
+make db-submission-record-test # real runtime-role spend, retry, round, rollback, grant checks
 ```
 
 See [testing](docs/testing.md) for required full database, browser, container-scan,

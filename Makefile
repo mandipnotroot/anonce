@@ -6,7 +6,7 @@ GO ?= go
 export GOTOOLCHAIN := go1.27.3
 FUZZTIME ?= 15s
 
-.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test member-browser-test container-secrets container-config up down smoke container-test migrate-identity migrate-submission db-migration-test db-account-test db-member-backup-test
+.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test member-browser-test container-secrets container-config up down smoke container-test migrate-identity migrate-submission db-migration-test db-account-test db-member-backup-test db-submission-record-test
 help:
 	@echo 'setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check'
 	@echo 'build test lint fuzz vuln web-lint'
@@ -15,6 +15,7 @@ help:
 	@echo 'member-browser-test (requires MEMBER_BROWSER; see docs/testing.md)'
 	@echo 'container-secrets container-config up down smoke container-test (see docs/deployment.md)'
 	@echo 'migrate-identity migrate-submission db-migration-test db-account-test db-member-backup-test (local PostgreSQL only)'
+	@echo 'db-submission-record-test (atomic ciphertext persistence; local PostgreSQL only)'
 
 setup:
 	git config --local core.hooksPath .githooks
@@ -107,6 +108,9 @@ db-account-test:
 db-member-backup-test:
 	python3 scripts/containers.py member-backup-test
 
+db-submission-record-test:
+	python3 scripts/containers.py submission-record-test
+
 test:
 	mkdir -p coverage
 	$(GO) test -race -coverprofile=coverage/out ./...
@@ -122,6 +126,7 @@ lint:
 	$(GO) mod verify
 
 fuzz:
+	$(GO) test ./internal/submission/records -run='^$$' -fuzz='^FuzzSubmissionAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/identity/accounts -run='^$$' -fuzz='^FuzzSessionDisableAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/identity/accounts -run='^$$' -fuzz='^FuzzAllSessionsAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/identity/accounts -run='^$$' -fuzz='^FuzzSelectedSessionAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2

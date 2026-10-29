@@ -73,6 +73,11 @@ Identity version 3 adds internal encrypted member-backup slots, checked by
 `make db-member-backup-test`. Account authentication, product vault access, and
 HTTP persistence remain unavailable.
 
+Submission version 2 adds internal atomic ciphertext/spend storage with exact-payload
+retries and round admission/cancellation. `make db-submission-record-test` checks it
+on disposable real PostgreSQL. This is not token verification or a working submission
+endpoint. See the [storage contract](docs/database.md#implemented-submission-record-storage).
+
 To run the HTTP demonstration natively instead:
 
 ```sh

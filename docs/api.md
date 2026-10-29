@@ -36,6 +36,11 @@ and no OpenAPI schema or product route is added.
 
 ## Implemented infrastructure
 
+The internal [submission record store](database.md#implemented-submission-record-storage)
+adds no HTTP endpoint or OpenAPI schema. It trusts a future verifier, so exposing
+its digest/byte arguments directly would bypass token authorization and envelope
+validation. Submission routes still return `501`; readiness remains unavailable.
+
 The [local container stack](deployment.md#container-stack) changes deployment only.
 Its explicit `-container-network` flag permits container-local IPv4 wildcard binding
 while Compose publishes only host loopback ports. `/healthz` still reports liveness,
