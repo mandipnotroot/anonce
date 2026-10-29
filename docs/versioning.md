@@ -75,6 +75,12 @@ window. It adds no supported wire format, migration, grant, cryptographic profil
 or automatic release bump. Browser logout and authentication ceremonies remain
 unimplemented.
 
+Internal [selected-session revocation](database.md#session-scoped-selected-revocation)
+adds an unstable Go method over identity version-4 selectors. Its existing shared
+five-minute gate and account scope cannot be overridden by target selection.
+It adds no further migration, grant, supported wire format, device profile, or
+automatic release bump. Current and stale selectors are no-ops, not bearer renewal.
+
 The [browser account/vault direction](key-management.md#browser-account-vault)
 is a documentation requirement, not a new supported API or cryptographic profile.
 Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional

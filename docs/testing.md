@@ -250,7 +250,7 @@ Those remain unavailable. Missing tools or failed assertions fail rather than sk
 `make db-account-test` uses the same disposable stack and prerequisites as
 `make db-migration-test`, including all its checks. The separate `account-test`
 Docker target builds a race-enabled Go test executable in the existing pinned
-builder image. Only the two account test source files are additionally admitted
+builder image. Only the four account test source files are additionally admitted
 through `.dockerignore`; no test fixtures or host credentials enter the build.
 The build must produce an executable, not a successful no-test compilation.
 
@@ -318,15 +318,27 @@ Named subtests cover:
   propagate cancellation without a count or unintended deletion.
 - `revoke-others-cancellation-and-rollback`: a held sibling-row lock cancels deletion;
   all sibling rows survive rollback and the current session remains unchanged.
+- `selected-session-revocation`: one sibling removed without changing current/foreign
+  sessions; zero/current/missing/foreign/stale selectors, invalid and old bearers,
+  trusted reauthentication, expired/future targets, excess capacity, unchanged input,
+  and secret-free closed-pool failure. `TestSelectedSessionAdmission` and bounded
+  `FuzzSelectedSessionAdmission` cover native bounds, cancellation, and ownership.
+- `concurrent-selected-session-revocation`: independent pools selecting the same
+  target, competing bearers, target rotation, and disable have only valid outcomes.
+- `selected-session-after-lock-wait`: bearer expiry, authentication age, revocation,
+  rotation, target rotation, disable, and cancellation are observed after waiting.
+- `selected-session-rollback`: a held target-row lock cancels deletion without
+  publishing removal or changing either session.
 
 The submission run must reject store construction, and SQL checks verify that
 neither account table exists there. This is persistence evidence only, not passkey
 verification, HTTP owner authorization, login/logout UX, vault custody, membership
 binding, production retention, or the complete browser acceptance journey.
 
-On 2026-10-29, `make db-account-test` passed on Linux x86_64 with PostgreSQL 18.6,
-Engine 29.9.2, and Compose 5.6.1, including version-2/version-3 upgrade/failure checks and
-the runtime-role race-enabled subtests above.
+On 2026-10-29, the account suite and version-2/version-3/version-4 upgrade/failure
+checks passed as part of `make db-member-backup-test` on Linux x86_64 with PostgreSQL
+18.6, Engine 29.9.2, and Compose 5.6.1, including all runtime-role race-enabled
+subtests above.
 
 ### Member-backup storage checks
 
@@ -357,9 +369,10 @@ Named subtests cover:
 - `session-owner-scope`: session-derived owner isolation, revision conflicts,
   fixed binding, deletion/recreation, and independent result buffers.
 - `session-invalidation`: unknown/expired/revoked/disabled sessions cannot read,
-  write, or delete; individual revocation leaves sibling sessions usable. Sibling
-  revocation denies removed bearers while preserving the caller's backup access.
-- `session-lock-order-and-cancellation`: individual/sibling/all-session revocation and
+  write, or delete; individual revocation leaves sibling sessions usable.
+  All-sibling and selected-sibling revocation deny removed bearers while preserving
+  the caller's backup access.
+- `session-lock-order-and-cancellation`: individual/selected/sibling/all-session revocation and
   disable wait for admitted access; cancelled invalidation leaves sessions usable.
   Held account/backup locks cancel access without changing the slot.
 - `session-expiry-after-lock-wait`: a session expiring while queued on the account
@@ -385,9 +398,10 @@ Bounded native admission tests/fuzzing run in `make check`; real PostgreSQL rema
 an explicit opt-in target.
 
 On 2026-10-29, `make db-member-backup-test` passed on Linux x86_64 with PostgreSQL
-18.6, Engine 29.9.2, and Compose 5.6.1, including version-3 upgrade/failure checks,
-session rotation, sibling revocation, authentication-age admission, cancellation, and all named
-runtime-role race checks above. No authentication ceremony was exercised.
+18.6, Engine 29.9.2, and Compose 5.6.1, including version-3/version-4 upgrade/failure checks,
+session selectors, rotation, all-sibling/selected-sibling revocation,
+authentication-age admission, cancellation, and all named runtime-role race checks
+above. No authentication ceremony was exercised.
 
 ### WASM verifier checks
 

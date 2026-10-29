@@ -74,6 +74,9 @@ creation within the preceding five minutes, using the same shared admission wind
 checked with the database clock after the account lock. Sibling revocation neither
 rotates the retained token nor changes its timestamps or device keys. This is a
 development storage policy, not proof of a verified ceremony or a product assurance level.
+The same gate applies to [selected sibling removal](database.md#session-scoped-selected-revocation).
+Its non-secret selector only locates a row after bearer authorization; it is not a
+credential and adds no cryptographic profile.
 See the [transaction contract](database.md#session-scoped-member-backup-access).
 
 ## Membership and authorization

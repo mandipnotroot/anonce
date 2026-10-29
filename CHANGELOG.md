@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Internal recently authenticated revocation of one selected sibling using a
+  non-secret inventory selector. Current, missing, stale, and foreign selectors
+  remove nothing; rotation cannot be followed through an old selector. Native
+  admission/fuzz and real PostgreSQL scope, concurrency, post-lock authorization,
+  rollback, and member-backup invalidation checks cover the operation. No further
+  migration, grant, browser/API, or cryptographic format is added.
 - Identity version-4 non-secret session selectors, independent of bearer tokens and
   digests, with existing-row backfill and unchanged tokens, bindings, and timestamps.
   Active-session inventory returns stable per-row selectors; rotation replaces

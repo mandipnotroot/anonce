@@ -76,8 +76,8 @@ Distinguish implemented from planned behavior.
   random tokens, absolute expiry, individual/all-session revocation, transactional
   disable, token rotation after caller-verified reauthentication without extending
   expiry, a fixed per-account live-session admission limit, bounded session-scoped
-  active-session metadata, recently authenticated sibling-session revocation, and
-  bounded expired cleanup;
+  active-session metadata with non-secret selectors, recently authenticated
+  all-sibling or selected-sibling revocation, and bounded expired cleanup;
   no authentication ceremony, membership, vault, or HTTP integration.
 - `internal/identity/memberbackup`: development-only account-scoped encrypted
   member-backup slots with fixed public binding, compare-and-swap revisions,

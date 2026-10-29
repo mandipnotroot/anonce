@@ -113,6 +113,17 @@ remain possible. `revoke-other-sessions`, `concurrent-revoke-other-sessions`,
 scope, competing bearers, rotation/invalidation, post-lock age/expiry, and rollback
 to real PostgreSQL checks. This adds no browser logout or credential ceremony.
 
+[Selected sibling revocation](database.md#session-scoped-selected-revocation) uses
+independent inventory selectors, never bearer digests, and the same owner-derived
+recent-authentication gate. Current, missing, stale, and foreign selectors cannot
+remove the current session or another account's row; rotation invalidates the old
+selector without exposing a successor. `selected-session-revocation`,
+`concurrent-selected-session-revocation`, `selected-session-after-lock-wait`, and
+`selected-session-rollback` cover scope, competing bearers, rotation, post-lock
+authorization/age/expiry, and cancelled deletion. Member-backup `revoke-selected`
+cases cover denied subsequent access and serialization with admitted backup work.
+This does not lock a remote device, erase returned data, or establish user intent.
+
 ### Internal member-backup storage
 
 - The [development store](database.md#local-member-backup-storage-contract) scopes

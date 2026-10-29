@@ -69,6 +69,9 @@ Available foundations:
   Identity version 4 adds independent non-secret session selectors to that inventory,
   backfilling existing rows without changing tokens or expiry. Rotation replaces
   the selector rather than creating a stable device-tracking handle.
+  Recently authenticated bearers can remove one selected sibling without touching
+  their own session. Stale selectors do not follow rotation, and foreign selectors
+  do not reveal or modify another account's references.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).

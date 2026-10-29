@@ -703,7 +703,7 @@ func testPostgresSessionScope(t *testing.T) {
 
 func testPostgresSessionInvalidation(t *testing.T) {
 	store, accountStore, pool := testStores(t)
-	for _, operation := range []string{"revoke", "revoke-others", "revoke-all", "disable", "expired", "unknown"} {
+	for _, operation := range []string{"revoke", "revoke-selected", "revoke-others", "revoke-all", "disable", "expired", "unknown"} {
 		t.Run(operation, func(t *testing.T) {
 			owner := newOwner(t, accountStore)
 			token, sibling := sessionToken(t, accountStore, owner), sessionToken(t, accountStore, owner)
@@ -714,6 +714,12 @@ func testPostgresSessionInvalidation(t *testing.T) {
 			switch operation {
 			case "revoke":
 				err = accountStore.Revoke(t.Context(), token)
+			case "revoke-selected":
+				var removed bool
+				removed, err = accountStore.RevokeSession(t.Context(), sibling, backupSessionSelector(t, accountStore, token))
+				if err == nil && !removed {
+					t.Fatal("selected backup session was not revoked")
+				}
 			case "revoke-others":
 				var count int64
 				count, err = accountStore.RevokeOtherSessions(t.Context(), sibling)
@@ -756,13 +762,29 @@ func testPostgresSessionInvalidation(t *testing.T) {
 	}
 }
 
+func backupSessionSelector(t *testing.T, store *accounts.Store, token []byte) accounts.SessionID {
+	t.Helper()
+	entries, err := store.ListSessions(t.Context(), token)
+	if err != nil {
+		t.Fatal("list backup session selectors")
+	}
+	for _, entry := range entries {
+		if entry.Current {
+			return entry.ID
+		}
+	}
+	t.Fatal("backup session inventory has no current marker")
+	return accounts.SessionID{}
+}
+
 func testPostgresSessionLocking(t *testing.T) {
 	store, accountStore, pool := testStores(t)
-	for _, operation := range []string{"revoke", "revoke-others", "revoke-all", "disable"} {
+	for _, operation := range []string{"revoke", "revoke-selected", "revoke-others", "revoke-all", "disable"} {
 		t.Run(operation, func(t *testing.T) {
 			owner := newOwner(t, accountStore)
 			token := sessionToken(t, accountStore, owner)
 			sibling := sessionToken(t, accountStore, owner)
+			target := backupSessionSelector(t, accountStore, token)
 			// The callback runs only after the account lock and session recheck.
 			// Each invalidator must wait for this transaction, then cancel cleanly.
 			err := store.withSession(t.Context(), token, false, func(ctx context.Context, _ pgx.Tx, _ accounts.ID) error {
@@ -772,6 +794,12 @@ func testPostgresSessionLocking(t *testing.T) {
 				switch operation {
 				case "revoke":
 					err = accountStore.Revoke(ctx, token)
+				case "revoke-selected":
+					var removed bool
+					removed, err = accountStore.RevokeSession(ctx, sibling, target)
+					if removed {
+						t.Error("cancelled selected revocation reported removal")
+					}
 				case "revoke-others":
 					var count int64
 					count, err = accountStore.RevokeOtherSessions(ctx, sibling)

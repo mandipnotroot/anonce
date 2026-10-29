@@ -206,6 +206,11 @@ from WAL, snapshots, or backups. Real member keys remain prohibited in this stac
 Identity version 4 adds independent non-secret session selectors and backfills
 existing rows without changing their tokens or timestamps. Apply it before using
 the updated internal account store. It enables no HTTP session-management route.
+Its volatile default rewrites the session table and indexes under an exclusive
+table lock. Allow local downtime and sufficient disk space; the runner's existing
+timeouts still apply. Large-table or online upgrades have not been demonstrated.
+See PostgreSQL 18 [`ALTER TABLE` notes](https://www.postgresql.org/docs/18/sql-altertable.html#SQL-ALTERTABLE-NOTES)
+(consulted 2026-10-29).
 
 ## Production separation
 

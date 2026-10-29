@@ -121,6 +121,7 @@ lint:
 	$(GO) mod verify
 
 fuzz:
+	$(GO) test ./internal/identity/accounts -run='^$$' -fuzz='^FuzzSelectedSessionAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/identity/accounts -run='^$$' -fuzz='^FuzzAccountSessionAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/identity/memberbackup -run='^$$' -fuzz='^FuzzMemberBackupSessionAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/identity/memberbackup -run='^$$' -fuzz='^FuzzMemberBackupAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2

@@ -213,6 +213,37 @@ verified authentication, protected transport, CSRF protection, rate limits, and
 local custody/logout integration. No migration, grant, HTTP/browser interface,
 device-key locking, membership revocation, or recovery mechanism is added.
 
+### Session-scoped selected revocation
+
+`RevokeSession(ctx, token, target)` accepts an inventory `SessionID`, not a token
+digest or owner override. The same account-first transaction derives and authorizes
+the bearer, requiring authentication admission strictly within five minutes after
+lock waits. It deletes at most one matching sibling reference belonging to that
+owner. Expired and future-dated target rows may also be removed. The current row is
+always excluded, preserving the caller's token and absolute expiry.
+
+A zero selector returns `ErrInvalidInput`. A current, missing, already removed,
+rotated, or other-account selector returns `false` without error after successful
+bearer authorization. This does not reveal whether another account has that
+selector. Invalid bearers return `ErrUnavailable`; older live bearers return
+`ErrReauthenticationRequired`, even when the target would be a no-op. Rotation
+replaces the selector, so an old inventory cannot revoke the successor. The method
+works above the session limit without listing first.
+
+Removal is reported only after commit; cancellation or failure returns `false`.
+An uncertain commit may have removed the target. Reread inventory or sign in
+afresh instead of blindly retrying. Account locking serializes selection with
+rotation, revocation, disabling, and member-backup operations. Already admitted
+work, returned data, and unlocked device keys are not recalled. New independently
+authenticated sessions remain possible. A recently stolen bearer can remove
+siblings; this age gate is not proof of intent.
+
+The existing PostgreSQL 18 row-lock/Read Committed contract and shared
+recent-authentication policy apply. No additional migration, grant, HTTP/browser
+transport, device-key operation, or membership authority is introduced. Hosts still
+need verified authentication, CSRF protection, protected delivery, rate limits,
+and local logout integration. See [account checks](testing.md#account-storage-checks).
+
 ### Proposed identity relations
 
 The following table describes the intended complete service, not implemented
