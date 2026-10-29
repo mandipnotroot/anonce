@@ -703,7 +703,7 @@ func testPostgresSessionScope(t *testing.T) {
 
 func testPostgresSessionInvalidation(t *testing.T) {
 	store, accountStore, pool := testStores(t)
-	for _, operation := range []string{"revoke", "revoke-selected", "revoke-others", "revoke-all", "disable", "expired", "unknown"} {
+	for _, operation := range []string{"revoke", "revoke-selected", "revoke-others", "revoke-all", "session-sign-out", "disable", "expired", "unknown"} {
 		t.Run(operation, func(t *testing.T) {
 			owner := newOwner(t, accountStore)
 			token, sibling := sessionToken(t, accountStore, owner), sessionToken(t, accountStore, owner)
@@ -728,6 +728,12 @@ func testPostgresSessionInvalidation(t *testing.T) {
 				}
 			case "revoke-all":
 				err = accountStore.RevokeAll(t.Context(), owner)
+			case "session-sign-out":
+				var count int64
+				count, err = accountStore.RevokeAllForSession(t.Context(), token)
+				if err == nil && count != 2 {
+					t.Fatal("session-scoped sign-out removed unexpected backup sessions")
+				}
 			case "disable":
 				err = accountStore.Disable(t.Context(), owner)
 			case "expired":
@@ -748,7 +754,7 @@ func testPostgresSessionInvalidation(t *testing.T) {
 				t.Fatal("invalidate backup session")
 			}
 			deniedSession(t, store, token)
-			if operation == "disable" || operation == "revoke-all" {
+			if operation == "disable" || operation == "revoke-all" || operation == "session-sign-out" {
 				deniedSession(t, store, sibling)
 			} else if record, err := store.GetForSession(t.Context(), sibling); err != nil || record.Revision != 1 {
 				t.Fatal("invalidation affected sibling or backup")
@@ -779,7 +785,7 @@ func backupSessionSelector(t *testing.T, store *accounts.Store, token []byte) ac
 
 func testPostgresSessionLocking(t *testing.T) {
 	store, accountStore, pool := testStores(t)
-	for _, operation := range []string{"revoke", "revoke-selected", "revoke-others", "revoke-all", "disable"} {
+	for _, operation := range []string{"revoke", "revoke-selected", "revoke-others", "revoke-all", "session-sign-out", "disable"} {
 		t.Run(operation, func(t *testing.T) {
 			owner := newOwner(t, accountStore)
 			token := sessionToken(t, accountStore, owner)
@@ -808,6 +814,12 @@ func testPostgresSessionLocking(t *testing.T) {
 					}
 				case "revoke-all":
 					err = accountStore.RevokeAll(ctx, owner)
+				case "session-sign-out":
+					var count int64
+					count, err = accountStore.RevokeAllForSession(ctx, token)
+					if count != 0 {
+						t.Error("cancelled session-scoped sign-out returned a count")
+					}
 				case "disable":
 					err = accountStore.Disable(ctx, owner)
 				}

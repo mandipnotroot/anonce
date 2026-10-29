@@ -79,6 +79,11 @@ Its non-secret selector only locates a row after bearer authorization; it is not
 credential and adds no cryptographic profile.
 See the [transaction contract](database.md#session-scoped-member-backup-access).
 
+[Session-scoped sign-out everywhere](database.md#session-scoped-sign-out-everywhere)
+uses the same bearer digest and recent-admission check, deleting the current token
+as well as siblings. It adds no cryptographic operation or profile and does not
+lock or revoke device keys.
+
 ## Membership and authorization
 
 The development [database bootstrap](database.md#local-container-bootstrap) uses

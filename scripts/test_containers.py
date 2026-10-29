@@ -212,7 +212,11 @@ class AccountOperatorTests(unittest.TestCase):
                 stack.migration_image("unrecognized")
             run.assert_not_called()
         patterns = (ROOT / ".dockerignore").read_text().splitlines()
-        for source in ("store_test.go", "postgres_test.go", "selected_session_test.go", "selected_session_postgres_test.go"):
+        for source in (
+            "store_test.go", "postgres_test.go", "selected_session_test.go",
+            "selected_session_postgres_test.go", "all_sessions_test.go",
+            "all_sessions_postgres_test.go",
+        ):
             self.assertGreater(patterns.index("!internal/identity/accounts/" + source), patterns.index("**/*_test.go"))
         self.assertIn("test -x /out/account.test", (ROOT / "Dockerfile").read_text())
 

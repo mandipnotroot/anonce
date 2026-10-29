@@ -124,6 +124,18 @@ authorization/age/expiry, and cancelled deletion. Member-backup `revoke-selected
 cases cover denied subsequent access and serialization with admitted backup work.
 This does not lock a remote device, erase returned data, or establish user intent.
 
+[Session-scoped sign-out everywhere](database.md#session-scoped-sign-out-everywhere)
+derives ownership from the bearer, rechecks the same recent-admission gate after
+account-lock waits, and removes the current session as well as siblings. A stolen
+recent bearer can deny legitimate users access; this is not proof of user intent.
+`session-scoped-sign-out`, `concurrent-session-scoped-sign-out`,
+`sign-out-after-lock-wait`, and `sign-out-rollback` map owner isolation, invalid/old
+bearer denial, concurrent starts/rotation/invalidation, post-lock authorization,
+and rollback to real PostgreSQL checks. Member-backup `session-sign-out` cases
+cover serialization and denial of subsequent access. Fresh independently verified
+logins remain possible; local keys, membership, and already admitted work are not
+revoked. No browser logout or credential ceremony is implemented.
+
 ### Internal member-backup storage
 
 - The [development store](database.md#local-member-backup-storage-contract) scopes

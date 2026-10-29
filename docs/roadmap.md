@@ -72,6 +72,9 @@ Available foundations:
   Recently authenticated bearers can remove one selected sibling without touching
   their own session. Stale selectors do not follow rotation, and foreign selectors
   do not reveal or modify another account's references.
+  Recently authenticated bearers can also remove every account session, including
+  their own, without an owner override. A later independently verified login remains
+  possible; local keys and encrypted backups are unchanged. Browser logout remains open.
 - **HTTP services:** separate loopback CA, issuer, and submission commands with
   liveness, status, source discovery, and bounded shutdown. Readiness is unavailable;
   protocol routes reject without reading bodies. See [local deployment](deployment.md#local-development).

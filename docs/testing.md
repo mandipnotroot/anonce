@@ -250,7 +250,7 @@ Those remain unavailable. Missing tools or failed assertions fail rather than sk
 `make db-account-test` uses the same disposable stack and prerequisites as
 `make db-migration-test`, including all its checks. The separate `account-test`
 Docker target builds a race-enabled Go test executable in the existing pinned
-builder image. Only the four account test source files are additionally admitted
+builder image. Only the six account test source files are additionally admitted
 through `.dockerignore`; no test fixtures or host credentials enter the build.
 The build must produce an executable, not a successful no-test compilation.
 
@@ -329,6 +329,17 @@ Named subtests cover:
   rotation, target rotation, disable, and cancellation are observed after waiting.
 - `selected-session-rollback`: a held target-row lock cancels deletion without
   publishing removal or changing either session.
+- `session-scoped-sign-out`: owner-derived removal including current/expired/future
+  rows above capacity, foreign-account isolation, unchanged input, invalid/old bearer
+  denial, recent/age boundaries, trusted reauthentication, and later login admission.
+  `TestAllSessionsAdmission` and bounded `FuzzAllSessionsAdmission` cover native
+  bounds, concurrent unavailable-store access, cancellation, and input ownership.
+- `concurrent-session-scoped-sign-out`: independent pools using same/competing
+  bearers, sibling rotation, starts, and disable produce only serialized outcomes.
+- `sign-out-after-lock-wait`: expiry, authentication age, revocation, rotation,
+  disable, and cancellation deny queued sign-out without deletion or a count.
+- `sign-out-rollback`: a held session-row lock cancels deletion without publishing
+  a count or removing the current/sibling sessions.
 
 The submission run must reject store construction, and SQL checks verify that
 neither account table exists there. This is persistence evidence only, not passkey
@@ -372,6 +383,7 @@ Named subtests cover:
   write, or delete; individual revocation leaves sibling sessions usable.
   All-sibling and selected-sibling revocation deny removed bearers while preserving
   the caller's backup access.
+  Session-scoped sign-out denies both the current and sibling backup bearers.
 - `session-lock-order-and-cancellation`: individual/selected/sibling/all-session revocation and
   disable wait for admitted access; cancelled invalidation leaves sessions usable.
   Held account/backup locks cancel access without changing the slot.

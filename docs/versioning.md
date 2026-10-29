@@ -81,6 +81,11 @@ five-minute gate and account scope cannot be overridden by target selection.
 It adds no further migration, grant, supported wire format, device profile, or
 automatic release bump. Current and stale selectors are no-ops, not bearer renewal.
 
+Internal [session-scoped sign-out everywhere](database.md#session-scoped-sign-out-everywhere)
+adds an unstable Go method using the existing recent-admission gate. It changes no
+existing revocation method, migration, grant, public format, device cryptographic
+profile, or automatic release bump. Browser logout remains unimplemented.
+
 The [browser account/vault direction](key-management.md#browser-account-vault)
 is a documentation requirement, not a new supported API or cryptographic profile.
 Existing CLI, WASM, and HTTP contracts remain unchanged; making the CLI optional

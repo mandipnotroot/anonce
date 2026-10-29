@@ -10,6 +10,12 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Internal session-authorized sign-out everywhere with the shared recent-authentication
+  gate, removing the caller and sibling references without an owner override.
+  Counts publish only after commit; a later verified login remains possible.
+  Native admission/fuzz and real PostgreSQL scope, race, post-lock authorization,
+  rollback, and member-backup invalidation checks cover the operation. No browser
+  logout, migration, grant, membership change, or cryptographic profile is added.
 - Internal recently authenticated revocation of one selected sibling using a
   non-secret inventory selector. Current, missing, stale, and foreign selectors
   remove nothing; rotation cannot be followed through an old selector. Native

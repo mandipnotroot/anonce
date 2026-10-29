@@ -16,7 +16,7 @@ import (
 // sensitive session operations, not proof of a verified authentication ceremony.
 const RecentAuthenticationWindow = 5 * time.Minute
 
-// ErrReauthenticationRequired denotes a live bearer too old to revoke siblings.
+// ErrReauthenticationRequired denotes a live bearer too old for a sensitive operation.
 var ErrReauthenticationRequired = errors.New("account session requires recent authentication")
 
 // SessionID is a non-secret, random row selector, never a bearer credential,

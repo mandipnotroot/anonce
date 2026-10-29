@@ -244,6 +244,31 @@ transport, device-key operation, or membership authority is introduced. Hosts st
 need verified authentication, CSRF protection, protected delivery, rate limits,
 and local logout integration. See [account checks](testing.md#account-storage-checks).
 
+### Session-scoped sign-out everywhere
+
+`RevokeAllForSession(ctx, token)` derives the owner from a live bearer and removes
+every reference for that account, including the caller, expired rows, and
+future-dated rows. It uses the existing account-first transaction and requires
+authentication admission strictly within five minutes after lock waits. It accepts
+no owner override and works above the session limit without listing first.
+Malformed, missing, expired, future-dated, revoked, rotated, and disabled bearers
+return `ErrUnavailable`; older live bearers return `ErrReauthenticationRequired`.
+
+The removed-row count is returned only after commit. Cancellation or failure
+returns zero, but an uncertain commit may have removed all sessions. Require fresh
+sign-in rather than blindly retrying. A repeat with the removed bearer is denied,
+not an authenticated no-op. The account stays active: a separately verified login
+ordered afterward can create a new session. Other accounts remain unchanged.
+
+Account locking serializes removal with starts, rotation, other revocation,
+disable, and admitted member-backup access. No local keys, already returned data,
+membership, quotas, or encrypted backups are changed. A recently stolen bearer can
+sign out legitimate sessions; recent admission is not proof of intent. Hosts still
+need verified authentication, CSRF protection, rate limits, protected delivery, and
+local lock/logout integration. This is internal storage behavior, not a browser
+endpoint. Existing PostgreSQL 18 transaction semantics, grants, migrations, and
+cryptographic profiles are unchanged. See [account checks](testing.md#account-storage-checks).
+
 ### Proposed identity relations
 
 The following table describes the intended complete service, not implemented
