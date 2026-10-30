@@ -8,8 +8,8 @@ Audience: storage implementers, database reviewers, and operators.
 Status: PostgreSQL 18.6 bootstrap, independent Goose histories and an operator-only
 pgx runner. Identity versions 2–4 provide accounts, sessions and member backups;
 submission version 2 provides atomic records. The default browser services connect
-these through identity migration 5 and submission migration 3. The original
-demonstration commands still perform no application persistence.
+these through identity migration 5 and submission migration 3, with authenticated
+HTTP and protocol validation.
 
 ## Browser MVP persistence
 
@@ -200,7 +200,7 @@ no list. Results are returned only after commit and can immediately become stale
 cleanup may remove references that expire after admission. Already returned data
 is not recalled by revocation. Hosts still need authentication, protected delivery,
 CSRF protection, and rate limits before exposing session management. The default
-browser host supplies those controls; the original demonstration commands do not.
+browser host supplies those controls.
 
 This follows the existing PostgreSQL 18
 [row-lock](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS) and

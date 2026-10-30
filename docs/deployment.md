@@ -14,10 +14,8 @@ Do not collect real data.
 
 ### Browser MVP local startup
 
-The default browser application connects the limited MVP. **Use synthetic data only.**
-This is not production readiness or independent security approval. Inert shell and
-offline key commands are developer-only regression tools, excluded from the default
-build and application image. They are not onboarding alternatives.
+The browser application connects the limited MVP. **Use synthetic data only.**
+This is not production readiness or independent security approval.
 
 Use Linux, Go 1.27.3, PostgreSQL 18.6 through the pinned Compose databases, and a
 browser supporting WebAuthn JSON conversion, module workers, BroadcastChannel,
@@ -36,7 +34,7 @@ make smoke
 `make up` builds the matched member/review WASM assets and service image, prepares
 no-replace database secrets, starts the isolated databases, applies both migration
 histories through separately scoped operator containers, initializes empty server
-state, and starts both TLS browser services. There is no browser overlay to select.
+state, and starts both TLS browser services.
 Database ports are never published. Each application receives only its own runtime
 credential and read-only service state, never another service's state or migration password.
 
@@ -98,13 +96,8 @@ arguments. No proxy headers are trusted or request/IP/SQL-parameter logs enabled
 Protected signers, independent checkpoints, retention/restoration, distributed
 abuse controls and a supported-browser matrix remain unavailable.
 
-`make build` is the default browser build, including matched runtimes and original
-upstream notices. `make browser-build` is a compatibility alias, not another
-workflow. Neither builds the key CLI or inert demonstration servers. Contributors
-may explicitly use `make dev-tools` for the
-[legacy shell regression checks](api.md#implemented-read-only-shell) and
-[offline parser/backup diagnostics](key-management.md#local-key-cli). These tools
-are not distributed in the application image or required of any product user.
+`make build` builds the browser services, matched runtimes, operator tools and
+original upstream notices. `make up` uses this same build for local startup.
 
 | Resource | Per-process limit |
 | --- | --- |
@@ -115,13 +108,13 @@ are not distributed in the application image or required of any product user.
 | Idle connections | 30 seconds |
 | Shutdown | Interrupt/SIGTERM cancels request contexts, drains up to 5 seconds, then closes connections |
 
-No request/access logs or HTTP error diagnostics are retained. Handlers close
-body-bearing requests without reading or draining; the network stack may buffer bytes.
+No request/access logs or HTTP error diagnostics are retained. Request bodies are
+bounded before JSON decoding; the network stack may buffer bytes.
 Loopback is not authentication or isolation from local users/processes.
 **Do not expose these services through an external proxy.**
 
-The public-only WASM verifier remains a development check. The product uses the
-matched member and reviewer workers built automatically by `make build`; it needs
+The product uses the matched member and reviewer workers built automatically by
+`make build`; it needs
 no Node runtime or build tool in a user's browser or in the final application image.
 
 ### Container stack
@@ -130,7 +123,7 @@ The root `Dockerfile` builds the two browser services, one-shot initializer and
 TLS liveness probe with the pinned Go compiler. `make build` first generates the
 matched worker runtimes and notices, which are the only generated materials admitted
 to the build context. The final `scratch` image contains static binaries, browser
-assets and original upstream/project notices, with no shell, compiler, user key CLI,
+assets and original upstream/project notices, with no shell, compiler,
 browser executable or Node runtime. Secrets, `.env`, Git metadata and unrelated
 artifacts stay outside the build context. This is not a production image or signed release.
 
@@ -145,15 +138,8 @@ can expose ports to the local network; see the official
 (consulted 2026-10-28). Podman, remote daemons, and other platforms are not validated.
 Docker access is privileged. Do not relax socket permissions to bypass a failure.
 
-Copy `.env.example` to `.env` without replacing existing settings.
-Set `ANONCE_SOURCE_URL` to an HTTPS location for this exact build's complete source,
-including these container files. The example intentionally has no working URL or
-passwords. From the repository root, run:
-
-```sh
-make up
-make smoke
-```
+Use the [startup instructions](#browser-mvp-local-startup) above, including the
+exact-build source URL. The following settings describe that same stack.
 
 Startup generates six independent random passwords without replacing existing
 files and validates the whole set. `make container-secrets` is an optional operator
@@ -200,13 +186,9 @@ stack without starting or deleting services. `make container-test` runs the
 with generated secrets, ephemeral loopback ports, and disposable volumes. It removes
 only its own test containers, networks, and volumes; build images/cache remain.
 
-Startup stops the two browser services before applying migrations. A project still
-containing old `server`, `issuer` or `ca` containers is rejected rather than silently
-keeping an alternate interface or deleting containers. After reviewing that project's
-data/state and stopping its old deployment, an operator may run
-`docker compose down --remove-orphans` without `--volumes`, then `make up`.
-The removed `compose.browser.yaml` overlay is no longer needed. Old HTTP port settings
-do not configure the browser origins; use the default HTTPS ports above.
+Startup stops the two browser services before applying migrations and rejects
+unexpected services in the Compose project. Review project membership without
+discarding data or volumes before continuing.
 
 `make down` preserves database volumes. Initialization runs only on empty volumes;
 changing files does not rotate existing database passwords, and bootstrap SQL is
@@ -297,7 +279,7 @@ deploy the test image or treat a storage reference as a cryptographic receipt.
 ## Production separation
 
 - Deliver the product through the browser for every role; users install no app,
-  extension, CLI, or Node runtime. Offline key diagnostics are developer-only tooling.
+  extension, CLI, or Node runtime.
 - Separate issuer/CA and submission origins and operational trust boundaries.
 - Keep account login, dashboard, encrypted member-key vault, and their sessions
   on the identity side. Use narrowly scoped WebAuthn RP IDs and exact allowed
@@ -314,13 +296,15 @@ deploy the test image or treat a storage reference as a cryptographic receipt.
 
 ## Transport and headers
 
-**Local shell:**
+**Browser application:**
 
-- CSP: `default-src 'none'`, `frame-ancestors 'none'`, `base-uri 'none'`,
-  `form-action 'none'`; shell adds only `style-src 'self'`.
-- No scripts, fonts, images, network APIs, inline styles, or input forms.
-- Every page links `/source`. Embedded CSS uses full SHA-256 names and matching SRI.
-  All responses use `no-store`.
+- Page CSP permits only same-origin scripts, styles and workers, with the configured
+  submission origin additionally allowed for identity-side fetches. It prohibits
+  framing, base-URL changes, native form submission and inline execution.
+- Worker CSP permits `wasm-unsafe-eval` only for the matched Go runtime, with
+  same-origin loading. No external fonts, analytics or third-party assets.
+- Every page links `/source`. Entry modules and CSS use full SHA-256 names and
+  matching SRI. Runtime files use bounded exact manifests. All responses use `no-store`.
 
 **Deployment requirements:**
 

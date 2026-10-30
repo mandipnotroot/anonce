@@ -17,9 +17,28 @@ func testConfig(role Role) Config {
 	return Config{Role: role, Listen: role.DefaultListen(), SourceURL: testSource}
 }
 
+func TestDefaultListen(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		role Role
+		want string
+	}{
+		{Identity, "127.0.0.1:8443"},
+		{Submission, "127.0.0.1:8444"},
+		{Role("unknown"), ""},
+	} {
+		t.Run(string(tc.role), func(t *testing.T) {
+			t.Parallel()
+			if got := tc.role.DefaultListen(); got != tc.want {
+				t.Fatalf("DefaultListen() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestConfig(t *testing.T) {
 	t.Parallel()
-	for _, role := range []Role{CA, Issuer, Submission} {
+	for _, role := range []Role{Identity, Submission} {
 		t.Run(string(role), func(t *testing.T) {
 			t.Parallel()
 			if err := testConfig(role).Validate(); err != nil {
@@ -133,7 +152,7 @@ func TestContainerNetwork(t *testing.T) {
 	} {
 		t.Run(tc.listen, func(t *testing.T) {
 			t.Parallel()
-			for _, role := range []Role{CA, Issuer, Submission} {
+			for _, role := range []Role{Identity, Submission} {
 				cfg := testConfig(role)
 				cfg.Listen, cfg.ContainerNetwork = tc.listen, true
 				if err := cfg.Validate(); (err == nil) != tc.valid {
@@ -175,26 +194,22 @@ func FuzzContainerListen(f *testing.F) {
 }
 
 func FuzzConfig(f *testing.F) {
-	f.Add(string(Submission), "127.0.0.1:8080", testSource, false)
-	f.Add(string(Submission), "127.0.0.1:8080", testSource, true)
-	f.Add(string(CA), "[::1]:0", testSource, true)
-	f.Add(string(Issuer), "0.0.0.0:8081", "https://test:synthetic-input@source.example.invalid", false)
-	f.Add("unknown", "", "", false)
-	f.Add(string(Submission), "127.0.0.1:8080", "HTTPS://source.example.invalid/archive", false)
-	f.Fuzz(func(t *testing.T, role, listen, source string, styleGuide bool) {
+	f.Add(string(Submission), "127.0.0.1:8444", testSource)
+	f.Add(string(Identity), "[::1]:0", testSource)
+	f.Add(string(Identity), "0.0.0.0:8443", "https://test:synthetic-input@source.example.invalid")
+	f.Add("unknown", "", "")
+	f.Add(string(Submission), "127.0.0.1:8444", "HTTPS://source.example.invalid/archive")
+	f.Fuzz(func(t *testing.T, role, listen, source string) {
 		// Bound parser work and allocations independently of the corpus generator.
 		if len(role)+len(listen)+len(source) > 8192 {
 			return
 		}
-		cfg := Config{Role: Role(role), Listen: listen, SourceURL: source, DevStyleGuide: styleGuide}
+		cfg := Config{Role: Role(role), Listen: listen, SourceURL: source}
 		if err := cfg.Validate(); err != nil {
 			if len(err.Error()) > 128 {
 				t.Fatal("validation returned an unbounded error")
 			}
 			return
-		}
-		if styleGuide && cfg.Role != Submission {
-			t.Fatal("accepted identity-side development UI")
 		}
 		host, _, err := net.SplitHostPort(listen)
 		if err != nil {

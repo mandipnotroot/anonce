@@ -8,13 +8,12 @@ Audience: protocol implementers and security reviewers.
 Status: the default browser services implement
 [browser MVP profile 1](cryptography.md#browser-mvp-profile-1), not a stable released
 wire format. Its single-text, single-reviewer, explicit-one-response contract
-supersedes the broader proposals below only for `/api/browser/`.
-The original demonstration commands still reject their reserved protocol routes.
+defines the implemented `/api/browser/` transport. Broader requirements below are
+planned unless identified as part of that profile.
 The internal
 [submission record store](database.md#implemented-submission-record-storage) provides
 atomic persistence and exact-ciphertext retries for already verified inputs, not
-protocol verification. Proposed `/api/v1/` operations still reject requests rather
-than simulate success; only the explicit browser namespace is connected.
+protocol verification. Browser handlers verify inputs before calling that store.
 
 ## Enrollment and authentication
 
@@ -23,15 +22,15 @@ than simulate success; only the explicit browser namespace is connected.
    prove eligibility.
 2. The browser automatically generates the member key and CSR locally and prepares
    the encrypted member-key backup under the [vault contract](key-management.md#browser-account-vault).
-   No manual key commands or CSR/file handling are required; downloads are optional.
+   No manual key commands or CSR/file handling are user steps.
 3. The CA checks proof of possession, code use, membership, and CSR policy, then
    issues a certificate and atomically consumes the code. Retain no raw code after delivery.
 
 Enrollment controls:
 
-- Local [member request generation](key-management.md#local-member-certificate-requests)
-  exists, but no CA, certificate policy, code consumption, or enrollment transport
-  is implemented. A valid request signature alone does not authorize enrollment.
+- Automatic [member request generation](key-management.md#in-memory-member-sessions)
+  feeds the browser enrollment transaction, which authenticates the account and
+  consumes a single-use invitation. A request signature alone grants no authority.
 - Bound and rate-limit attempts without revealing enrollment status.
 - Imports: minimal columns, bounded CSV parsing, duplicate/error preview, transactional writes.
 - Delivery: private printing; optional identity-side SMTP without raw-code logging.

@@ -51,15 +51,16 @@ Add new files to Git for index, link, and site validation. Build from tracked
 documents; do not maintain separate site copies.
 
 `make check` covers build, race/coverage, lint, bounded parser fuzzing, security,
-and rendered-shell checks. Go 1.27.3 and tools are pinned in `Makefile`; downloads
+and browser markup/asset checks. Go 1.27.3 and tools are pinned in `Makefile`; downloads
 use the Go module proxy/checksum service. See [testing](docs/testing.md) for evidence
 limits and [deployment](docs/deployment.md#local-development) for process flags.
-`make check` also requires Node.js 22.23.3 for public-request WASM compatibility
-checks and separate local member-session WASM and worker checks. No npm install or
-Node product build is used; `make wasm` and `make member-wasm` build with Go alone. Container
+`make check` also requires Node.js 22.23.3 for browser member-session WASM,
+worker and session-control checks. No npm install or Node product build is used;
+`make build` produces browser runtimes with Go alone. Container
 setup is opt-in through the [local Compose stack](docs/deployment.md#container-stack),
 with separate databases and `make container-test`. Separate migration histories have
-an opt-in `make db-migration-test`; HTTP persistence remains unavailable. The separate opt-in `make member-browser-test`
+an opt-in `make db-migration-test`. `make browser-test` exercises the connected
+journey with Chromium and fresh PostgreSQL; `make member-browser-test`
 uses a pinned external Chromium executable supplied through `MEMBER_BROWSER`;
 see [browser check setup and limits](docs/testing.md#member-worker-browser-checks).
 It is not included in `make check` or hosted CI.

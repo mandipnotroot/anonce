@@ -5,74 +5,67 @@
 
 Audience: front-end contributors, accessibility reviewers, and product reviewers.
 
-Status: the connected browser application is the default product interface.
-The original inert shell and isolated member harness are developer regression fixtures.
-Broader product screens, product screenshots and manual accessibility evidence
-remain outstanding.
+The browser application is the only product interface. Broader product screens,
+product screenshots, mobile/provider measurements and manual accessibility evidence
+remain outstanding. Simplicity must not hide security boundaries or missing capabilities.
 
 ## Account and review workflow
 
-The product goal is: **sign in, open a review, submit**. All member, reviewer, and
-administrator workflows must work in a supported browser without installing an
-app, extension, CLI, or developer tools. Key generation, certificate requests,
-encryption, and encrypted member-key backup are automatic browser operations,
-not tasks assigned to users.
+The goal is **sign in, open a review, submit**. Every role uses browser forms,
+without an app, extension, console, manual key generation, certificate-request
+handling or key files. The browser prepares keys, encryption and encrypted member
+backups automatically.
 
-| Situation | Required experience |
+| Situation | Experience |
 | --- | --- |
-| First visit | Create/sign in to an account, verify membership through the enrollment flow, and let the browser prepare keys and encrypted backup |
-| Shared review link | Show common round information, sign in on the identity origin if needed, then return to the selected round without repeating navigation |
-| Member dashboard | List eligible available rounds and public schedules, with a clear action to open each form |
-| Submit | Complete an accessible form, confirm, encrypt locally, send anonymously, and verify the receipt locally |
-| Return visit | Reuse an unlocked session where safe; avoid repeated key prompts for each form action |
-| Another device | Sign in and restore the encrypted member-key backup through a supported local unlock method, without copying key files |
-| Recovery | Explain whether account access, encrypted keys, or both can be restored and what remains inaccessible |
-| Reviewer/admin | Browser dashboards with role-scoped access; reviewer keys are prepared automatically per round and answers decrypt locally |
+| First visit | Create/sign in with a passkey, set up private access with confirmed local passphrase, verify a membership invitation |
+| Shared review link | Open common round information, authorize through the identity popup, then complete and submit the anonymous form |
+| Member dashboard | List eligible reviews and public schedules, not submission history |
+| Return visit | Sign in and unlock private access when needed; reuse safely unlocked state within its fixed lifetime |
+| Another device | Sign in and restore the same encrypted member key locally, without copying files |
+| Administrator | Create invitations and a draft, assign a reviewer, confirm publication and share the common link |
+| Reviewer | Prepare fresh round access automatically, unlock locally and read browser-decrypted answers |
+| Loss/recovery | Explain exactly what is unavailable; account and key recovery are not implemented |
 
-Account creation alone does not establish eligibility. Preserve enrollment checks,
-published response limits, explicit submission consent, and the
-[identity/anonymous boundary](architecture.md#account-and-anonymous-flow).
-Shared review URLs identify a common round, not a member, tracking code, or bearer
-token. Invitations carrying enrollment secrets stop at the identity origin.
+Account creation does not establish membership. Login does not decrypt a backup.
+Keep those checks distinct within the same journey, with plain-language labels and
+safe next actions. Do not offer alternate onboarding or server decryption.
+See [custody and unlocking](key-management.md#browser-account-vault).
 
-The identity dashboard must not store which submission belongs to an account or
-poll anonymous receipts/mailboxes using account credentials. Receipt and reply
-views belong to the anonymous browser context; cross-device access to those views
-is not promised by restoring the member-key backup.
+The identity and anonymous origins are a privacy boundary, not two ways to submit.
+Common round links contain no member tracking or bearer secret. Invitations stop
+at the identity origin. Account dashboards never look up receipts or mailboxes
+with account credentials. Member backup restoration does not restore anonymous
+receipt/reply state.
 
-Use passkey sign-in as the preferred account experience. Where supported and
-reviewed, combine it with local vault unlocking. Otherwise present a plain-language
-browser unlock step, not manual key generation or an instruction to install the
-CLI. Follow the [vault decision and recovery limits](key-management.md#browser-account-vault).
-Do not label successful login as successful restoration until local decryption
-and key validation succeed.
+## Connected browser MVP pages
 
-Support password-manager autofill and paste for any passphrase fields. Provide
-accessible progress, cancellation, safe errors, and a way to lock/sign out. Warn
-before lock/expiry can discard an unsent answer; do not save plaintext drafts on
-the server. Shared-device sessions must not persist unlocked secrets or silently
-enable remember-device storage. Browser compatibility and these UX paths require
-[real browser evidence](testing.md#browser-account-and-vault-acceptance).
+All roles share one identity workspace with private access, reviews and sessions.
+The separate anonymous page owns answer entry, token state, encryption and signed
+acceptance. Its account/reviews link carries no round, token or receipt back and
+suppresses referrers. Decrypted reviewer text uses `textContent`, never HTML
+interpolation or a plaintext server endpoint.
 
-## Current local shell
+The current review is one free-text question, one reviewer and an explicitly
+selected one-response limit. Show the signed schedule/limit, local-key retention,
+issuance-loss warning and signed-storage-not-public-inclusion limitation. Replies,
+charts, generalized forms, credential/recovery management and advanced
+administration are unavailable and must not look operational.
 
-### Connected browser MVP pages
+### Private access and local state
 
-The default [browser services](deployment.md#browser-mvp-local-startup) connect account,
-local unlocking, enrollment, round/publication, anonymous free-text submission and
-local reviewer forms. Members, reviewers and administrators share one account
-workspace with navigation to private access, reviews and sessions. Shared links
-open the anonymous form on its separate origin. Its account/reviews link carries
-no round, token or receipt back to the identity service and suppresses referrers.
-Private-access and reviewer setup generate keys automatically inside workers;
-no CLI, file upload/download or CSR handling is a user step.
+Use independently labelled setup passphrase and confirmation fields with
+`autocomplete="new-password"`; unlocking uses `autocomplete="current-password"`.
+Allow paste and password managers. Clear fields promptly, expose live progress,
+safe errors and keyboard-operable cancel/lock controls, and reject late results
+after cancellation or worker closure. Wrong passphrases and corrupt backups must
+never start setup or replace the enrolled key.
 
-The anonymous origin collects and encrypts answers. Reviewer plaintext renders
-locally with `textContent`, never HTML interpolation or a plaintext server API.
-Labels, live status, disabled startup controls, independent passphrase confirmation,
-explicit lock/cancel/sign-out, published limits, issuance-loss warnings and the
-receipt-contract limitation are visible. Ordinary users do not handle keys, CSRs
-or files. Reviewers are warned that their encrypted key stays in this browser.
+Explain that changing tabs or reaching the worker deadline locks private access
+and requires explicit unlocking. Do not silently restart a closed worker or save
+plaintext drafts on services. Warn before actions that can discard unsent text.
+Reviewer encrypted access stays in this browser; clearing it can permanently lose
+review access. Never imply account sign-in restores it.
 
 An undecryptable answer gets a plain-language placeholder without hiding later
 records or pages. The final status reports the number of rejected answers. Lock,
@@ -80,177 +73,69 @@ hidden-page state, round expiry, and reviewer-owner replacement stop reading
 instead of being treated as bad answers; no late plaintext or success status is
 displayed.
 
-Active account sessions appear in a separate identity-only section, not submission
-history. A current-session marker and authentication/expiry times avoid claims of
-device identification. Each other session has a labeled sign-out button; sign-out
-everywhere requires an explicit checkbox. A separate passkey verification button
-locks keys and preserves absolute expiry. Verification never automatically repeats
-a failed mutation. Expired admission explains the five-minute requirement; uncertain
-results require refresh or fresh sign-in. See the [session contract](api.md#browser-session-management).
+### Session controls
 
-Sign-out and observed session invalidation clear password fields, reviewer plaintext,
-pending local work and account controls. Same-partition pages receive a secret-free
-sign-out notice; visible pages also check sign-in on foreground/focus and every
-30 seconds. The page explicitly warns that offline/suspended pages and remotely
-copied keys or text cannot be erased. Encrypted backups are retained.
+List own sessions with a current marker and authentication/expiry times, not device
+identification claims. Other sessions have labelled sign-out buttons. Sign-out
+everywhere requires explicit confirmation. Passkey verification locks local keys,
+preserves absolute expiry and never automatically repeats a failed mutation.
+Explain the five-minute sensitive-action window and require refresh/fresh sign-in
+for uncertain outcomes. See [the session contract](api.md#browser-session-management).
 
-Replies, charts, generalized forms, credential/recovery management and advanced
-administration remain excluded. Product screenshots, manual assistive-device,
-contrast, mobile and autofill-provider review remain outstanding. The synthetic
-screenshot below is not evidence of these connected pages.
-
-- **Pages:** submission-only `/` and `/about`; `/dev/styleguide` requires
-  `-dev-styleguide`. The guide has a synthetic draft, unavailable publication button,
-  and empty/status examples, not administration.
-- **Content:** no public mock response metrics, forms, private data, or scripts.
-  Every page has a development warning, source footer, landmarks, and skip link.
-- **Style:** original CSS/device fonts pending product-dependency review. Responsive
-  layout, visible focus, system light/dark colors, print rules, no animation.
-  See [deployment](deployment.md#transport-and-headers) for hashed CSS/SRI delivery.
-- **Evidence:** `make web-lint` checks inert markup, fragments, links, hashes,
-  CSS loading, headers, methods, and development gating. It does not validate full
-  HTML/CSS, run browsers, measure contrast, establish WCAG conformance, or replace
-  keyboard/assistive review. Actual desktop/mobile and light/dark screenshots plus
-  browser/manual checks remain required; no substitute rendering images are provided.
-
-## Synthetic member forms
-
-The [opt-in browser harness](testing.md#member-worker-browser-checks) includes
-test-only local setup and restoration forms. They are embedded only in test
-binaries, never served by the demonstration commands or on the anonymous
-submission service.
-
-Two separately labelled passphrase fields use `autocomplete="new-password"`, allow
-paste, and clear before awaiting worker startup. Shared Go confirms exact UTF-8
-bytes before preparing the key, encrypted backup, and fixed request. A live status,
-busy state, and keyboard-operable lock/cancel button expose progress without keys,
-passphrases, or driver diagnostics. Controls start disabled until scripts mount.
-No form control has a submission name; CSP prohibits native form submission.
-
-Successful setup retains only encrypted/public material in page memory, with an
-explicit nondurable-backup warning. Setup cannot overwrite an existing synthetic
-backup. Reloading discards that material. Lock, disposal, visibility loss, and
-observed worker closure clear fields and reject late results. Browser/runtime
-copies and autofill cannot be reliably erased. Only synthetic inputs are permitted.
-
-Restoration accepts one local passphrase with `autocomplete="current-password"`.
-The fixed in-memory test adapter supplies the encrypted backup and expected public
-key without file selection, key display, or manual public-key entry. The controller
-snapshots the bounded 108-byte backup and 32-byte expected key before worker startup;
-the worker uses shared Go for authenticated import and expected-key matching. The
-expected key comes from the trusted setup output or an independently supplied fixture,
-not from the ciphertext being restored. This does not settle product enrollment
-binding or malicious-server rollback defense.
-
-Wrong passwords, corrupted backups, and key substitution unlock nothing and never
-call setup or replace the encrypted record. Setup stays unavailable while a backup
-exists. Cancellation and backgrounding terminate the owner; returning merely
-reenables explicit restoration. A second synthetic browser page can restore a
-driver-supplied encrypted record using its independently retained expected key.
-That fixture is not authentication, network vault access, persistence, or recovery.
-
-The implementation follows the [HTML Living Standard forms model](https://html.spec.whatwg.org/multipage/forms.html)
-(consulted 2026-10-29), not a new cryptographic profile. Automated Chromium checks
-exercise Tab/Enter, labelled control names in the accessibility tree, mismatch
-handling, field clearing, lock, and native validation of the resulting backup.
-Restoration checks cover wrong passwords, expected-key substitution, ciphertext
-corruption, startup cancellation, a separate page, and real background-tab locking.
-These are not manual screen-reader, autofill-provider, mobile, or WCAG results.
-
-![Synthetic member setup and restoration after background locking, with empty fields](images/member-forms.png)
-
-Captured from the actual pinned Chromium harness on 2026-10-29. This is test UI,
-not evidence of account authentication, enrollment, or durable backup. The stored
-lossless grayscale PNG was verified to preserve every decoded RGBA pixel from the
-capture.
+Sign-out and observed invalidation clear passphrases, reviewer plaintext, pending
+local work and account controls. Same-partition notices and visible-page checks
+are best effort. State clearly that suspended pages and remotely copied keys/text
+cannot be erased; encrypted backups are retained.
 
 ## Visual language
 
-Future product: Pico CSS 2.1.1, custom layout tokens, local Inter 4.1, selected
-licensed SVG icons, and SVG charts. Server-render only public/mock charts;
-render decrypted results on the reviewer device. Use calm surfaces, clear hierarchy,
-and useful whitespace, not decorative security imagery.
+Use the existing first-party CSS and device fonts, calm surfaces, clear hierarchy
+and readable line lengths. Keep styling consistent across roles rather than
+creating another application shell. Use whitespace and restrained color, not
+decorative security imagery. Every state needs text, not color alone.
 
-| Token | Proposed value or rule |
-| --- | --- |
-| Primary | Indigo `#4338ca` in light mode; contrast-tested lighter variant in dark mode |
-| Accent | Teal `#0f766e`; never the only indication of status |
-| Surfaces | Light `#ffffff` / `#f5f7fb`; dark `#111827` / `#0b1020` |
-| Text | Light `#172033`; dark `#eef2ff`; muted text needs separate contrast tests |
-| Spacing | 4, 8, 12, 16, 24, 32, 48 CSS pixels |
-| Typography | 1rem body with at least 1.5 line height; restrained 1.125/1.25/1.5/2rem headings |
-| Shape | 8px controls, 12px cards; subtle borders rather than heavy shadows |
-| Width | Readable prose at about 70 characters; responsive data panels |
-| Motion | Short functional transitions; respect `prefers-reduced-motion` |
-
-Values are candidates. Test all foreground/background, focus, disabled, chart, and
-error combinations against [WCAG 2.2 AA](https://www.w3.org/TR/WCAG22/).
+Test foreground/background, focus, disabled and error combinations against
+[WCAG 2.2 AA](https://www.w3.org/TR/WCAG22/). Targets are requirements, not a
+conformance claim. Product desktop/mobile and light/dark screenshots must come
+from the actual built application with synthetic data.
 
 ## Layout and navigation
 
-- Admin: collapsible sidebar, meaningful titles, breadcrumbs, visible role/round context.
-- Member: simple header and narrow content column.
-- Mobile: keyboard and screen-reader navigation.
-- All views: visible focus, skip links, logical headings, one main landmark.
-
-| Area | Planned paths |
-| --- | --- |
-| Public | `/`, `/about`, `/source`, `/verify`, `/transparency` |
-| Identity-side account/member | `/login`, `/account`, `/enroll`, `/member` |
-| Anonymous member | `/member/submit`, `/member/receipts`, `/member/replies` |
-| Admin access/overview | `/admin/login`, `/admin` |
-| CA | `/admin/ca`, `/admin/ca/certificates`, `/admin/ca/revocations` |
-| Cohorts | `/admin/cohorts`, `/admin/cohorts/members`, `/admin/cohorts/import`, `/admin/cohorts/codes` |
-| Forms/rounds | `/admin/forms`, `/admin/forms/builder`, `/admin/rounds`, `/admin/rounds/keys` |
-| Review | `/reviewer`, `/reviewer/results`, `/reviewer/replies`, `/reviewer/flags` |
-| Administration | `/admin/audit`, `/admin/users`, `/admin/settings` |
-| Explicit development mode | `/dev/styleguide` |
-
-Paths are proposed UI locations, not implemented routes. Assign them to the
-origins in [architecture](architecture.md#account-and-anonymous-flow), not one
-shared authenticated application. A shared round-link path and the cross-origin
-handoff remain to be specified before implementation.
+Provide a skip link, one main landmark, logical headings, visible focus, meaningful
+titles and clear role/round context. Keep the main form narrow and readable and
+navigation usable on small screens and by keyboard. Use one consistent action and
+error vocabulary. Do not invent separate login paths or duplicate forms for roles.
 
 ## Component contract
 
-- Provide consistent buttons, labelled forms, validation summaries, cards, badges,
-  responsive tables, pagination, lifecycle indicators, accessible charts,
-  live-region toasts, loading indicators, and useful empty states.
-- Errors give safe next actions without exposing internal data.
-- Destructive dialogs name the action/resource, default to cancel, trap focus,
-  and restore trigger focus. Sensitive operations also require recent server-side
-  reauthentication; dialogs do not replace it.
-- Printed codes omit navigation/unnecessary member data and show expiry/handling
-  instructions. Prevent accidental printing of entire directories.
-- Every chart needs a table or accessible text equivalent.
+- Labels, validation summaries, live status, loading/empty states and progress must
+  remain accessible. Controls start disabled until their dependencies are ready.
+- Errors explain a safe next action without exposing keys, credentials or internals.
+- Destructive confirmations name the resource/action and default to cancel. Future
+  dialogs must manage/restore focus. Server authorization and recent authentication
+  remain mandatory where required; confirmation is not an access control.
+- Future charts need accessible text/table equivalents. Decrypted results and
+  exports must remain local; never upload them for rendering.
 
 ## Round response policy
 
-Follow the [protocol rules](protocol.md#round-response-limit). An authorized manager
-sets a validated `response_limit` and explicitly confirms it at publication.
-Suggest `1` for ballots and support larger permitted values. Changes after
-publication require a new round.
-
-- Label the limit separately from the release threshold. Show it in round summaries
-  and submission flows; lock after publication.
-- Identity-side views may show unreserved allowance. Distinguish reserved slots,
-  held tokens, and verified receipts; warn that interrupted issuance can consume allowance.
-- Never fetch quota from anonymous pages or attach it to submissions.
-- Count responses, not distinct respondents/turnout without separately reviewed evidence.
+The current profile admits only an explicitly selected limit of one. Publication
+freezes it. Broader [response limits](protocol.md#round-response-limit) need reviewed
+forms, signed bounds, quota tests and clear distinction between unreserved allowance,
+consumed issuance and accepted answers. Do not describe response counts as distinct
+participants or claim key-holder-enforced release thresholds.
 
 ## Privacy and assets
 
-Serve embedded, integrity-hashed assets with no third-party requests under the
-[browser-delivery controls](deployment.md#transport-and-headers). Every page retains a visible
-`/source` footer link under the [source-availability contract](deployment.md#agpl-section-13).
+No third-party requests, remote fonts, analytics, inline executable scripts or
+identity-personalized anonymous assets. Go serves embedded first-party assets and
+matched worker runtimes with original licenses/notices. Keep tokens and secrets
+out of URLs, browser history, account vaults and diagnostics.
 
 ## Demonstration and evidence
 
-- Initial shell: read-only, loopback by default; explicit development config for
-  admin previews. Visibly label mocks, disabled authentication, and unavailable actions.
-- Unimplemented security operations fail without accepting plaintext, private keys,
-  or real enrollment data. No shared demo passwords or simulated cryptographic success.
-- Capture actual tested desktop/mobile, light/dark screenshots in CI. Strip/verify
-  empty metadata, cover images with REUSE, and publish artifacts.
-- Supplement axe checks with manual keyboard, screen-reader, zoom, contrast, and
-  print reviews. Automated scans alone cannot establish full WCAG conformance.
+Use synthetic data only. `make web-lint` checks embedded product assets and markup;
+`make browser-test` exercises the connected journey. Component harness screenshots
+are not product screenshots. Automated accessible-name/keyboard checks do not
+replace manual assistive-technology, contrast, autofill, mobile or provider review.
+See [acceptance evidence](testing.md#browser-account-and-vault-acceptance).

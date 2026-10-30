@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Anonce Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package service implements demonstration-only HTTP infrastructure. It contains
-// no membership, issuance, submission, signing, or persistence implementation.
+// Package service provides bounded TLS transport for the browser services.
 package service
 
 import (
@@ -18,31 +17,27 @@ import (
 type Role string
 
 const (
-	CA         Role = "ca"
-	Issuer     Role = "issuer"
+	Identity   Role = "identity"
 	Submission Role = "submission"
 )
 
 // DefaultListen assigns distinct loopback ports without looking up hostnames.
 func (r Role) DefaultListen() string {
 	switch r {
-	case CA:
-		return "127.0.0.1:8082"
-	case Issuer:
-		return "127.0.0.1:8081"
+	case Identity:
+		return "127.0.0.1:8443"
 	case Submission:
-		return "127.0.0.1:8080"
+		return "127.0.0.1:8444"
 	default:
 		return ""
 	}
 }
 
-// Config describes a local demonstration process. There are no secret settings.
+// Config describes a browser service's listener and corresponding-source URL.
 type Config struct {
 	Role             Role
 	Listen           string
 	SourceURL        string
-	DevStyleGuide    bool
 	ContainerNetwork bool
 }
 
@@ -51,9 +46,6 @@ type Config struct {
 func (c Config) Validate() error {
 	if c.Role.DefaultListen() == "" {
 		return errors.New("unknown service role")
-	}
-	if c.DevStyleGuide && c.Role != Submission {
-		return errors.New("development style guide is available only on the submission process")
 	}
 	if len(c.Listen) > 128 {
 		return errors.New("listen address is too long")

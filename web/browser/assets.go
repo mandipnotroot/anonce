@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Anonce Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package browser supplies embedded pages for the separate opt-in browser hosts.
+// Package browser supplies embedded pages for the identity and anonymous origins.
 package browser
 
 import (

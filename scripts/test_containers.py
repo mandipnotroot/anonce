@@ -60,13 +60,9 @@ class ContainerPolicyTests(unittest.TestCase):
         self.assertIn("COPY LICENSES/AGPL-3.0-only.txt /licenses/anonce-LICENSE", (ROOT / "Dockerfile").read_text())
         dockerfile = (ROOT / "Dockerfile").read_text()
         self.assertIn('CMD ["/app/browser-identity"]',dockerfile)
-        self.assertNotIn("./cmd/client",dockerfile)
-        self.assertNotIn("./cmd/server",dockerfile)
         makefile = (ROOT / "Makefile").read_text()
-        default = makefile.split("build: member-wasm\n",1)[1].split(".PHONY: dev-tools",1)[0]
+        default = makefile.split("build: member-wasm\n",1)[1].split(".PHONY: browser-test",1)[0]
         self.assertIn("./cmd/browser-identity ./cmd/browser-submission",default)
-        self.assertNotIn("./cmd/client",default)
-        self.assertNotIn("./cmd/server",default)
 
     def test_engine_loopback_boundary(self):
         for version in ("28.0.0", "29.9.2", "29.9.2\n", "28.1.0-test"):
@@ -410,9 +406,9 @@ class BrowserStartupTests(unittest.TestCase):
         app_start = next(index for index,args in enumerate(calls) if args[0]=="up" and args[-2:]==("identity","submission"))
         self.assertLess(calls.index(("initialize",)),app_start)
 
-    def test_legacy_services_are_not_silently_retained_or_removed(self):
+    def test_unexpected_services_are_not_silently_retained_or_removed(self):
         stack = Stack(env={})
-        with patch.object(stack,"config",return_value=model()), patch.object(stack,"compose",return_value=SimpleNamespace(stdout=b"server\n")) as compose:
+        with patch.object(stack,"config",return_value=model()), patch.object(stack,"compose",return_value=SimpleNamespace(stdout=b"unexpected-service\n")) as compose:
             with self.assertRaises(ValueError):
                 stack.start()
             compose.assert_called_once_with("ps","--all","--services")

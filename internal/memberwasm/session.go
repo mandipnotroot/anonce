@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Anonce Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package memberwasm adapts shared member sessions to a separate development-only
-// WASM interface. It provides no transport, persistence, or account binding.
+// Package memberwasm adapts shared member sessions to the browser worker's WASM
+// interface. Transport, persistence and account binding belong to its host.
 package memberwasm
 
 import (

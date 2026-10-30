@@ -21,22 +21,7 @@ const (
 	shutdownTimeout = 5 * time.Second
 )
 
-// Run binds a validated listener and serves until cancellation. No request
-// logging, database connection, or signer is installed by this foundation.
-func Run(ctx context.Context, cfg Config) error {
-	handler, err := NewHandler(cfg)
-	if err != nil {
-		return fmt.Errorf("configure HTTP service: %w", err)
-	}
-	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Listen)
-	if err != nil {
-		return fmt.Errorf("listen for HTTP service: %w", err)
-	}
-	return serve(ctx, listener, handler)
-}
-
-// RunTLS reuses the bounded, silent lifecycle for a separately configured browser
-// handler. It does not change the inert demonstration commands or their routes.
+// RunTLS serves a browser handler with a bounded, silent TLS lifecycle.
 func RunTLS(ctx context.Context, cfg Config, handler http.Handler, certificate tls.Certificate) error {
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -65,10 +50,6 @@ func newServer(ctx context.Context, handler http.Handler) *http.Server {
 		// retain those values, even on the submission service's error path.
 		ErrorLog: log.New(io.Discard, "", 0),
 	}
-}
-
-func serve(ctx context.Context, listener net.Listener, handler http.Handler) error {
-	return serveTransport(ctx, listener, handler, nil)
 }
 
 func serveTransport(ctx context.Context, listener net.Listener, handler http.Handler, tlsConfig *tls.Config) error {

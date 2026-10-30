@@ -7,18 +7,16 @@ Audience: contributors and automated tooling.
 
 ## Repository status and layout
 
-anonce is designed for anonymous submissions from verified members with
-administrator-set per-member/round limits. Docs, checks, local demo HTTP
-infrastructure, a read-only shell, shared device-backup encryption, local
-member/reviewer-key generation/import/export, and developer-only offline diagnostics exist.
-Distinguish implemented from planned behavior.
+anonce provides a synthetic-only browser application for anonymous submissions
+from verified members. The current profile supports one free-text question, one
+reviewer and an explicitly selected one-response limit. Distinguish implemented
+controls from broader planned behavior.
 
 The browser is the only product workflow for every user role. `make build` produces
 the browser services and matched runtimes plus operator tools. `make up` connects
 the TLS services, separately scoped state/credentials and independent databases,
-applying migrations through operator-only containers. `make dev-tools` alone builds
-the legacy inert commands and offline key CLI for regression checks. Do not expose
-them as user onboarding, key management or a product alternative.
+applying migrations through operator-only containers. Keep one product path and
+one current contract, without alternate onboarding or compatibility entry points.
 
 - `cmd/browser-identity`, `cmd/browser-submission`, `cmd/browser-init`,
   `internal/browseridentity`, `internal/browsersubmission`, `web/browser`, and
@@ -31,9 +29,8 @@ them as user onboarding, key management or a product alternative.
   revocation, expiry-preserving passkey reauthentication and local logout cleanup.
   Remote revocation does not erase previously loaded keys or plaintext.
   No production readiness, independent approval, transparency-log inclusion, PRF,
-  recovery, protected signer custody or reviewer server backup. The original
-  demonstration commands remain inert. See the canonical browser startup and API
-  references before extending these boundaries.
+  recovery, protected signer custody or reviewer server backup. See the canonical
+  browser startup and API references before extending these boundaries.
 
 - `docs/`: architecture, security, operations, and contributor reference.
 - `docs/dependencies.md`: dependency choices, licensing, and review requirements.
@@ -41,62 +38,47 @@ them as user onboarding, key management or a product alternative.
 - `scripts/`: policy, commit, and documentation checks.
 - `.githooks/`: local enforcement, installed through `make setup`.
 - `.github/`: collaboration templates and supported CI workflows.
-- `cmd/`, `internal/`: local CA, issuer, and submission HTTP infrastructure.
+- `cmd/`, `internal/`: browser services, shared device cryptography and operator tools.
 - `internal/client/keystore`: bounded, in-memory device-backup encryption, used by
-  typed key wrappers; profile 2 uses Argon2id and ChaCha20-Poly1305;
-  no browser or service integration.
+  typed browser key wrappers; profile 2 uses Argon2id and ChaCha20-Poly1305.
 - `internal/client/memberkey`: local Ed25519 member keys and validated encrypted
-  backups; offline CLI integration, no browser or enrollment integration.
+  backups for automatic browser member setup and restoration.
 - `internal/client/reviewerkey`: local X25519 reviewer keys and validated encrypted
-  backups; offline CLI integration, no browser, round-binding, or decryption integration.
-- `internal/clientcli`, `cmd/client`: offline backup generation and public-only
-  inspection and password rewrapping with optional expected-public-key matching;
-  bounded stdin passwords and no-replace
-  encrypted files, plus identity-free member CSR stdout or no-replace file output
-  with optional expected-public-key matching before signing
-  and password-free request verification with optional expected-public-key matching;
-  inspection and request verification support owner-only no-replace public-key files;
-  expected-key checks also accept independently trusted public-key export files;
-  no old-backup revocation, key rotation, or enrollment.
+  backups for fresh round-scoped browser reviewer access.
 - `internal/client/membercsr`: local Ed25519 certificate requests and bounded
   profile validation; no identity claims, certificate issuance, or transport.
 - `internal/client/membersession`: in-memory member setup, required expected-key
   restoration, fixed CSR requests, unlocked encrypted-backup export, and explicit
-  lock/cancellation, with opt-in confirmed setup/export passwords;
-  public-only results and encrypted backups, no account binding
-  or persistence.
-- `cmd/wasm`, `internal/clientwasm`: public-only member request verification using
-  the shared parser, with opt-in expected-public-key matching; local WASM artifacts
-  and Node compatibility checks, no page integration, device-key access, or enrollment.
-- `cmd/memberwasm`, `internal/memberwasm`: separate development-only WASM member
+  lock/cancellation, confirmed setup/export passwords and fixed-profile issuance
+  signing; public-only results and encrypted backups, with no I/O in this package.
+- `cmd/memberwasm`, `internal/memberwasm`: browser WASM member
   setup/restoration, fixed requests, encrypted-backup export, and lock/shutdown
   using shared sessions, including two-input confirmed setup/export;
-  bounded byte inputs, public/encrypted outputs, native/Node backup checks;
-  no page integration, account binding, storage, passkeys, or enrollment.
-- `internal/memberworker`: development-only dedicated-worker owner for that bridge,
+  bounded byte inputs, public/encrypted outputs and native/Node backup checks.
+- `internal/memberworker`: dedicated-worker owner for that bridge,
   bounded/correlated transferred messages, single active owner per module realm,
   fixed startup/operation/lifetime limits with dual-clock deadline checks, terminal
   lock/disposal with public closure observation and optional host-signal cancellation,
   secret-free same-partition lock notifications, and local pagehide/hidden-page
   termination, plus opt-in bounded UTF-8 text passphrases over confirmed setup/export
   and expected-key restoration with synchronous encoding-buffer cleanup;
-  native/Node checks and an isolated synthetic browser-test harness with a confirmed
-  local setup/unlock form, expected-key restoration, and encrypted/public
-  page-memory output; no product HTTP
-  delivery, supported-browser matrix, or account logout integration.
-- `web/`: embedded read-only demonstration templates and first-party CSS.
+  native/Node checks and an isolated synthetic browser-test harness. Product pages
+  compose these controls with account/vault storage; a supported-browser matrix
+  and manual accessibility evidence remain outstanding.
+- `cmd/reviewwasm`, `internal/reviewwasm`: anonymous/reviewer browser cryptographic bridge.
+- `web/browser`: embedded application pages, first-party CSS and ES modules.
 - `Dockerfile`, `compose.yaml`, `deploy/postgres/`, `scripts/containers.py`: local
-  non-root HTTP containers and separate PostgreSQL instances/volumes/credentials;
+  non-root TLS containers and separate PostgreSQL instances/volumes/credentials;
   empty-volume role/schema bootstrap, loopback host publication, liveness probes,
-  secret preparation, and opt-in real-container checks; no application database
-  integration, encrypted database restoration, image scan, or product readiness.
+  secret preparation and opt-in real-container checks. Encrypted database
+  restoration, image-scan evidence and production readiness remain unavailable.
 - `migrations/`, `internal/dbmigrate`, `cmd/migrate`: separate embedded Goose SQL
   histories and an operator-only pgx runner for local databases, with owner-created
   boundary markers, explicit migration targets, and opt-in real-PostgreSQL checks;
   identity version 2 adds internal account/session persistence and version 3 adds
   an encrypted member-backup slot; version 4 adds independent non-secret session
-  selectors. Submission version 2 adds internal round/spend/ciphertext tables.
-  No credentials, protocol verification, or HTTP persistence.
+  selectors; version 5 adds browser persistence. Submission version 2 adds internal
+  round/spend/ciphertext tables and version 3 adds browser publication/review state.
 - `internal/identity/accounts`: identity runtime-role account/session store, digest-only
   random tokens, absolute expiry, individual/all-session revocation, transactional
   disable, token rotation after caller-verified reauthentication without extending
@@ -104,13 +86,14 @@ them as user onboarding, key management or a product alternative.
   active-session metadata with non-secret selectors, recently authenticated
   all-sibling or selected-sibling revocation, bearer-derived sign-out everywhere,
   session-authorized atomic account disabling, and bounded expired cleanup;
-  no authentication ceremony or membership logic in this package. The separate
-  opt-in browser host composes its session operations with WebAuthn and HTTP.
-- `internal/identity/memberbackup`: development-only account-scoped encrypted
+  no authentication ceremony or membership logic in this package. The browser
+  host composes its session operations with WebAuthn and HTTP.
+- `internal/identity/memberbackup`: account-scoped encrypted
   member-backup slots with fixed public binding, compare-and-swap revisions,
   deletion tombstones, and session-derived access serialized with revocation/disable;
   fixed recent-authentication admission for session-scoped mutations;
-  no authentication ceremony, enrollment, browser/API integration, PRF, or recovery.
+  no authentication ceremony in this package. The browser host supplies transport
+  and enrollment binding; PRF and recovery remain unavailable.
 - `internal/submission/records`: internal submission-runtime round admission and
   atomic spend/ciphertext persistence with payload-bound retries, immutable records,
   database-clock windows, and cancellation ordering; submission migration version 2;
@@ -121,9 +104,8 @@ them as user onboarding, key management or a product alternative.
 The required product is browser-only for members, reviewers, and administrators:
 sign in, open a shared review link or an available round, complete the form, and
 submit. No app, extension, CLI, manual key generation, CSR handling, or key-file
-management may be required for ordinary use. The existing CLI is optional tooling,
-not a product workflow and excluded from the default build/image. Prioritize a complete browser workflow over
-additional optional CLI features.
+management may be required for ordinary use. Improve the same browser journey
+rather than adding another way to perform product operations.
 
 - Follow [account and review UX](docs/ui-design.md#account-and-review-workflow)
   and the [browser account vault](docs/key-management.md#browser-account-vault).
@@ -140,7 +122,7 @@ additional optional CLI features.
 - Recovery must preserve membership quotas, revocations, and round-key expiry.
   Login reset is not recovery of encrypted keys. Reviewer-key server backup needs
   a separately reviewed retention policy before it can be enabled.
-- These are planned requirements. Do not present them as implemented controls.
+- Label unimplemented requirements honestly, especially PRF, recovery and production custody.
 
 ## Authorship and wording
 
@@ -181,16 +163,13 @@ make docs-build       # build and validate the mdBook site
 make docs-external    # check externally hosted references
 make workflow-lint    # pinned actionlint; requires Go
 make build            # default browser services, matched runtimes and operator tools
-make dev-tools        # developer-only CLI and inert-shell regression binaries
 make test             # race tests and coverage report
 make browser-session-test # browser session-control lifecycle and bounded UI checks
 make lint             # Go analysis, formatting, and module checks
-make fuzz             # bounded configuration, shell-route, backup, key, and CLI parser fuzzing
+make fuzz             # bounded browser, storage, configuration, backup and key admission fuzzing
 make vuln             # Go vulnerability, static security, and secret checks
-make web-lint         # rendered inert markup, local CSS, SRI, and HTTP delivery checks
-make wasm             # public-only Go WASM verifier, matching loader, hashes, size gate
-make wasm-test        # native/WASM public-request compatibility and bridge checks
-make member-wasm      # separate local member-session WASM and matching notices
+make web-lint         # browser page assets, runtime manifests, SRI and origin policies
+make member-wasm      # browser member-session WASM and matching notices
 make member-wasm-test # native/Node backup compatibility, member bridge/worker checks
 make member-browser-test # opt-in synthetic Chromium checks; requires MEMBER_BROWSER
 make browser-unit-test # reviewer record isolation and cancellation checks in Node
@@ -209,9 +188,10 @@ make db-submission-record-test # real runtime-role spend, retry, round, rollback
 ```
 
 See [testing](docs/testing.md) for required full database, browser, container-scan,
-inventory, and protocol targets that remain unavailable. The opt-in container target
-checks infrastructure/bootstrap only. The separate opt-in browser target checks
-synthetic member workers, not product custody or the account/vault journey.
+inventory, and protocol evidence that remains unavailable. The container target
+checks the local application and infrastructure, not production readiness.
+`make browser-test` checks the connected journey; `make member-browser-test` checks
+isolated synthetic member workers.
 Add real Make targets with implementation.
 No successful no-op checks or claims that unavailable commands passed.
 
@@ -240,7 +220,6 @@ No successful no-op checks or claims that unavailable commands passed.
 - No external fonts, analytics, third-party requests, or inline executable scripts.
 - Escape templates by default; do not cast untrusted values to trusted HTML.
 - Preserve keyboard access, visible focus, semantic structure, labels, and contrast.
-- Gate the style guide behind explicit development configuration.
 - Keep mock data obvious; disabled security features must not look operational.
 
 ## Git and review

@@ -4,19 +4,28 @@
 package service
 
 import (
-	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func serve(ctx context.Context, listener net.Listener, handler http.Handler) error {
+	return serveTransport(ctx, listener, handler, nil)
+}
+
+func livenessHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	})
+}
 
 func listenForTest(t *testing.T) net.Listener {
 	t.Helper()
@@ -45,7 +54,7 @@ func TestServeLifecycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	result := make(chan error, 1)
-	handler := handlerFor(t, Submission)
+	handler := livenessHandler()
 	go func() { result <- serve(ctx, listener, handler) }()
 	transport := &http.Transport{}
 	t.Cleanup(transport.CloseIdleConnections)
@@ -98,41 +107,6 @@ func TestServePropagatesCancellationToRequests(t *testing.T) {
 	case <-started:
 	case <-time.After(5 * time.Second):
 		t.Fatal("handler did not start")
-	}
-	cancel()
-	if err := awaitResult(t, result); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestServeRejectsBodyBeforeContinue(t *testing.T) {
-	t.Parallel()
-	listener := listenForTest(t)
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
-	result := make(chan error, 1)
-	handler := handlerFor(t, Submission)
-	go func() { result <- serve(ctx, listener, handler) }()
-	conn, err := net.DialTimeout("tcp", listener.Addr().String(), time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = conn.Close() }()
-	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	// Do not send a body. The service must reject based on headers alone, without
-	// soliciting the body with 100 Continue or waiting for the declared bytes.
-	if _, err := io.WriteString(conn, "POST /api/v1/submissions HTTP/1.1\r\nHost: localhost\r\nExpect: 100-continue\r\nContent-Length: 1048576\r\n\r\n"); err != nil {
-		t.Fatal(err)
-	}
-	response, err := http.ReadResponse(bufio.NewReader(conn), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = response.Body.Close()
-	if response.StatusCode != http.StatusNotImplemented || !response.Close {
-		t.Fatalf("status = %d, connection close = %v", response.StatusCode, response.Close)
 	}
 	cancel()
 	if err := awaitResult(t, result); err != nil {
@@ -231,28 +205,31 @@ func TestServeClosesUnresponsiveRequests(t *testing.T) {
 	}
 }
 
-func TestRunFailures(t *testing.T) {
+func TestRunTLSFailures(t *testing.T) {
 	t.Parallel()
-	if err := Run(t.Context(), Config{}); err == nil {
+	if err := RunTLS(t.Context(), Config{}, livenessHandler(), tls.Certificate{}); err == nil {
 		t.Fatal("accepted invalid configuration")
+	}
+	if err := RunTLS(t.Context(), testConfig(Submission), nil, tls.Certificate{}); err == nil {
+		t.Fatal("accepted missing browser handler")
 	}
 	listener := listenForTest(t)
 	cfg := testConfig(Submission)
 	cfg.Listen = listener.Addr().String()
-	if err := Run(t.Context(), cfg); err == nil || !strings.Contains(err.Error(), "listen for HTTP service") {
+	if err := RunTLS(t.Context(), cfg, livenessHandler(), tls.Certificate{}); err == nil {
 		t.Fatalf("occupied listener returned %v", err)
 	}
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := serve(t.Context(), listener, handlerFor(t, Submission)); err == nil {
+	if err := serve(t.Context(), listener, livenessHandler()); err == nil {
 		t.Fatal("closed listener did not fail")
 	}
 }
 
 func TestServerBounds(t *testing.T) {
 	t.Parallel()
-	server := newServer(t.Context(), handlerFor(t, Submission))
+	server := newServer(t.Context(), livenessHandler())
 	if server.ReadHeaderTimeout != 5*time.Second || server.ReadTimeout != 10*time.Second ||
 		server.WriteTimeout != 10*time.Second || server.IdleTimeout != 30*time.Second ||
 		server.MaxHeaderBytes != 8<<10 || !server.DisableGeneralOptionsHandler ||

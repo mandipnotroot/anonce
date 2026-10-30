@@ -7,14 +7,13 @@ Audience: security researchers, contributors, and operators.
 
 ## Current support
 
-- No released or production-supported versions. Current code covers demo HTTP
-  services, a read-only shell, local key/backup packages, and an offline key CLI.
-  The submission protocol is unimplemented; see [project status](docs/README.md#project-status).
+- No released or production-supported versions. The browser application connects
+  passkey accounts, encrypted member backups, enrollment, anonymous encrypted
+  submissions and local review for synthetic data only. See [project status](docs/README.md#project-status).
 - Review of `main` is best effort, not cryptographic or deployment certification.
-- Browser accounts, automatic key custody, encrypted server backups, and recovery
-  are [planned requirements](docs/key-management.md#browser-account-vault), not
-  supported security features. Do not infer that account recovery can decrypt keys
-  or that passkeys remove trust in browser-code delivery.
+- Recovery, PRF unlocking, protected signer custody and reviewer server backup are
+  not implemented. Do not infer that account authentication decrypts keys or that
+  passkeys remove trust in browser-code delivery. See [custody limits](docs/key-management.md#browser-account-vault).
 - Future security fixes cover the latest release only, unless this policy says otherwise.
 
 ## Private disclosure

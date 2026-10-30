@@ -16,7 +16,7 @@ advisories before further imports.
 | Material | License | Treatment |
 | --- | --- | --- |
 | Original code, documentation, and repository checks | AGPL-3.0-only | SPDX headers; [license](../LICENSE) |
-| Read-only shell templates and CSS | AGPL-3.0-only | Original embedded assets; device fonts, no third-party product assets or browser packages |
+| Browser pages, CSS and ES modules | AGPL-3.0-only | Original embedded assets; device fonts, no third-party product assets or browser packages |
 | Contributor Covenant 3.0 adaptation | CC-BY-SA-4.0 | Upstream attribution and separate document license retained |
 | Python standard library | PSF-2.0 | External interpreter, not copied into the project |
 | [ExifTool](https://exiftool.org/#license), distribution-maintained package | Artistic-1.0-Perl OR GPL-1.0-or-later, under Perl's terms | External metadata inspector; Ubuntu 24.04 CI installs `libimage-exiftool-perl` and reports its version; not vendored or pinned to one upstream release |
@@ -77,7 +77,7 @@ No upstream source is copied or relicensed. `make build` preserves linked
 module/runtime notices in `bin/browser-notices`; both WASM manifests retain the
 original CIRCL/Go/x-crypto/x-sys notices. Redistribute those with generated binaries.
 The default application image includes these notices and both matched worker
-runtimes; it does not include the offline key CLI or inert servers. No npm
+runtimes and operator tools. No npm
 build, third-party browser library, CDN or authentication fallback is introduced.
 
 x/crypto and x/sys are maintained Go project libraries that avoid a custom KDF
@@ -150,18 +150,17 @@ application or release asset. Original builder and module notices remain unchang
 
 ### WASM runtime support
 
-The public-only verifier imports only standard-library packages and the shared
-member-request parser. `make wasm` copies Go 1.27.3's unmodified
+`make build` produces matched member/reviewer runtimes and copies Go 1.27.3's unmodified
 [loader](https://github.com/golang/go/blob/go1.27.3/lib/wasm/wasm_exec.js),
 [license](https://github.com/golang/go/blob/go1.27.3/LICENSE), and
 [patent grant](https://github.com/golang/go/blob/go1.27.3/PATENTS) beside the build.
 Their reviewed SHA-256 hashes are pinned in `scripts/wasm.toml`; original upstream
-notices stay intact. No upstream asset or generated WASM is checked in or served
-by the shell. Updating Go requires reviewing these pins and rerunning compatibility
+notices stay intact. Generated runtimes are served by the browser services, not
+checked in. Updating Go requires reviewing these pins and rerunning compatibility
 and security checks (sources accessed 2026-10-27).
 
-The separate `make member-wasm` module also links the already admitted x/crypto
-and x/sys packages through the shared session. It copies each module's unchanged
+The member and reviewer modules link the admitted x/crypto, x/sys and CIRCL
+packages through shared Go composition. Each build copies the modules' unchanged
 `LICENSE` and `PATENTS` alongside the artifact as `LICENSE.x-crypto`,
 `PATENTS.x-crypto`, `LICENSE.x-sys`, and `PATENTS.x-sys`. Their contents match the
 reviewed Go notice hashes above and are verified independently from module-cache
@@ -173,8 +172,8 @@ Node.js is pinned in the same manifest and CI. Use official
 [22.23.3 archives and checksums](https://nodejs.org/dist/v22.23.3/SHASUMS256.txt)
 and retain its upstream notices if redistributing that external test runtime.
 Only built-in assertion, crypto, filesystem, module, path, URL, test, and worker-thread
-facilities are used by the test runners. The public verifier runner handles no
-passwords. The member runner handles only synthetic unlock bytes, encrypted backups,
+facilities are used by the test runners. The member runner handles only synthetic
+unlock bytes, encrypted backups,
 and public enrollment material for interoperability checks, never private-key
 fixtures or real credentials.
 
