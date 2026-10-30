@@ -10,7 +10,10 @@ COPY cmd/ cmd/
 COPY internal/ internal/
 COPY migrations/ migrations/
 COPY web/ web/
-RUN go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/ ./cmd/server ./cmd/issuer ./cmd/ca ./cmd/probe
+RUN go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/ ./cmd/browser-identity ./cmd/browser-submission ./cmd/browser-init ./cmd/probe
+COPY bin/memberwasm/ /runtime/memberwasm/
+COPY bin/reviewwasm/ /runtime/reviewwasm/
+COPY bin/browser-notices/ /browser-notices/
 
 FROM build AS migration-build
 RUN go build -trimpath -buildvcs=false -ldflags="-s -w" -o /migration/migrate ./cmd/migrate
@@ -61,9 +64,11 @@ ENTRYPOINT ["/out/submissionrecords.test", "-test.run=^TestPostgresSubmissionRec
 
 FROM scratch AS application
 COPY --from=build /out/ /app/
+COPY --from=build /runtime/ /app/runtime/
+COPY --from=build /browser-notices/ /licenses/browser/
 COPY --from=build /usr/local/go/LICENSE /licenses/Go-LICENSE
 COPY --from=build /usr/local/go/PATENTS /licenses/Go-PATENTS
 COPY LICENSES/AGPL-3.0-only.txt /licenses/anonce-LICENSE
 USER 65532:65532
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
-CMD ["/app/server"]
+CMD ["/app/browser-identity"]

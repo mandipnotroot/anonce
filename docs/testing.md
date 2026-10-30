@@ -89,7 +89,8 @@ The original foundation targets below do not test the connected browser protocol
 
 | Target | Current checks |
 | --- | --- |
-| `make build` | All Go commands with Go 1.27.3 |
+| `make build` | Default browser services, matched member/reviewer runtimes, original notices and operator tools with Go 1.27.3; excludes the user key CLI and inert demo servers |
+| `make dev-tools` | Explicit developer-only CLI and inert-shell regression binaries, never the application image or a product workflow |
 | `make test` | `go test -race -coverprofile=coverage/out ./...` and statement coverage report; no native-package exclusions, including wrappers and signal handling. JS-only code is checked separately below |
 | `make lint` | Native and WASM entry-point vet, pinned gofumpt/golangci-lint, tidy diff, module verification |
 | `make fuzz` | `FuzzMigrationAdmission`, `FuzzConfig`, `FuzzContainerListen`, `FuzzLookup`, `FuzzBackup`, `FuzzMemberKeyPayload`, `FuzzMemberCSR`, `FuzzMemberSessionUnlockInputs`, `FuzzMemberWASMSizes`, `FuzzMemberBrowserManifest`, `FuzzWASMRequest`, `FuzzWASMExpectedKey`, `FuzzReviewerKeyPayload`, `FuzzClientArguments`, `FuzzClientPublicKeyLine`, `FuzzClientPassword`, and `FuzzClientRewrapPasswords`, two workers, 15 seconds each; override with `FUZZTIME` |
@@ -102,8 +103,8 @@ The original foundation targets below do not test the connected browser protocol
 | `make member-browser-test` | Opt-in pinned headless Chromium, isolated Go test host, native/worker backup compatibility, page CSP probes, event-loop progress, synthetic-clock expiry/restoration, same-origin peer lock, background-tab lock/foreground restoration, and navigation termination; requires `MEMBER_BROWSER`, not included in `make check` or CI |
 | `make container-secrets` | Generate/validate separate database secret files without replacing existing files; no Docker daemon required |
 | `make container-config` | Validate the real Compose parser's normalized configuration, image pin, loopback publication, networks, secret scopes, volumes, resource bounds, and hardening; requires Docker Compose but not a daemon |
-| `make up`, `make smoke`, `make down` | Start/build/wait and check the demo stack, inspect the running stack, or stop without deleting database volumes; requires local Docker access |
-| `make container-test` | Opt-in fresh Compose project with actual app containers and PostgreSQL: liveness/unavailable readiness, live isolation/hardening, authenticated runtime access, denied escalation/DDL/default function access, explicit table grants, and cross-instance TCP rejection; disposable synthetic volumes only |
+| `make up`, `make smoke`, `make down` | Build/migrate/initialize/start and inspect the default browser application, or stop it without deleting state/database volumes; operator-only commands requiring Docker |
+| `make container-test` | Fresh real browser-service containers and PostgreSQL: verified TLS pages/liveness, scoped read-only state/runtime credentials, restart persistence, hardening, grants and cross-instance rejection; disposable synthetic data only |
 | `make db-migration-test` | Container checks plus separate embedded Goose histories on real PostgreSQL: failed and repeated/concurrent application, owner/runtime grants, wrong-target rejection, invalid/future histories, and missing boundary marker; disposable synthetic volumes only |
 | `make db-account-test` | Migration/container checks plus race-enabled runtime-role account/session persistence, digest-only storage, expiry/cleanup, per-account session limits and concurrent admission, cross-account revocation isolation, concurrent disable, cancellation, SQL constraints/grants, and submission-store rejection |
 | `make db-member-backup-test` | Account/migration/container checks plus race-enabled runtime-role member-backup persistence, owner scoping, revision/binding conflicts, tombstones, concurrent writes/disable, cancellation/rollback, constraints/grants, and submission-store rejection |
@@ -282,14 +283,15 @@ envelope-decryption workflows are not implemented.
 
 ### Container infrastructure checks
 
-The [local stack](deployment.md#container-stack) has separate opt-in checks, not a
-working product `e2e` or complete `db-test`. `make container-config` uses the real
+The default [browser stack](deployment.md#container-stack) has explicit container
+checks, separate from the real-browser journey and broader protocol acceptance.
+`make container-config` uses the real
 Compose JSON model without starting containers. Python policy/secret unit tests run
 in `make check` without a Docker dependency. Database privileges are not inferred
 from those unit tests.
 
 `make container-test` requires a local Linux Docker daemon, Engine 28 or newer,
-Compose, Python, and Make. It builds the actual scratch image and initializes both
+Compose, Go 1.27.3, Python, and Make. It builds the matched runtimes, actual scratch image and both
 PostgreSQL instances under a unique test project, with fresh secrets and ephemeral
 loopback host ports. It never uses or resets the normal development stack's volumes.
 Failures or missing tools fail the target rather than skipping it. Cleanup removes
@@ -298,20 +300,36 @@ Forced termination or a daemon failure can leave owned test resources for explic
 inspection and cleanup.
 
 The checks inspect running users, read-only roots, capabilities, resource settings,
-logging drivers, actual network attachments, and port publication. HTTP requests
-confirm liveness, `503` readiness, demonstration status, source discovery, and no
-cookies. Real TCP-authenticated SQL checks run as the actual runtime/migration roles:
+logging drivers, actual network attachments, scoped read-only application state and
+own-runtime-only secrets, and port publication. Verified HTTPS requests check the
+actual browser pages, peer origins, liveness, source discovery and no cookies.
+Repeated startup retains server state and persisted account rows. Unit checks reject
+incomplete state, unsafe metadata, cross-service credentials and implicit host mounts,
+and verify migration-before-service ordering. `TestEmptyInitializationAdmission`,
+`TestRuntimeDatabaseBoundary`, `FuzzRuntimeDatabaseBoundary`, `TestBrowserProbeTLS`
+and `TestBrowserLiveness` cover native setup, database admission and trusted probes.
+Real TCP-authenticated SQL checks run as the actual runtime/migration roles:
 no ownership escalation, server-file reads, schema/public/temporary DDL, default table/function access,
 wrong-password rejection, and successful use only after an explicit owner grant. The opposite instance must
 reject a TCP connection using the first instance's runtime credential. Synthetic
 test tables/functions exist only in disposable volumes. Passwords and SQL error
 bodies are not printed.
 
-The stack was exercised on Linux x86_64 with Engine 29.9.2 and Compose 5.6.1 on
-2026-10-28. This is not evidence for malicious-host isolation, production networking,
-rootless/Podman support, application migrations, concurrent quota/spend transactions,
-encrypted backup restoration, OS-package vulnerability scanning, SBOMs, or the full
-account/vault/submission journey. Those remain required work.
+The database race targets stop the disposable browser services after the connected
+page/isolation checks. Their two eight-connection runtime pools then use the existing
+16-connection role budget without competition from HTTP pools. Connection grants,
+limits and admission checks are not increased or bypassed for tests.
+
+On 2026-10-30, `make container-test db-account-test` passed for the default browser
+stack on Linux x86_64 with Engine 29.9.2, Compose 5.6.1 and PostgreSQL 18.6. Cold
+startup exercises the operator's actual `up` entry point without pre-created secrets;
+repeat startup retains server state and a persisted account row. The separate
+`make browser-test` passed in an isolated sandbox with the pinned Chromium/Node
+runtimes, including account navigation, shared-review discovery and no user file controls.
+
+This is not evidence for malicious-host isolation, production networking,
+rootless/Podman support, encrypted database restoration, OS-package vulnerability
+scanning, SBOMs or the broader protocol acceptance matrix. Those remain required work.
 
 ### Database migration checks
 

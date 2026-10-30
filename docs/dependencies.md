@@ -73,10 +73,11 @@ review together, with no algorithm fallback.
 | `github.com/tinylib/msgp` | 1.6.4 | MIT with original Go notices; upstream codec support |
 | `github.com/x448/float16` | 0.8.4 | MIT; CBOR support |
 
-No upstream source is copied or relicensed. `make browser-build` preserves linked
+No upstream source is copied or relicensed. `make build` preserves linked
 module/runtime notices in `bin/browser-notices`; both WASM manifests retain the
 original CIRCL/Go/x-crypto/x-sys notices. Redistribute those with generated binaries.
-Existing inert application images do not link authentication packages. No npm
+The default application image includes these notices and both matched worker
+runtimes; it does not include the offline key CLI or inert servers. No npm
 build, third-party browser library, CDN or authentication fallback is introduced.
 
 x/crypto and x/sys are maintained Go project libraries that avoid a custom KDF
@@ -165,6 +166,9 @@ and x/sys packages through the shared session. It copies each module's unchanged
 `PATENTS.x-crypto`, `LICENSE.x-sys`, and `PATENTS.x-sys`. Their contents match the
 reviewed Go notice hashes above and are verified independently from module-cache
 sources; replaced module sources are rejected. No additional dependency is admitted.
+On an empty cache, the build downloads the selected module versions before reading
+their notices, including modules omitted by platform-specific imports. The same
+source and notice-hash checks apply after download.
 It also packages first-party worker/client modules using standard browser APIs,
 without an npm install, third-party asset, or JavaScript cryptographic dependency.
 
@@ -199,7 +203,7 @@ third-party driver, or browser package manager is added.
 
 ### Container runtime and images
 
-The opt-in stack uses open-source Docker Engine and Compose, not a required Docker
+The default local stack uses open-source Docker Engine and Compose, not a required Docker
 Desktop subscription. Both upstream projects use Apache-2.0. Local observations on
 2026-10-28 are Engine 29.9.2 and Compose 5.6.1. Engine 28 or newer is required for
 the documented loopback publication boundary. Other engines/platforms need separate
@@ -214,8 +218,9 @@ Digests were retrieved from the official registry on 2026-10-28. Reviewed upstre
 build definitions are [Go](https://github.com/docker-library/golang/tree/41d9b4da70324ae7b6461ac2cc401b06719ff57d/1.27/bookworm)
 and [PostgreSQL](https://github.com/docker-library/postgres/tree/e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc/18/bookworm).
 Go's BSD-3-Clause license/patent notice and the project AGPL license are copied
-unchanged into the scratch application image. Only standard-library HTTP commands
-are linked in the default application target. The separate `migration` target
+unchanged into the scratch application image. The browser services link the
+already admitted authentication, protocol and pgx modules; `make build` collects
+their unchanged notices for the image, together with matched WASM notices. The separate `migration` target
 contains only the operator binary and its reviewed module notices above. Builder
 operating-system packages do not enter that final image.
 

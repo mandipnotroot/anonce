@@ -93,3 +93,25 @@ func TestEmbeddedPagesAndPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestBrowserLiveness(t *testing.T) {
+	handler, err := New(true, "https://submit.localhost:8444", "https://example.invalid/source", runtimeFixture(true), runtimeFixture(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{"GET", "HEAD", "POST"} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest(method, "https://local.invalid/healthz", nil))
+		want := "ok"
+		if method == "HEAD" {
+			want = ""
+		}
+		if method == "POST" {
+			if w.Code != 405 {
+				t.Fatal("liveness write admitted")
+			}
+		} else if w.Code != 200 || w.Body.String() != want {
+			t.Fatal("incorrect browser liveness")
+		}
+	}
+}

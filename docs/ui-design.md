@@ -5,8 +5,8 @@
 
 Audience: front-end contributors, accessibility reviewers, and product reviewers.
 
-Status: the original read-only shell and separate connected browser MVP forms are
-implemented. The isolated member harness remains synthetic, not the account UI.
+Status: the connected browser application is the default product interface.
+The original inert shell and isolated member harness are developer regression fixtures.
 Broader product screens, product screenshots and manual accessibility evidence
 remain outstanding.
 
@@ -58,9 +58,14 @@ enable remember-device storage. Browser compatibility and these UX paths require
 
 ### Connected browser MVP pages
 
-The opt-in [browser hosts](deployment.md#browser-mvp-local-startup) add account,
+The default [browser services](deployment.md#browser-mvp-local-startup) connect account,
 local unlocking, enrollment, round/publication, anonymous free-text submission and
-local reviewer forms. They are separate from the original read-only shell.
+local reviewer forms. Members, reviewers and administrators share one account
+workspace with navigation to private access, reviews and sessions. Shared links
+open the anonymous form on its separate origin. Its account/reviews link carries
+no round, token or receipt back to the identity service and suppresses referrers.
+Private-access and reviewer setup generate keys automatically inside workers;
+no CLI, file upload/download or CSR handling is a user step.
 
 The anonymous origin collects and encrypts answers. Reviewer plaintext renders
 locally with `textContent`, never HTML interpolation or a plaintext server API.

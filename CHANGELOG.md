@@ -287,6 +287,15 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Made the connected browser application the default build and local deployment.
+  `make up` now prepares state, applies isolated migrations and starts the TLS
+  identity/submission services with their matched workers and scoped runtime
+  credentials. Removed the browser overlay and replaced the old HTTP service/port
+  layout. Inert servers and offline key diagnostics now require `make dev-tools`
+  and are excluded from the application image. Added browser workspace navigation,
+  strict TLS probes and safe restart/state checks. This changes the development
+  deployment interface; ordinary users use browser forms only.
+
 - PR title, description, and label edits no longer trigger CI. Code updates and
   existing lifecycle, default-branch, and manual triggers retain all checks.
 
@@ -363,6 +372,9 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 - Keep baseline requirements and acceptance evidence explicit in the documentation index.
 
 ### Fixed
+
+- WASM builds with an empty module cache download admitted notice sources at their
+  selected versions before verifying license hashes, including platform-unused modules.
 
 - Browser reviewer reads reject malformed or undecryptable answers individually
   and continue with later records. Lock, visibility loss, round expiry, and owner

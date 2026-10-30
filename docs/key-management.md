@@ -5,8 +5,8 @@
 
 Audience: implementers, reviewers, and operators responsible for secret custody.
 
-Status: shared key/backup/session components, the optional offline CLI, local WASM
-bridges and the separate opt-in browser MVP are implemented. The latter connects
+Status: shared key/backup/session components and the default browser application
+are implemented. Offline key diagnostics are developer-only. The browser connects
 local custody, enrollment, encrypted member backup and round review. Recovery,
 protected signing custody and broader production key-lifecycle policy remain
 unimplemented.
@@ -15,7 +15,7 @@ unimplemented.
 
 ### Implemented local-passphrase MVP
 
-The opt-in [browser hosts](deployment.md#browser-mvp-local-startup) now use the
+The default [browser services](deployment.md#browser-mvp-local-startup) use the
 existing member worker for automatic confirmed setup, session-authorized encrypted
 backup upload, expected-key restoration and fixed issuance signing. No ordinary
 user handles a key file, CSR, developer console or CLI. The new `authorize` worker
@@ -66,7 +66,7 @@ Verify ceremonies on the server under its relying-party rules. A successful
 assertion proves account authentication; it does not expose the authenticator's
 private key or provide an encryption key by itself.
 
-The opt-in browser [session controls](api.md#browser-session-management) reuse that
+The browser [session controls](api.md#browser-session-management) reuse that
 verification for expiry-preserving reauthentication. They lock local keys before
 passkey verification and sign-out. Session revocation blocks new server admission;
 same-partition notices and visible-page checks clear observed invalid sessions.
@@ -345,7 +345,7 @@ Remaining custody requirements:
 
 ## Local key CLI
 
-`make build` builds `bin/client`, an optional development-only offline command using
+`make dev-tools` builds `bin/client`, a developer-only offline diagnostic using
 the shared key profiles. It is not product onboarding or a browser prerequisite.
 Independent review is required before real-key use.
 

@@ -74,6 +74,7 @@ func Command(side string, args []string, factory Factory) error {
 		port, dbport, own, other = "8444", "55432", other, own
 	}
 	listen := flags.String("listen", "127.0.0.1:"+port, "loopback TLS listener")
+	container := flags.Bool("container-network", false, "explicit container-local listener and scoped database hostname")
 	origin := flags.String("origin", own, "exact HTTPS origin")
 	peer := flags.String("peer-origin", other, "exact other HTTPS origin")
 	directory := flags.String("state", ".browser/"+side, "this service's state directory")
@@ -88,7 +89,7 @@ func Command(side string, args []string, factory Factory) error {
 	if side == "submission" {
 		role = service.Submission
 	}
-	cfg := service.Config{Role: role, Listen: *listen, SourceURL: *source}
+	cfg := service.Config{Role: role, Listen: *listen, SourceURL: *source, ContainerNetwork: *container}
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
@@ -97,8 +98,11 @@ func Command(side string, args []string, factory Factory) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if len(*database) > 2048 {
+		return errors.New("runtime database configuration too long")
+	}
 	poolConfig, err := pgxpool.ParseConfig(*database)
-	if err != nil || poolConfig.ConnConfig.Database != side || poolConfig.ConnConfig.User != "anonce_runtime" || poolConfig.ConnConfig.Password != "" || poolConfig.ConnConfig.Host != "127.0.0.1" {
+	if err != nil || !runtimeDatabase(poolConfig.ConnConfig, side, *container) {
 		return errors.New("invalid local runtime database")
 	}
 	password, err := ReadFile(*passwordFile, 64, false)

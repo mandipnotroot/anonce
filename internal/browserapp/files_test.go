@@ -5,6 +5,8 @@ package browserapp
 
 import (
 	"bytes"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,5 +66,65 @@ func TestInitializationDoesNotReplace(t *testing.T) {
 	defer clear(after)
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatal("existing administrator invitation changed")
+	}
+}
+
+func TestEmptyInitializationAdmission(t *testing.T) {
+	for _, tc := range []string{"empty", "nonempty", "symlink", "public", "file"} {
+		t.Run(tc, func(t *testing.T) {
+			directory := filepath.Join(t.TempDir(), "state")
+			if err := os.Mkdir(directory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			switch tc {
+			case "nonempty":
+				if err := os.WriteFile(filepath.Join(directory, "existing"), []byte("synthetic"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			case "symlink":
+				link := directory + "-link"
+				if err := os.Symlink(directory, link); err != nil {
+					t.Fatal(err)
+				}
+				directory = link
+			case "public":
+				if err := os.Chmod(directory, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			case "file":
+				directory = filepath.Join(directory, "file")
+				if err := os.WriteFile(directory, []byte("synthetic"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := InitializeEmpty(directory)
+			if (err == nil) != (tc == "empty") {
+				t.Fatal("incorrect existing-directory admission")
+			}
+			if tc == "empty" {
+				if InitializeEmpty(directory) == nil {
+					t.Fatal("reinitialized existing service keys")
+				}
+				for _, side := range []string{"identity", "submission"} {
+					own, err := ReadFile(filepath.Join(directory, side, "local-root.crt"), 4096, false)
+					root, rootErr := ReadFile(filepath.Join(directory, "local-root.crt"), 4096, false)
+					if err != nil || rootErr != nil || !bytes.Equal(own, root) {
+						t.Fatal("scoped root certificate differs")
+					}
+					leafPEM, err := ReadFile(filepath.Join(directory, side, "tls.crt"), 4096, false)
+					if err != nil {
+						t.Fatal(err)
+					}
+					block, _ := pem.Decode(leafPEM)
+					if block == nil {
+						t.Fatal("invalid generated certificate")
+					}
+					leaf, err := x509.ParseCertificate(block.Bytes)
+					if err != nil || len(leaf.AuthorityKeyId) == 0 {
+						t.Fatal("generated leaf lacks authority key identifier")
+					}
+				}
+			}
+		})
 	}
 }

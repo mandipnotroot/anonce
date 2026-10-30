@@ -5,7 +5,7 @@
 
 Audience: contributors choosing work and reviewers assessing scope.
 
-An opt-in, synthetic-only browser MVP now connects publication, anonymous encrypted
+The default, synthetic-only browser application connects publication, anonymous encrypted
 acceptance and local review. This is not production readiness. Now / Next / Later
 indicate focus, not delivery promises. Track tasks and requirements in their
 canonical references.
@@ -17,6 +17,11 @@ See the [user flow](ui-design.md#account-and-review-workflow) and
 [vault research and decision](key-management.md#browser-account-vault).
 
 ## Now
+
+- `make up` connects the two browser services, matched workers and independent
+  databases by default, including no-replace state preparation and operator-scoped
+  migrations. The product has one browser-only path for every role; CLI and inert
+  shell fixtures remain developer-only and outside the default build/image.
 
 - Browser account session management connects the existing inventory and revocation
   store to protected HTTP and accessible page controls, including expiry-preserving
@@ -39,7 +44,7 @@ See the [user flow](ui-design.md#account-and-review-workflow) and
 
 Available foundations below describe the reusable packages and original inert
 commands. Their earlier lack of HTTP/browser integration does not apply to the
-separate opt-in browser hosts.
+default browser application.
 
 Available foundations:
 
@@ -53,9 +58,9 @@ Available foundations:
 - **Container infrastructure:** [local Compose stack](deployment.md#container-stack)
   for non-root Go services and independent PostgreSQL 18.6 instances, with separate
   volumes/credentials, owner/migration/runtime bootstrap roles, loopback publication,
-  liveness checks, and opt-in real-container privilege/isolation checks. HTTP
-  persistence, encrypted restoration, image scanning, and product readiness
-  remain unavailable. Separate embedded Goose histories now have an explicit
+   verified TLS liveness, connected browser pages/runtime storage, and real-container
+   privilege/isolation checks. Encrypted restoration, image scanning and production
+   readiness remain unavailable. Separate embedded Goose histories have an explicit
   owner-scoped [local migration runner](database.md#local-migration-runner) and
   real-PostgreSQL version/grant checks. Identity version 2 also adds a local
   [account/session store](database.md#implemented-account-storage), digest-only
@@ -79,7 +84,7 @@ Available foundations:
   devices. Authorization is rechecked after account-lock waits; excess sessions
   fail without a partial list. Recently authenticated bearers can also remove
   sibling sessions without an owner override, preserving their own absolute expiry.
-   The separate opt-in browser host now supplies session-management UI and local
+   The default browser application supplies session-management UI and local
    logout cleanup; these remain absent from the original demonstration commands.
   Identity version 4 adds independent non-secret session selectors to that inventory,
   backfilling existing rows without changing tokens or expiry. Rotation replaces
@@ -104,7 +109,7 @@ Available foundations:
   bounded parsing, authenticated headers, cancellation-aware admission, tests,
   and native benchmarks. Typed wrappers generate member/reviewer keys and validate
   encrypted PKCS #8 backups.
-- **Optional offline CLI:** [key generation, inspection, password changes, and
+- **Developer-only offline diagnostics:** [key generation, inspection, password changes, and
   member requests](key-management.md#local-key-cli), including trusted expected-key
   matching and owner-only no-replace exports. These are development foundations,
   not account onboarding, enrollment, certificate issuance, or key revocation.

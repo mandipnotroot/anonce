@@ -5,7 +5,7 @@
 
 Audience: protocol implementers and security reviewers.
 
-Status: the opt-in browser hosts implement
+Status: the default browser services implement
 [browser MVP profile 1](cryptography.md#browser-mvp-profile-1), not a stable released
 wire format. Its single-text, single-reviewer, explicit-one-response contract
 supersedes the broader proposals below only for `/api/browser/`.

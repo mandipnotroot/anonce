@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import ssl
 import stat
 import subprocess
 import sys
@@ -19,12 +20,19 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 POSTGRES_IMAGE = "postgres:18.6-bookworm@sha256:5c4783a8cc3f0074912164f94dfa1be4e043438f0f707cf968d7af9a0d31a2c8"
-INTERNAL_NETWORKS = {"identity", "submission", "signer"}
-EDGE_NETWORKS = {"server-edge", "issuer-edge", "ca-edge"}
-NETWORKS = {"server": {"submission", "server-edge"}, "issuer": {"identity", "signer", "issuer-edge"}, "ca": {"signer", "ca-edge"},
-            "identity-db": {"identity"}, "submission-db": {"submission"}}
-PORTS = {"server": 8080, "issuer": 8081, "ca": 8082}
+INTERNAL_NETWORKS = {"identity", "submission"}
+EDGE_NETWORKS = {"identity-edge", "submission-edge"}
+NETWORKS = {"submission": {"submission", "submission-edge"}, "identity": {"identity", "identity-edge"},
+             "identity-db": {"identity"}, "submission-db": {"submission"}}
+PORTS = {"identity": 8443, "submission": 8444}
 SECRET_NAMES = tuple(f"{side}_{role}" for side in ("identity", "submission") for role in ("admin", "migration", "runtime"))
+
+
+def application_command(side, source):
+    return [f"/app/browser-{side}", "-container-network", "-listen", f"0.0.0.0:{PORTS[side]}",
+            "-state", "/state", "-runtime", "/app/runtime", "-database",
+            f"postgres://anonce_runtime@{side}-db:5432/{side}?sslmode=disable&connect_timeout=5",
+            "-password-file", "/run/secrets/runtime_password", "-source-url", source]
 
 
 def require(condition, message):
@@ -81,13 +89,72 @@ def prepare_secrets(path, create=False):
         os.close(fd)
 
 
+def validate_state(directory):
+    """Admit existing state without generating replacement keys or invitations."""
+    root = secret_directory(directory)
+    try:
+        require(set(os.listdir(root)) == {"identity", "submission", "local-root.crt"}, "incomplete browser state; do not reinitialize")
+        trust = os.open("local-root.crt", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+        with os.fdopen(trust, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            require(stat.S_ISREG(info.st_mode) and 0 < info.st_size <= 4096 and info.st_uid == os.getuid() and
+                    stat.S_IMODE(info.st_mode) == 0o600, "invalid local browser trust file")
+            public_root = handle.read(4097)
+        for side in ("identity", "submission"):
+            fd = os.open(side, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
+            try:
+                info = os.fstat(fd)
+                require(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700, "invalid service state directory")
+                names = {"tls.crt": 4096, "tls.key": 4096, "receipt.pub": 32, "bulletin.seed": 32,
+                         "membership.seed": 32, "membership.der": 1024, "administrator-invitation": 43} if side == "identity" else {
+                             "tls.crt": 4096, "tls.key": 4096, "receipt.seed": 32, "bulletin.pub": 32}
+                require(set(os.listdir(fd)) - {"local-root.crt"} == set(names), "incomplete service state; never generate replacement keys")
+                for name, maximum in names.items():
+                    source = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+                    with os.fdopen(source, "rb") as handle:
+                        info = os.fstat(handle.fileno())
+                        require(stat.S_ISREG(info.st_mode) and 0 < info.st_size <= maximum and info.st_uid == os.getuid() and
+                                stat.S_IMODE(info.st_mode) == 0o600, "invalid browser state file metadata")
+                # Compatibility adds only a public trust copy to complete older
+                # initialization output. No signing key or invitation is changed.
+                try:
+                    target = os.open("local-root.crt", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd)
+                except FileExistsError:
+                    pass
+                else:
+                    with os.fdopen(target, "wb") as handle:
+                        handle.write(public_root)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                target = os.open("local-root.crt", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+                with os.fdopen(target, "rb") as handle:
+                    info = os.fstat(handle.fileno())
+                    require(stat.S_ISREG(info.st_mode) and info.st_size == len(public_root) and info.st_uid == os.getuid() and
+                            stat.S_IMODE(info.st_mode) == 0o600 and handle.read(4097) == public_root, "browser trust copies differ")
+            finally:
+                os.close(fd)
+    finally:
+        os.close(root)
+
+
+class LocalTLSConnection(http.client.HTTPConnection):
+    """Fixed loopback transport with real configured-name TLS verification."""
+    def __init__(self, hostname, port, context):
+        super().__init__("127.0.0.1", port, timeout=5)
+        self.server_name, self.context = hostname, context
+
+    def connect(self):
+        super().connect()
+        self.sock = self.context.wrap_socket(self.sock, server_hostname=self.server_name)
+
+
 def validate_config(config):
     """Check the real Compose parser's normalized model, without contacting Docker."""
     services = config["services"]
     require(set(services) == set(NETWORKS), "unexpected Compose service set")
     require(set(config["networks"]) == INTERNAL_NETWORKS | EDGE_NETWORKS and
             all(item.get("internal", False) == (name in INTERNAL_NETWORKS) for name, item in config["networks"].items()),
-            "database/signer networks must be internal with separate application edge networks")
+            "database networks must be internal with separate application edge networks")
     require(set(config["volumes"]) == {"identity-data", "submission-data"}, "database volumes must remain distinct")
     require(len({item["name"] for item in config["volumes"].values()}) == 2 and
             all(not item.get("external") and not item.get("driver_opts") for item in config["volumes"].values()),
@@ -108,12 +175,23 @@ def validate_config(config):
                 "missing CPU, memory, swap, or process bound")
         require(service.get("healthcheck", {}).get("test") and not service["healthcheck"].get("disable"), "missing container healthcheck")
         if name in PORTS:
-            require(service.get("user") == "65532:65532" and not service.get("volumes") and not service.get("secrets") and
-                    not service.get("environment"), "application image must not receive database secrets or host mounts")
+            require(re.fullmatch(r"[1-9][0-9]{0,8}:[1-9][0-9]{0,8}", str(service.get("user", ""))) is not None and
+                    not service.get("environment"), "browser services require a non-root state owner without environment credentials")
+            require({(item["source"], item["target"]) for item in service.get("secrets", [])} ==
+                    {(f"{name}_runtime", "runtime_password")}, "browser runtime credential scope changed")
+            mounts = service.get("volumes", [])
+            require(len(mounts) == 1 and mounts[0].get("type") == "bind" and mounts[0].get("target") == "/state" and
+                    mounts[0].get("read_only") is True and Path(mounts[0]["source"]).is_absolute() and
+                    Path(mounts[0]["source"]).name == name and mounts[0].get("bind", {}).get("create_host_path") is False,
+                    "browser services require one read-only, pre-existing own-state mount")
             ports = service.get("ports", [])
             require(len(ports) == 1 and ports[0]["host_ip"] == "127.0.0.1" and ports[0]["target"] == PORTS[name] and
-                    ports[0]["protocol"] == "tcp", "application ports must publish only on IPv4 loopback")
+                    ports[0]["protocol"] == "tcp" and str(ports[0].get("published", "")) in ("0",str(PORTS[name])),
+                    "browser ports require fixed origins on IPv4 loopback, or zero for isolated tests")
             require("-container-network" in service["command"] and f"0.0.0.0:{PORTS[name]}" in service["command"], "invalid container bind opt-in")
+            command = service["command"]
+            require(len(command) == 14 and command == application_command(name, command[-1]), "browser startup command changed")
+            require(service["healthcheck"]["test"] == ["CMD", "/app/probe", name], "browser health check must verify scoped TLS")
         else:
             side = name.removesuffix("-db")
             require(service.get("image") == POSTGRES_IMAGE and service.get("user") == "999:999" and not service.get("ports"),
@@ -136,9 +214,12 @@ def validate_config(config):
 class Stack:
     def __init__(self, env=None, project=None):
         self.env = dict(os.environ if env is None else env)
+        self.env["ANONCE_APP_UID"] = str(os.getuid())
+        self.env["ANONCE_APP_GID"] = str(os.getgid())
         self.base = ["docker", "compose", "--file", str(ROOT / "compose.yaml")]
         if project:
             self.base.extend(["--project-name", project])
+            self.env["COMPOSE_PROJECT_NAME"] = project
 
     def run(self, args, *, data=None, success=True, timeout=120, stream=False):
         result = subprocess.run(args, cwd=ROOT, env=self.env, input=data, stdout=None if stream else subprocess.PIPE,
@@ -198,21 +279,30 @@ PGPASSFILE="$passfile" PGCONNECT_TIMEOUT=3 psql -XwqAt -v ON_ERROR_STOP=1 -v VER
                 require(any(mount.get("Type") == "volume" and mount.get("Name") == config["volumes"][f"{side}-data"]["name"] and
                             mount.get("Destination") == "/var/lib/postgresql" for mount in item["Mounts"]), "live database volume differs")
                 continue
-            require(not item["Mounts"], "application container received host mounts or secrets")
+            mounts = item["Mounts"]
+            expected_state = config["services"][name]["volumes"][0]["source"]
+            require(len(mounts) == 2 and {(mount["Destination"], mount["Source"], mount["RW"]) for mount in mounts} ==
+                    {("/state", expected_state, False), ("/run/secrets/runtime_password", config["secrets"][f"{name}_runtime"]["file"], False)},
+                    "browser received extra or writable mounts")
             bindings = item["NetworkSettings"]["Ports"][f"{PORTS[name]}/tcp"]
             require(bindings is not None and len(bindings) == 1 and bindings[0]["HostIp"] == "127.0.0.1", "missing or non-loopback published endpoint")
-            connection = http.client.HTTPConnection("127.0.0.1", int(bindings[0]["HostPort"]), timeout=5)
+            hostname = "identity.localhost" if name == "identity" else "submit.localhost"
+            trust = ssl.create_default_context(cafile=str(Path(expected_state) / "local-root.crt"))
+            connection = LocalTLSConnection(hostname, int(bindings[0]["HostPort"]), trust)
             try:
-                for path, status in (("/healthz", 200), ("/readyz", 503), ("/api/v1/status", 200), ("/source", 302)):
-                    connection.request("GET", path)
+                for path, status in (("/healthz", 200), ("/", 200), ("/api/browser/config", 200), ("/source", 302)):
+                    connection.request("GET", path, headers={"Host": f"{hostname}:{PORTS[name]}"})
                     response = connection.getresponse()
                     body = response.read(8193)
                     require(response.status == status and len(body) <= 8192 and response.getheader("Cache-Control") == "no-store" and
-                            response.getheader("Set-Cookie") is None, "invalid demonstration HTTP response")
+                            response.getheader("Set-Cookie") is None, "invalid browser HTTP response")
                     if path == "/healthz":
                         require(body == b"ok", "invalid liveness response")
-                    if path == "/api/v1/status":
-                        require(json.loads(body)["demonstration"] is True, "container claims product readiness")
+                    if path == "/":
+                        require(b'type="module"' in body and (b"Synthetic" in body or b"synthetic" in body), "connected browser page is unavailable")
+                    if path == "/api/browser/config":
+                        peer = "https://submit.localhost:8444" if name == "identity" else "https://identity.localhost:8443"
+                        require(peer in json.loads(body).values(), "browser peer origin differs")
                     if path == "/source":
                         command = config["services"][name]["command"]
                         require(response.getheader("Location") == command[command.index("-source-url") + 1], "incorrect source discovery")
@@ -227,6 +317,46 @@ PGPASSFILE="$passfile" PGCONNECT_TIMEOUT=3 psql -XwqAt -v ON_ERROR_STOP=1 -v VER
             result = self.sql(side, "runtime", "SELECT current_user, current_database(), has_database_privilege(current_user, current_database(), 'CREATE'), has_database_privilege(current_user, current_database(), 'TEMP'), has_schema_privilege(current_user, 'anonce', 'CREATE');")
             require(result.stdout.strip() == f"anonce_runtime|{side}|f|f|f".encode(), "runtime database privileges differ")
         return instances
+
+    def initialize(self, image):
+        config = self.config()
+        directory = Path(config["services"]["identity"]["volumes"][0]["source"]).parent
+        require(directory == Path(config["services"]["submission"]["volumes"][0]["source"]).parent, "browser state roots differ")
+        directory.mkdir(mode=0o700, exist_ok=True)
+        fd = secret_directory(directory)
+        try:
+            entries = os.listdir(fd)
+            if entries:
+                validate_state(directory)
+                return
+            for side, table in (("identity", "browser_credentials"), ("submission", "browser_bulletins")):
+                result = self.sql(side, "runtime", f"SELECT EXISTS(SELECT 1 FROM anonce.{table});")
+                require(result.stdout.strip() == b"f", "browser data exists without server state; restore the original state instead of generating keys")
+            args = ["docker", "run", "--rm", "--network", "none", "--read-only", "--user", f"{os.getuid()}:{os.getgid()}",
+                    "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--log-driver", "none",
+                    "--cpus", "1", "--memory", "128m", "--memory-swap", "128m", "--pids-limit", "64",
+                    "--mount", f"type=bind,src={directory},dst=/state", "--entrypoint", "/app/browser-init", image, "-empty-directory", "/state"]
+            self.run(args, timeout=30)
+            validate_state(directory)
+        finally:
+            os.close(fd)
+
+    def start(self, migrate=True):
+        config = self.config()
+        present = self.compose("ps", "--all", "--services").stdout.decode().split()
+        require(set(present) <= set(NETWORKS), "legacy services remain in this project; review and remove old containers without deleting volumes before startup")
+        self.compose("build", timeout=600, stream=True)
+        image = self.run(["docker", "image", "inspect", "--format", "{{.Id}}", config["services"]["identity"]["image"]]).stdout.decode().strip()
+        require(re.fullmatch(r"sha256:[0-9a-f]{64}", image) is not None, "browser application image unavailable")
+        self.compose("stop", "identity", "submission", timeout=30)
+        self.compose("up", "-d", "--wait", "--wait-timeout", "120", "identity-db", "submission-db", timeout=180)
+        if migrate:
+            migration = self.migration_image()
+            for side in ("identity", "submission"):
+                self.migrate(side, migration)
+        self.initialize(image)
+        self.compose("up", "-d", "--wait", "--wait-timeout", "120", "identity", "submission", timeout=180)
+        return config
 
     def migration_image(self, target="migration"):
         require(target in ("migration", "account-test", "member-backup-test", "submission-record-test"), "invalid database image target")
@@ -429,16 +559,39 @@ def main():
         scratch.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="containers-", dir=scratch) as temporary:
             directory = Path(temporary) / "secrets"
-            prepare_secrets(directory, create=True)
-            env = dict(os.environ, ANONCE_SECRETS_DIR=str(directory), ANONCE_SOURCE_URL="https://source.example.invalid/anonce/test.tar.gz",
-                       ANONCE_SERVER_PORT="0", ANONCE_ISSUER_PORT="0", ANONCE_CA_PORT="0")
+            if action != "test":
+                prepare_secrets(directory, create=True)
+            env = dict(os.environ, ANONCE_SECRETS_DIR=str(directory), ANONCE_STATE_DIR=str(Path(temporary) / "state"),
+                       ANONCE_SOURCE_URL="https://source.example.invalid/anonce/test.tar.gz",
+                       ANONCE_IDENTITY_PORT="0", ANONCE_SUBMISSION_PORT="0")
             isolated = Stack(env, project="anonce-test-" + secrets.token_hex(6))
             isolated.config()
             try:
-                isolated.compose("up", "--build", "--wait", "--wait-timeout", "120", timeout=600)
-                database_checks(isolated, isolated.smoke())
                 if action in ("migration-test", "account-test", "member-backup-test", "submission-record-test"):
+                    isolated.compose("up", "-d", "--wait", "--wait-timeout", "120", "identity-db", "submission-db", timeout=180)
                     migration_checks(isolated)
+                    isolated.start(migrate=False)
+                else:
+                    isolated.run([sys.executable,str(ROOT / "scripts/containers.py"),"up"],timeout=600,stream=True)
+                database_checks(isolated, isolated.smoke())
+                if action == "test":
+                    state = Path(env["ANONCE_STATE_DIR"])
+                    before = {str(path.relative_to(state)):(path.stat().st_ino,path.stat().st_mtime_ns,path.stat().st_size)
+                              for path in state.rglob("*") if path.is_file()}
+                    marker = secrets.token_hex(16)
+                    isolated.sql("identity", "runtime", f"INSERT INTO anonce.accounts(id) VALUES(decode('{marker}','hex'));")
+                    isolated.start()
+                    isolated.smoke()
+                    after = {str(path.relative_to(state)):(path.stat().st_ino,path.stat().st_mtime_ns,path.stat().st_size)
+                             for path in state.rglob("*") if path.is_file()}
+                    require(before == after, "restart replaced existing server state")
+                    persisted = isolated.sql("identity", "runtime", f"SELECT count(*) FROM anonce.accounts WHERE id=decode('{marker}','hex');")
+                    require(persisted.stdout.strip() == b"1", "restart discarded persisted account data")
+                if action in ("account-test", "member-backup-test", "submission-record-test"):
+                    # The race suites use two eight-connection runtime pools.
+                    # Release the browser pools first, preserving the existing
+                    # sixteen-connection role limit instead of raising it for tests.
+                    isolated.compose("stop", "identity", "submission", timeout=30)
                 if action in ("account-test", "member-backup-test"):
                     account_checks(isolated)
                 if action == "member-backup-test":
@@ -448,31 +601,31 @@ def main():
             finally:
                 # Remove only this invocation's fresh disposable project and volumes.
                 isolated.compose("down", "--volumes", "--remove-orphans")
-        print("Real container liveness, isolation, PostgreSQL authentication and privilege checks passed.")
+        print("Connected TLS browser pages, scoped runtime storage, container isolation and PostgreSQL privilege checks passed.")
         if action in ("migration-test", "account-test", "member-backup-test", "submission-record-test"):
             print("Separate database migration, concurrency, failure, version and grant checks passed; full db-test remains unavailable.")
         if action in ("account-test", "member-backup-test"):
-            print("Account/session persistence, expiry, revocation, concurrent disable, cancellation and runtime grant checks passed; browser authentication remains unavailable.")
+            print("Account/session persistence, expiry, revocation, concurrency and runtime grants passed; browser ceremonies are checked separately by browser-test.")
         if action == "member-backup-test":
-            print("Encrypted member backup persistence, owner scope, revision conflicts, deletion tombstones, disable, cancellation and runtime grant checks passed; product vault access remains unavailable.")
+            print("Encrypted backup scope, revisions, tombstones, disable, cancellation and runtime grants passed.")
         if action == "submission-record-test":
-            print("Atomic submission records, payload-bound retries, concurrent spends, round admission, cancellation, rollback and runtime grants passed; token verification and product submissions remain unavailable.")
+            print("Atomic submission spending, retries, round admission, cancellation, rollback and runtime grants passed.")
         return
     if action.startswith("migrate-"):
-        prepare_secrets(directory)
-        stack.config()
+        config = stack.config()
+        prepare_secrets(Path(config["secrets"]["identity_runtime"]["file"]).parent)
         stack.migrate(action.removeprefix("migrate-"), stack.migration_image())
         print("Selected local database migrated; application readiness remains unavailable.")
         return
     if action == "down":
         stack.compose("down")  # Preserve all database volumes.
     else:
-        prepare_secrets(directory)
-        stack.config()
+        config = stack.config()
+        prepare_secrets(Path(config["secrets"]["identity_runtime"]["file"]).parent, create=action == "up")
         if action == "up":
-            stack.compose("up", "--build", "--wait", "--wait-timeout", "120", timeout=600)
+            stack.start()
         stack.smoke()
-        print("Local infrastructure checks passed; application readiness remains unavailable.")
+        print("Connected browser application checks passed. Open https://identity.localhost:8443/ after trusting .browser/local-root.crt. Synthetic data only.")
 
 
 if __name__ == "__main__":

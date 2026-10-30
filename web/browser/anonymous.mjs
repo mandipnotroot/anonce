@@ -35,7 +35,8 @@ $("answer-form").onsubmit=handle(async()=>{
 });
 $("retry").onclick=handle(async()=>{const result=await worker.call("submission");if(!result)throw new Error("no pending ciphertext");await send(result);});
 handle(async()=>{
-  if(!round){say("Open a common review link supplied by its administrator.");return;}decode(round,16);config=await api("/api/browser/config");
+  config=await api("/api/browser/config");$("account-home").href=config.identity_origin;$("account-home").hidden=false;
+  if(!round){say("Open a shared review link, or choose a review from the account and available reviews page.");return;}decode(round,16);
   const result=await api(`/api/browser/bulletin?round=${round}`);worker=new ReviewWorker();if(!await worker.ready)throw new Error("worker unavailable");const inspected=await worker.call("inspect",decode(result.bulletin,564,1587),decode(config.bulletin_key,32));if(!inspected||encode(inspected.id)!==round)throw new Error("wrong bulletin");
   $("question").textContent=inspected.question;$("authorize").disabled=false;say("Common signed review verified using this deployment's configured publication key. Independent split-view detection is not provided.");
 })();

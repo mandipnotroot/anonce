@@ -9,9 +9,9 @@ Audience: readers choosing the appropriate project reference.
 
 | Status | Scope |
 | --- | --- |
-| Implemented | Repository and documentation checks; local HTTP services and read-only shell; device-backup encryption, local member/reviewer keys, in-memory member sessions, offline key CLI, public-only WASM request verification, and a separate local member-session WASM bridge. See [testing](testing.md) |
-| Designed | Browser-only account/review workflow and automatic encrypted key custody; application, cryptography, product UI, database boundaries, releases. Vault wrapping/recovery and browser compatibility remain unresolved |
-| Unavailable | Working protocol/product, screenshots, production deployment, protocol security results |
+| Implemented | Default browser application with passkey accounts, encrypted member vault, invitations, published review links/dashboard, anonymous encrypted answers, local reviewer decryption and session management. `make up` connects the TLS services, matched workers and isolated databases. See [testing](testing.md) |
+| Designed | Broader forms, configurable limits beyond one response, replies, independently anchored proofs, protected signers, recovery and supported-browser evidence |
+| Unavailable | Production readiness, independent security approval, broad browser/manual accessibility evidence and safe recovery/restoration |
 
 [Run locally](deployment.md#local-development). Update requirements in their owning reference.
 
@@ -37,7 +37,7 @@ evidence required by its reference.
 | Local review, charts, safe exports, encrypted replies, anonymous abuse controls | [Protocol](protocol.md#review-and-replies), [UI design](ui-design.md) |
 | Inclusion receipts, consistency, separate anchored audits | [Cryptography](cryptography.md#encryption-and-public-proofs), [architecture](architecture.md#administrative-access) |
 | Controlled-copy retention and accurate destruction limits | [Key management](key-management.md#retention-and-destruction), [threat model](threat-model.md) |
-| Shared device-side Go/WASM and optional CLI; self-hosted, accessible, responsive UI | [Architecture](architecture.md#client-and-server-contract), [UI design](ui-design.md) |
+| Shared device-side Go/WASM; browser-only product with no required app, CLI or key files | [Architecture](architecture.md#client-and-server-contract), [UI design](ui-design.md) |
 | Portable local stack and real security validation | [Deployment](deployment.md), [testing](testing.md), [CI/CD](ci-cd.md) |
 | Open-source licensing, compatibility, verifiable releases | [Dependencies](dependencies.md), [versioning](versioning.md), [releasing](releasing.md) |
 
