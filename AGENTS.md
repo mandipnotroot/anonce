@@ -10,12 +10,19 @@ Audience: contributors and automated tooling.
 anonce is designed for anonymous submissions from verified members with
 administrator-set per-member/round limits. Docs, checks, local demo HTTP
 infrastructure, a read-only shell, shared device-backup encryption, local
-member/reviewer-key generation/import/export, and an offline encrypted-file CLI exist.
+member/reviewer-key generation/import/export, and developer-only offline diagnostics exist.
 Distinguish implemented from planned behavior.
+
+The browser is the only product workflow for every user role. `make build` produces
+the browser services and matched runtimes plus operator tools. `make up` connects
+the TLS services, separately scoped state/credentials and independent databases,
+applying migrations through operator-only containers. `make dev-tools` alone builds
+the legacy inert commands and offline key CLI for regression checks. Do not expose
+them as user onboarding, key management or a product alternative.
 
 - `cmd/browser-identity`, `cmd/browser-submission`, `cmd/browser-init`,
   `internal/browseridentity`, `internal/browsersubmission`, `web/browser`, and
-  `internal/reviewprofile`: separate opt-in local TLS browser workflow for WebAuthn
+  `internal/reviewprofile`: default local TLS browser workflow for WebAuthn
   accounts, existing-worker encrypted member backups, single-use enrollment,
   one-text/one-reviewer/explicit-one-response publication, blind authorization,
   anonymous HPKE answers, signed storage acceptance and local reviewer decryption.
@@ -115,7 +122,7 @@ The required product is browser-only for members, reviewers, and administrators:
 sign in, open a shared review link or an available round, complete the form, and
 submit. No app, extension, CLI, manual key generation, CSR handling, or key-file
 management may be required for ordinary use. The existing CLI is optional tooling,
-not the product onboarding path. Prioritize a complete browser workflow over
+not a product workflow and excluded from the default build/image. Prioritize a complete browser workflow over
 additional optional CLI features.
 
 - Follow [account and review UX](docs/ui-design.md#account-and-review-workflow)
@@ -173,7 +180,8 @@ make docs-setup       # install checksum-pinned mdBook and asset notices
 make docs-build       # build and validate the mdBook site
 make docs-external    # check externally hosted references
 make workflow-lint    # pinned actionlint; requires Go
-make build            # build the local demonstration commands
+make build            # default browser services, matched runtimes and operator tools
+make dev-tools        # developer-only CLI and inert-shell regression binaries
 make test             # race tests and coverage report
 make browser-session-test # browser session-control lifecycle and bounded UI checks
 make lint             # Go analysis, formatting, and module checks
@@ -188,9 +196,9 @@ make member-browser-test # opt-in synthetic Chromium checks; requires MEMBER_BRO
 make browser-unit-test # reviewer record isolation and cancellation checks in Node
 make container-secrets # generate/validate local database secret files, no replacement
 make container-config # validate normalized Compose settings, no daemon required
-make up              # build/start/wait and verify the local demo stack
-make smoke           # inspect a running stack and its HTTP/database boundaries
-make down            # stop the demo stack without deleting database volumes
+make up              # build/migrate/initialize/start the default browser application
+make smoke           # verify running browser TLS, state, credentials and database boundaries
+make down            # stop the browser application without deleting state or database volumes
 make container-test  # isolated real-container/PostgreSQL checks; disposable test data
 make migrate-identity # explicitly apply local identity database migrations
 make migrate-submission # explicitly apply local submission database migrations

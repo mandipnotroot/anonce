@@ -287,6 +287,15 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Made the connected browser application the default build and local deployment.
+  `make up` now prepares state, applies isolated migrations and starts the TLS
+  identity/submission services with their matched workers and scoped runtime
+  credentials. Removed the browser overlay and replaced the old HTTP service/port
+  layout. Inert servers and offline key diagnostics now require `make dev-tools`
+  and are excluded from the application image. Added browser workspace navigation,
+  strict TLS probes and safe restart/state checks. This changes the development
+  deployment interface; ordinary users use browser forms only.
+
 - PR title, description, and label edits no longer trigger CI. Code updates and
   existing lifecycle, default-branch, and manual triggers retain all checks.
 

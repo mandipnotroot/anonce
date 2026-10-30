@@ -145,6 +145,13 @@ func (s *site) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		browserhttp.Error(w, 405)
 		return
 	}
+	if r.URL.Path == "/healthz" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if r.Method != "HEAD" {
+			_, _ = w.Write([]byte("ok"))
+		}
+		return
+	}
 	if r.URL.Path == "/source" {
 		w.Header().Set("Location", s.source)
 		w.WriteHeader(302)

@@ -5,8 +5,7 @@
 
 Audience: transport implementers and client authors.
 
-Status: the original commands retain demonstration-only behavior. The separate
-opt-in browser hosts implement the [browser API definition](browser-openapi.yaml)
+Status: the default browser services implement the [browser API definition](browser-openapi.yaml)
 and the contract below. The original [API definition](openapi.yaml)
 uses the official [OpenAPI 3.1.0 specification](https://spec.openapis.org/oas/v3.1.0)
 and separates demonstration endpoints from proposed discovery APIs. Browser
@@ -39,7 +38,7 @@ and no OpenAPI schema or product route is added.
 
 ## Implemented infrastructure
 
-### Opt-in browser HTTP contract
+### Browser HTTP contract
 
 See [startup](deployment.md#browser-mvp-local-startup). All browser routes require
 the configured HTTPS host, bounded headers, 32 KiB JSON bodies, 32 in-flight
@@ -118,6 +117,12 @@ Binary fields are canonical unpadded base64url, except WebAuthn's standard JSON
 ceremony representation. Formats and signature contracts are fixed in
 [cryptography](cryptography.md#browser-mvp-profile-1). The browser API is unreleased
 and incompatible with the proposed `/api/v1/` schemas; no automatic fallback exists.
+
+### Developer-only infrastructure contract
+
+The original demonstration commands, built only by `make dev-tools`, retain the
+inert infrastructure contract below. They are neither the default application nor
+an alternative user workflow.
 
 The internal [submission record store](database.md#implemented-submission-record-storage)
 adds no HTTP endpoint or OpenAPI schema. It trusts a future verifier, so exposing

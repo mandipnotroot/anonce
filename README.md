@@ -11,18 +11,18 @@
 anonce is designed for feedback, reports, and ballots from verified members without
 linking identities to submissions.
 
-The intended experience is entirely web-based: sign in, open a shared review link
+The product workflow is entirely web-based: sign in, open a shared review link
 or choose an available round, complete the form, and submit. Members, reviewers,
 and administrators need no installed app or CLI. The browser manages cryptographic
 keys automatically, with encrypted member-key backups on the identity side.
-The separate opt-in local browser MVP implements this path for one free-text
+The default application implements this path for one free-text
 question, one reviewer and an explicitly selected one-response limit. See
 [browser startup](docs/deployment.md#browser-mvp-local-startup),
 [the user flow](docs/ui-design.md#account-and-review-workflow) and
 [key custody and recovery](docs/key-management.md#browser-account-vault).
 
 > **Development only.** The browser MVP is for synthetic data and has no independent
-> security approval. Original demonstration services remain inert. Do not collect
+> security approval. Do not collect
 > sensitive information or run an election.
 
 ## Planned capabilities
@@ -33,8 +33,8 @@ question, one reviewer and an explicitly selected one-response limit. See
 - An independently deployed submission service storing ciphertext rather than answers.
 - Reviewer-side decryption, private replies, and response-threshold controls.
 - Public inclusion receipts and a separate administrative audit trail.
-- A self-hosted browser interface using shared device-side Go cryptography;
-  optional CLI tools are not prerequisites for users.
+- A self-hosted browser interface using shared device-side Go cryptography.
+  No user CLI, key files, manual key generation or CSR handling is part of the product.
 
 See the [roadmap](docs/roadmap.md) and [threat model](docs/threat-model.md)
 for scope and required evidence.
@@ -59,76 +59,46 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and [AGENTS.md](AGENTS.
 for repository rules. The [roadmap](docs/roadmap.md) tracks implementation and
 local deployment.
 
-## Run the local infrastructure
+## Use the browser application
 
-For the connected workflow, use the separate
-[browser MVP startup](docs/deployment.md#browser-mvp-local-startup) and
-[real-browser/PostgreSQL checks](docs/testing.md#connected-browser-mvp-checks).
-It has signed storage acceptance, not public-log inclusion or rollback protection.
-Recovery, protected signers and reviewer server backups are excluded.
+Members, reviewers and administrators open the same account application at
+`https://identity.localhost:8443/`. Members sign in, set up or unlock private access,
+verify their invitation, and choose an available review or open its shared link.
+Administrators create invitations and publish reviews. Assigned reviewers set up
+review access and read answers decrypted in their browser. Session management is
+part of the account page. No user installs a CLI or manages key files.
 
-The commands and foundation limitations below describe the original demonstration
-services, not the opt-in browser hosts.
+Anonymous answers use the separate `https://submit.localhost:8444/` origin. The
+browser connects the account authorization window to the response form without
+sending account cookies or plaintext answers to the wrong service. Keeping these
+two origins and databases separate is a privacy boundary, not a second user workflow.
 
-For containerized development, follow the [Compose setup](docs/deployment.md#container-stack):
-prepare `.env` and local secret files, then use `make up`, `make smoke`, and
-`make down`. The stack builds the Go services in Docker and runs two independent
-PostgreSQL instances. `make container-test` checks disposable infrastructure, not a
-working submission product.
+## Start the application as an operator
 
-Separate [local database migrations](docs/deployment.md#local-database-migrations)
-are opt-in through `make migrate-identity` and `make migrate-submission`.
-`make db-migration-test` checks their histories and grants on disposable PostgreSQL;
-identity version 2 adds internal account/session tables. `make db-account-test`
-checks persistence, expiry, revocation, concurrency, and grants as the runtime role.
-Identity version 3 adds internal encrypted member-backup slots, checked by
-`make db-member-backup-test`. Account authentication, product vault access, and
-HTTP persistence remain unavailable.
-
-Submission version 2 adds internal atomic ciphertext/spend storage with exact-payload
-retries and round admission/cancellation. `make db-submission-record-test` checks it
-on disposable real PostgreSQL. This is not token verification or a working submission
-endpoint. See the [storage contract](docs/database.md#implemented-submission-record-storage).
-
-To run the HTTP demonstration natively instead:
+Follow [local startup](docs/deployment.md#browser-mvp-local-startup). Prepare `.env`
+from `.env.example`, set `ANONCE_SOURCE_URL` to this exact build's HTTPS source, then:
 
 ```sh
-make build test
-./bin/server -source-url "$ANONCE_SOURCE_URL"
+make up
+make smoke
 ```
 
-Set `ANONCE_SOURCE_URL` to the HTTPS location of this build's exact corresponding
-source, including local modifications. There is no default.
+`make up` builds the matched browser runtimes and service image, prepares server
+state and database secrets without replacement, starts the two isolated databases,
+applies their migrations through separate operator containers, and starts both TLS
+browser services. Trust the local development certificate as described in the
+startup guide before opening the account page. `make down` preserves state and data.
+These commands are server administration, never onboarding steps for ordinary users.
 
-- Default binds: server `127.0.0.1:8080`, issuer port `8081`, CA port `8082`.
-- Infrastructure: `/healthz`, `/api/v1/status`, and `/source`.
-- Unavailable operations: `/readyz` always returns `503`; owned protocol routes
-  return `501` without reading request bodies.
-- Read-only server pages: `/` and `/about`. `-dev-styleguide` enables labelled mocks.
-- No forms, application database integration, signing, enrollment, or submission operations.
+`make container-test` checks the actual connected containers, pages and storage
+boundaries. `make browser-test` exercises passkeys and the complete browser journey
+with real PostgreSQL. See [testing](docs/testing.md) for prerequisites and limitations.
+Signed acceptance is not public-log inclusion; recovery, protected signers and
+reviewer server backups are not implemented.
 
-See [deployment](docs/deployment.md#local-development) for flags and limits and
-[API](docs/api.md) for endpoint behavior.
-
-Optional local development key tools are also available:
-
-- Shared Go packages for [ChaCha20-Poly1305 backup encryption](docs/cryptography.md#device-backup-profile-2)
-  and [member/reviewer-key generation, encrypted export, and validated import](docs/key-management.md#device-keystores).
-- Shared [in-memory member sessions](docs/key-management.md#in-memory-member-sessions)
-  for automatic key/backup/request preparation, expected-key restoration, and lock;
-  no private-key export or account integration.
-- An [offline CLI](docs/key-management.md#local-key-cli) for encrypted backup
-  generation, public-key-only inspection, backup password changes, and local member
-  certificate requests. Requests do not enroll a member or issue a certificate.
-- A [public-only WASM request verifier](docs/key-management.md#local-wasm-request-verification),
-  built with `make wasm` and checked with `make wasm-test`.
-- A separate [WASM member-session bridge](docs/key-management.md#local-wasm-member-sessions)
-  for automatic setup/restoration and lock, built with `make member-wasm` and
-  checked with `make member-wasm-test`; only public material and encrypted backups leave it.
-
-The [local dedicated-worker host](docs/key-management.md#local-member-worker-host)
-adds bounded ownership and termination, checked in Node. Browser page/delivery and
-account integration are unavailable. Independent review is required before real-key use.
+Developer-only CLI and inert-shell regression fixtures are excluded from the
+default build and application image. `make dev-tools` builds them explicitly for
+diagnostics and tests, not as a supported user workflow.
 
 ## Architecture at a glance
 

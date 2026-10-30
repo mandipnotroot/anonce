@@ -13,7 +13,7 @@ Unstable `0.y.z` changes still require compatibility review.
 
 ## Public API boundary
 
-The opt-in browser MVP introduces unreleased `/api/browser/` routes,
+The browser application introduces unreleased `/api/browser/` routes,
 [browser profile 1](cryptography.md#browser-mvp-profile-1), identity migration 5 and
 submission migration 3. These are not replacements for the proposed `/api/v1/`
 schemas. Existing demonstration routes and key-backup bytes remain unchanged.
@@ -21,6 +21,15 @@ The additive fixed-profile worker `authorize` method requires matched
 loader/worker/WASM rebuilds, with no mixed-artifact fallback. Changes to signed
 encodings, bindings, limits or schemas are breaking unless an explicit reviewed
 compatibility mechanism exists. No stable release exists.
+
+The default browser deployment is a breaking development-interface change:
+`make build` excludes the offline key CLI and inert servers, `make up` starts
+`identity`/`submission` on HTTPS ports 8443/8444 with operator-applied migrations,
+and the browser Compose overlay is removed. Review this as `semver:major` even
+before the first release. `make browser-build` remains an alias for `make build`;
+there is no fallback to the old product entry points. Complete existing server
+state and database volumes are retained, never regenerated. Native byte profiles
+and `/api/browser/` request formats are unchanged, with additive public liveness.
 
 Public contracts include:
 

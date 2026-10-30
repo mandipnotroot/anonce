@@ -9,14 +9,15 @@ FUZZTIME ?= 15s
 .PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test member-browser-test container-secrets container-config up down smoke container-test migrate-identity migrate-submission db-migration-test db-account-test db-member-backup-test db-submission-record-test
 help:
 	@echo 'setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check'
-	@echo 'build test lint fuzz vuln web-lint'
+	@echo 'up smoke down (default browser application; operator commands only)'
+	@echo 'build test lint fuzz vuln web-lint dev-tools'
 	@echo 'wasm wasm-test'
 	@echo 'member-wasm member-wasm-test'
 	@echo 'member-browser-test (requires MEMBER_BROWSER; see docs/testing.md)'
 	@echo 'container-secrets container-config up down smoke container-test (see docs/deployment.md)'
 	@echo 'migrate-identity migrate-submission db-migration-test db-account-test db-member-backup-test (local PostgreSQL only)'
 	@echo 'db-submission-record-test (atomic ciphertext persistence; local PostgreSQL only)'
-	@echo 'browser-build browser-test (opt-in connected browser MVP; see docs/deployment.md and docs/testing.md)'
+	@echo 'browser-test (real browser/PostgreSQL checks; see docs/testing.md); browser-build is an alias for build'
 	@echo 'browser-unit-test (reviewer record isolation and cancellation checks)'
 	@echo 'browser-session-test (account session-control lifecycle checks)'
 
@@ -57,16 +58,20 @@ workflow-lint:
 labels:
 	python3 scripts/sync_labels.py
 
-build:
-	$(GO) build -trimpath -o bin/ ./cmd/...
+build: member-wasm
+	$(GO) build -trimpath -o bin/ ./cmd/browser-identity ./cmd/browser-submission ./cmd/browser-init ./cmd/probe ./cmd/migrate
+	python3 scripts/build_wasm.py --go '$(GO)' --component review
+	python3 scripts/browser_notices.py
+
+.PHONY: dev-tools
+dev-tools:
+	$(GO) build -trimpath -o bin/ ./cmd/server ./cmd/issuer ./cmd/ca ./cmd/client
 
 .PHONY: browser-build browser-test browser-profile-test browser-unit-test browser-session-test
 browser-unit-test:
 	node --test scripts/review_records_test.mjs scripts/review_worker_test.mjs
 
-browser-build: build member-wasm
-	python3 scripts/build_wasm.py --go '$(GO)' --component review
-	python3 scripts/browser_notices.py
+browser-build: build
 
 browser-test: browser-build browser-session-test
 	$(GO) test -race -count=1 -tags=browsermvp ./internal/browserjourney
@@ -103,7 +108,7 @@ container-secrets:
 container-config:
 	python3 scripts/containers.py config
 
-up:
+up: build
 	python3 scripts/containers.py up
 
 down:
@@ -112,25 +117,25 @@ down:
 smoke:
 	python3 scripts/containers.py smoke
 
-container-test:
+container-test: build
 	python3 scripts/containers.py test
 
-migrate-identity:
+migrate-identity: build
 	python3 scripts/containers.py migrate-identity
 
-migrate-submission:
+migrate-submission: build
 	python3 scripts/containers.py migrate-submission
 
-db-migration-test:
+db-migration-test: build
 	python3 scripts/containers.py migration-test
 
-db-account-test:
+db-account-test: build
 	python3 scripts/containers.py account-test
 
-db-member-backup-test:
+db-member-backup-test: build
 	python3 scripts/containers.py member-backup-test
 
-db-submission-record-test:
+db-submission-record-test: build
 	python3 scripts/containers.py submission-record-test
 
 test:
@@ -148,6 +153,7 @@ lint:
 	$(GO) mod verify
 
 fuzz:
+	$(GO) test ./internal/browserapp -run='^$$' -fuzz='^FuzzRuntimeDatabaseBoundary$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/browseridentity -run='^$$' -fuzz='^FuzzSessionSelectorHTTP$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/reviewprofile -run='^$$' -fuzz='^FuzzProfileRejection$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/browserhttp -run='^$$' -fuzz='^FuzzBrowserJSONAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2
@@ -178,7 +184,7 @@ fuzz:
 	$(GO) test ./internal/clientcli -run='^$$' -fuzz='^FuzzClientPassword$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/clientcli -run='^$$' -fuzz='^FuzzClientRewrapPasswords$$' -fuzztime=$(FUZZTIME) -parallel=2
 
-web-lint: build
+web-lint: dev-tools
 	python3 scripts/web_check.py
 
 vuln:

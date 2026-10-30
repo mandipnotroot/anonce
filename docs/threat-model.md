@@ -75,17 +75,21 @@ properties described below.
 - The separate [synthetic browser-test host](testing.md#member-worker-browser-checks)
   exists only in test binaries on an ephemeral loopback origin. It rejects foreign
   hosts/origins and unread bodies, verifies bounded assets, and separates page and
-  worker CSP. Product services remain inert. This is neither product custody nor
+   worker CSP. The harness is not the default browser application. This is neither product custody nor
   a boundary against hostile local code or a malicious browser distributor.
 
 ### Local container infrastructure
 
 - The [Compose stack](deployment.md#container-stack) separates database instances,
   volumes, passwords, and internal networks. Runtime SQL roles do not own schema
-  objects and cannot assume the migration owner. Applications receive no database
-  credentials until a storage integration exists. Bootstrap is not a migration runner.
+  objects and cannot assume the migration owner. Each browser application receives
+  only its own runtime credential and read-only service state. A separate operator
+  container applies each migration history before HTTP startup; request-serving
+  processes cannot migrate or use the other database.
 - Explicit `-container-network` allows only the additional IPv4 wildcard; native
-  defaults stay loopback-only. Compose publishes HTTP ports only on host loopback.
+  defaults stay loopback-only. Container database admission permits only the matching
+  fixed service hostname and runtime role, without alternate-host/algorithm fallback.
+  Compose publishes verified HTTPS only on host loopback.
   Per-application edge bridges are needed for publication and allow outbound traffic;
   they are not a network-anonymity or egress-control mechanism.
 - Non-root users, read-only roots, dropped capabilities, configured resource limits,
@@ -93,8 +97,8 @@ properties described below.
   credentials without reflecting passwords or database error bodies. Secret files
   remain plaintext on the host and readable by the authorized database container.
 - Host/daemon administrators can read both instances and observe traffic. Containers
-  are not independent operators or proof of anonymity. The stack has no TLS,
-  production authentication, encrypted database backup/restore evidence, container
+  are not independent operators or proof of anonymity. Local TLS and verified
+  passkeys are implemented, but production operation, encrypted database backup/restore evidence, container
   vulnerability scan, or SBOM. It must not receive real data.
 - The [local migration runner](database.md#local-migration-runner) is a separate
   operator image with only one database network and migration credential. It
@@ -106,6 +110,13 @@ properties described below.
   trusted operator inputs. Version records are not tamper evidence or checksums.
   Password buffers are cleared where owned, but driver/runtime copies remain.
   Plaintext database TCP is local-only, with no hostile-host or production TLS claim.
+- Server state initialization is operator-only, network-disabled and restricted to
+  an empty owner-only directory. Partial state or browser data without its original
+  state fails rather than generating replacement keys. Existing complete state is
+  retained; only public root-certificate copies may be added for scoped probes.
+  Native and container TLS probes verify hostname, trust and fixed liveness without
+  disabling verification. These plaintext development signing files are not
+  protected signer custody, and expired/nonconforming TLS state needs operator review.
 
 ### Submission record storage
 

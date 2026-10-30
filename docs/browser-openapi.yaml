@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Anonce Contributors
 # SPDX-License-Identifier: AGPL-3.0-only
-# Audience: implementers of the opt-in browser MVP transport.
+# Audience: implementers of the default browser application transport.
 openapi: 3.1.0
 info:
-  title: anonce opt-in browser MVP API
+  title: anonce browser application API
   version: 0.0.0
   description: >-
-    Unreleased, synthetic-only browser profile 1. Identity and anonymous servers
+    Default, unreleased, synthetic-only browser profile 1. Identity and anonymous servers
     are separate processes/databases. No plaintext-answer or private-key API.
     Application binary fields use canonical unpadded base64url. JSON bodies are
     bounded to 32768 bytes, with no unknown fields or trailing values outside
@@ -23,6 +23,17 @@ servers:
   - url: https://submit.localhost:8444
     description: Anonymous browser host
 paths:
+  /healthz:
+    get:
+      operationId: browserLiveness
+      description: Fixed public liveness on each exact TLS origin, not production readiness.
+      responses:
+        '200':
+          description: Process is serving browser requests
+          content:
+            text/plain:
+              schema: {type: string, const: ok}
+        default: {$ref: '#/components/responses/Error'}
   /api/browser/config:
     get:
       operationId: browserConfiguration

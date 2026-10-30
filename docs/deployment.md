@@ -5,18 +5,19 @@
 
 Audience: operators, maintainers, and organizations planning a demo or deployment.
 
-Status: the separate opt-in browser hosts connect a limited local MVP using the
-existing independent PostgreSQL databases. Original demonstration hosts remain
-inert. Production deployment and the broader protocol remain unavailable.
+Status: the default application connects the browser workflow to independent
+PostgreSQL databases. Browser forms are the only product workflow for members,
+reviewers and administrators. Production deployment and the broader protocol remain unavailable.
 Do not collect real data.
 
 ## Local development
 
 ### Browser MVP local startup
 
-The separate browser hosts connect the limited MVP. **Use synthetic data only.**
-This is not production readiness or independent security approval. The original
-demonstration commands below retain their inert behavior.
+The default browser application connects the limited MVP. **Use synthetic data only.**
+This is not production readiness or independent security approval. Inert shell and
+offline key commands are developer-only regression tools, excluded from the default
+build and application image. They are not onboarding alternatives.
 
 Use Linux, Go 1.27.3, PostgreSQL 18.6 through the pinned Compose databases, and a
 browser supporting WebAuthn JSON conversion, module workers, BroadcastChannel,
@@ -24,43 +25,37 @@ IndexedDB and a user-verifying passkey authenticator. The commands here are
 operator setup. Ordinary administrators, members and reviewers use browser forms.
 
 Prepare `.env` from `.env.example` without replacing existing configuration and set
-its source URL. Export that same HTTPS URL for this exact modified source in the
-operator shell, then run:
+its `ANONCE_SOURCE_URL` to the exact modified source's HTTPS location. From the
+repository root, run:
 
 ```sh
-export ANONCE_SOURCE_URL=https://your-source-host.example/your-exact-source
-make container-secrets
-docker compose -f compose.yaml -f compose.browser.yaml up -d --wait identity-db submission-db
-make migrate-identity migrate-submission
-make browser-build
-./bin/browser-init .browser
+make up
+make smoke
 ```
 
-The explicit overlay publishes database loopback ports `55431` and `55432` for the
-native hosts. Never expose them externally. The base infrastructure checks
-intentionally reject database publication; `make smoke` does not describe this
-overlay. Applications receive only their own runtime credentials, not migration
-or administrator passwords.
+`make up` builds the matched member/review WASM assets and service image, prepares
+no-replace database secrets, starts the isolated databases, applies both migration
+histories through separately scoped operator containers, initializes empty server
+state, and starts both TLS browser services. There is no browser overlay to select.
+Database ports are never published. Each application receives only its own runtime
+credential and read-only service state, never another service's state or migration password.
 
-Initialization creates a new owner-only directory and never replaces existing
-files. It prepares a local trust root, separate TLS keys/certificates,
+Initialization admits only an empty owner-only directory and never replaces existing
+files. Startup refuses incomplete state or a new state directory against databases
+already containing browser accounts or publications. Restore original state instead
+of generating replacement keys. Initialization prepares a local trust root, separate TLS keys/certificates,
 membership/publication/receipt keys, public cross-service trust files and one
 administrator invitation. Each command opens only its own `identity/` or
-`submission/` subdirectory and runtime database. Native processes share the
-operator's OS identity; this is not process-compromise containment or independent
-operation. These plaintext development signing files are not
+`submission/` subdirectory and runtime database. Containers run as the non-root
+operator's numeric UID/GID so they can read owner-only state. A shared host/daemon
+administrator can still access both services. These plaintext development signing files are not
 protected production custody. TLS leaves expire after 30 days.
 
 Import `.browser/local-root.crt` into the test browser's trusted certificate
 authorities through its certificate settings. Trust only this local test root.
 Do not disable certificate verification, browser sandboxing, CSP, user verification,
 Secure cookies or CSRF controls. Remove this test trust when finished.
-Run each host in its own terminal:
-
-```sh
-./bin/browser-identity -source-url "$ANONCE_SOURCE_URL"
-./bin/browser-submission -source-url "$ANONCE_SOURCE_URL"
-```
+`make up` has already started both services. No separate per-service launch is needed.
 
 Open `https://identity.localhost:8443/`. For the first administrator only, obtain
 the code from `.browser/identity/administrator-invitation` through the operator's
@@ -93,49 +88,23 @@ account-linked receipt history or reviewer server backup. Issuance interruption
 can consume the one response without acceptance. Only an unchanged pending
 ciphertext can be retried while open. Signed acceptance is not a transparency proof.
 
-The browser command flags are `-listen`, `-origin`, `-peer-origin`, `-state`,
+The operator-only browser command flags are `-listen`, `-origin`, `-peer-origin`, `-state`,
 `-database`, `-password-file`, `-runtime` and required `-source-url`. Listeners and
-database connections remain loopback; database URLs must select the correct
+native database connections remain loopback. Explicit `-container-network` admits
+only the matching `identity-db` or `submission-db` hostname on port 5432 and an
+IPv4 wildcard listener inside its container. Database URLs must select the correct
 runtime role/database without passwords. Credentials come from files, never URL
 arguments. No proxy headers are trusted or request/IP/SQL-parameter logs enabled.
 Protected signers, independent checkpoints, retention/restoration, distributed
 abuse controls and a supported-browser matrix remain unavailable.
 
-Build with `make build` (Go 1.27.3). Run each command in a separate terminal or
-supervisor. The separate offline `bin/client` is documented under
-[local key CLI](key-management.md#local-key-cli); it does not start an HTTP service.
-For the HTTP commands, set `-source-url` to the exact corresponding source, including
-modifications and build/install material:
-
-```sh
-./bin/server -source-url "$ANONCE_SOURCE_URL"
-./bin/issuer -source-url "$ANONCE_SOURCE_URL"
-./bin/ca -source-url "$ANONCE_SOURCE_URL"
-```
-
-`ANONCE_SOURCE_URL` is a shell convenience, not an application environment setting.
-
-| Flag | Validation |
-| --- | --- |
-| `-listen` | Unzoned loopback IP literal, canonical decimal port `0`–`65535`; no hostname, wildcard, or non-loopback bind. Port `0` is ephemeral; use a fixed port for manual inspection |
-| `-container-network` | Default false; explicitly permits the additional IPv4 literal `0.0.0.0` with `-listen`. Use only behind container isolation and loopback host publication; this flag does not detect containers or enforce firewall policy |
-| `-source-url` | Required absolute HTTPS URL; no credentials, query, or fragment. Missing value fails startup |
-| `-help` | Available on all HTTP commands |
-| `-dev-styleguide` | Submission only, default false; rejected by identity commands and configuration validation |
-
-Unknown flags and positional arguments fail. The process does not fetch or verify
-source contents; completeness is the operator's responsibility.
-
-| Command | Default bind |
-| --- | --- |
-| `bin/server` | `127.0.0.1:8080` |
-| `bin/issuer` | `127.0.0.1:8081` |
-| `bin/ca` | `127.0.0.1:8082` |
-
-The [API reference](api.md#implemented-infrastructure) lists liveness, demonstration
-status, unavailable readiness (`503`), and protocol rejection (`501`). Submission
-also serves read-only pages/CSS. The opt-in style guide has labelled mocks and a
-disabled publication button, not forms or working administration.
+`make build` is the default browser build, including matched runtimes and original
+upstream notices. `make browser-build` is a compatibility alias, not another
+workflow. Neither builds the key CLI or inert demonstration servers. Contributors
+may explicitly use `make dev-tools` for the
+[legacy shell regression checks](api.md#implemented-read-only-shell) and
+[offline parser/backup diagnostics](key-management.md#local-key-cli). These tools
+are not distributed in the application image or required of any product user.
 
 | Resource | Per-process limit |
 | --- | --- |
@@ -151,22 +120,23 @@ body-bearing requests without reading or draining; the network stack may buffer 
 Loopback is not authentication or isolation from local users/processes.
 **Do not expose these services through an external proxy.**
 
-The separate [WASM verifier](key-management.md#local-wasm-request-verification)
-builds with `make wasm`; `make wasm-test` requires development-only Node.js 22.23.3.
-Artifacts remain in `bin/wasm/` and are not served by the HTTP commands. This does
-not add a browser deployment or change the shell's CSP.
+The public-only WASM verifier remains a development check. The product uses the
+matched member and reviewer workers built automatically by `make build`; it needs
+no Node runtime or build tool in a user's browser or in the final application image.
 
 ### Container stack
 
-The root `Dockerfile` builds the HTTP commands and a liveness probe
-with the pinned Go compiler. The final `scratch` image contains static binaries and
-original project/Go license notices, runs as `65532:65532`, and has no shell,
-compiler, key CLI, browser, or Node runtime. The allowlisted build context excludes
-secrets, `.env`, Git metadata, tests, and generated artifacts. This is a local
-development build, not a production image or signed release.
+The root `Dockerfile` builds the two browser services, one-shot initializer and
+TLS liveness probe with the pinned Go compiler. `make build` first generates the
+matched worker runtimes and notices, which are the only generated materials admitted
+to the build context. The final `scratch` image contains static binaries, browser
+assets and original upstream/project notices, with no shell, compiler, user key CLI,
+browser executable or Node runtime. Secrets, `.env`, Git metadata and unrelated
+artifacts stay outside the build context. This is not a production image or signed release.
 
-`compose.yaml` runs `server`, `issuer`, `ca`, `identity-db`, and
-`submission-db`. PostgreSQL 18.6 and the Go builder use pinned image-index digests;
+`compose.yaml` runs `identity`, `submission`, `identity-db`, and
+`submission-db`. Membership issuance belongs to the authenticated identity service;
+there is no extra CA application for users to start. PostgreSQL 18.6 and the Go builder use pinned image-index digests;
 see [dependency review](dependencies.md#container-runtime-and-images).
 Use a local Linux Docker Engine 28 or newer and Compose with `up --wait` and JSON
 configuration support. Older engines are rejected because their loopback publication
@@ -181,14 +151,13 @@ including these container files. The example intentionally has no working URL or
 passwords. From the repository root, run:
 
 ```sh
-make container-secrets
-make container-config
 make up
 make smoke
 ```
 
-`container-secrets` generates six independent random passwords without replacing
-existing files. Startup validates the whole set. The `.secrets` directory must be
+Startup generates six independent random passwords without replacing existing
+files and validates the whole set. `make container-secrets` is an optional operator
+preparation command, not another user workflow. The `.secrets` directory must be
 owned by the current user with mode `0700`; files use `0444` so database user `999`
 can read their individual Compose bind mounts. The enclosing directory prevents
 other host users from traversing to the files. Protect its ancestors and backups.
@@ -199,18 +168,18 @@ copies cannot be explicitly erased.
 
 Each database receives only its own admin, migration, and runtime passwords. The
 official image reads the admin secret through `POSTGRES_PASSWORD_FILE`; its internal
-process handling is not an erasure guarantee. Applications receive no database
-password or connection setting yet because their handlers do not use storage.
+process handling is not an erasure guarantee. Each browser service receives its
+own runtime password and fixed own-database connection settings, never admin or
+migration credentials.
 [Bootstrap roles and grants](database.md#local-container-bootstrap) prepare that
-boundary without claiming account, vault, or protocol persistence.
+boundary. Separate operator containers apply the histories before the browser services start.
 
 | Boundary | Local configuration |
 | --- | --- |
-| HTTP | Only `127.0.0.1:8080`, `:8081`, and `:8082`; `ANONCE_SERVER_PORT`, `ANONCE_ISSUER_PORT`, and `ANONCE_CA_PORT` may change host ports, never the loopback address |
-| Database networks | Internal identity network for issuer/identity DB; separate internal submission network for server/submission DB; no published PostgreSQL ports |
-| Signer | Issuer and CA share an internal signer network; CA has no database-network attachment |
+| HTTPS | Only `127.0.0.1:8443` for accounts and `:8444` for anonymous responses; exact configured origins and certificate names remain enforced |
+| Database networks | Internal identity network for identity/identity DB; separate internal submission network for submission/submission DB; no published PostgreSQL ports |
 | Edge networks | Each application has its own non-internal bridge for host port publication, not a shared identity/submission network; this permits application outbound traffic and is not an egress firewall |
-| Storage | Independent named database volumes; PostgreSQL 18 mounts at `/var/lib/postgresql`; no application host mounts |
+| Storage | Independent named database volumes; PostgreSQL 18 mounts at `/var/lib/postgresql`; each application mounts only `.browser/<own-service>` read-only and its own runtime secret |
 | Hardening | Non-root users, read-only roots, dropped capabilities, no-new-privileges, and disabled Docker logging for every service; database writes use its volume and bounded temporary filesystems |
 | Limits | Each application: one CPU, 128 MiB memory/no extra swap, 64 processes; each database: one CPU, 512 MiB memory/no extra swap, 128 processes |
 | Shutdown | Applications get 10 seconds around their existing five-second shutdown; PostgreSQL gets 60 seconds and its upstream fast-shutdown signal |
@@ -218,17 +187,26 @@ boundary without claiming account, vault, or protocol persistence.
 This follows the [Compose service specification](https://docs.docker.com/reference/compose-file/services/)
 and [file-mounted secrets](https://docs.docker.com/compose/how-tos/use-secrets/)
 (consulted 2026-10-28). A shared host/daemon administrator can still access both
-instances, secrets, and traffic. No TLS, production authentication, or anonymity
-guarantee is added. Never publish these ports publicly or use `-container-network`
+instances, secrets, and traffic. Local TLS, passkey authentication and storage
+integration do not establish production readiness or an anonymity guarantee.
+Never publish these ports publicly or use `-container-network`
 on a normal host process.
 
-`make up` validates secrets/configuration, runs `docker compose up --build --wait`,
-and checks the running stack. Container health means liveness and database bootstrap,
-not product readiness: `/readyz` remains `503`. `make smoke` checks the current
+`make up` builds, validates configuration and state, migrates and starts the connected
+application, then checks the running stack. Container health verifies TLS liveness,
+not production readiness. `make smoke` checks the current
 stack without starting or deleting services. `make container-test` runs the
 [real-container checks](testing.md#container-infrastructure-checks) in a fresh project
 with generated secrets, ephemeral loopback ports, and disposable volumes. It removes
 only its own test containers, networks, and volumes; build images/cache remain.
+
+Startup stops the two browser services before applying migrations. A project still
+containing old `server`, `issuer` or `ca` containers is rejected rather than silently
+keeping an alternate interface or deleting containers. After reviewing that project's
+data/state and stopping its old deployment, an operator may run
+`docker compose down --remove-orphans` without `--volumes`, then `make up`.
+The removed `compose.browser.yaml` overlay is no longer needed. Old HTTP port settings
+do not configure the browser origins; use the default HTTPS ports above.
 
 `make down` preserves database volumes. Initialization runs only on empty volumes;
 changing files does not rotate existing database passwords, and bootstrap SQL is
@@ -242,13 +220,19 @@ Compose project's volumes with:
 docker compose down --volumes
 ```
 
-This does not delete `.secrets`. Never use volume deletion as recovery for real data.
-Credential/membership tables, protocol verification, product vault integration, encrypted backup/restore exercises, container scanning,
-SBOMs, and production deployment remain Next work. Kubernetes/Helm stays optional.
+This does not delete `.secrets` or `.browser`. Never use volume deletion as recovery
+for real data. Protect both directories together with the database volumes. Partial
+or missing server state must not silently rotate keys. Older complete state may gain
+only public trust-root copies for each service. Certificates must pass strict TLS
+verification, including authority identifiers; expired or nonconforming certificates
+require operator review, not disabled verification or state reinitialization.
+Encrypted restoration exercises, container scanning, SBOMs and production deployment
+remain Next work. Kubernetes/Helm stays optional.
 
 ### Local database migrations
 
-After `make up`, explicitly apply each independent history:
+`make up` applies both independent histories before starting the browser services.
+For an explicit operator rerun against already running local databases:
 
 ```sh
 make migrate-identity
@@ -259,9 +243,8 @@ These commands build the Dockerfile's separate `migration` target, then run a
 non-root, read-only, resource-bounded, logging-disabled one-shot operator container.
 It attaches only to the selected internal database network, publishes no ports,
 and mounts only that database's migration password read-only. Neither the admin nor
-runtime credential is supplied. The normal HTTP image and services receive no
-migration binary, module notices, or database secrets. Nothing migrates at HTTP
-startup; `/readyz` stays `503`.
+runtime credential is supplied. Browser services receive no migration binary or
+migration password. Nothing migrates inside the request-serving processes.
 
 The binary accepts only a fixed service name, reads exactly 64 lowercase hexadecimal
 credential bytes from `/run/secrets/migration_password`, and rejects symlinks and
@@ -278,7 +261,7 @@ repairing, downgrading, or deleting data. Use `make db-migration-test` for dispo
 [real-PostgreSQL checks](testing.md#database-migration-checks), never normal volumes.
 
 Identity version 2 creates the [internal account/session tables](database.md#implemented-account-storage).
-No HTTP service receives runtime credentials or exposes login as a result. Use
+The browser service composes that store with verified WebAuthn login. Use
 `make db-account-test` for the separate, disposable runtime-role persistence checks;
 its development-only `account-test` image runs a race-enabled compiled test binary,
 with only one network and runtime secret at a time. Do not deploy this test image
@@ -289,13 +272,13 @@ Identity version 3 adds the internal
 It upgrades existing version-2 databases without rewriting earlier migrations.
 `make db-member-backup-test` adds a separate race-enabled `member-backup-test`
 image to the disposable account/migration checks, with the same single-network,
-single-runtime-secret restrictions. No HTTP service gets vault access or new
-credentials. Deletion affects only live ciphertext; do not treat it as erasure
+single-runtime-secret restrictions. The browser vault uses the session-derived
+owner contract. Deletion affects only live ciphertext; do not treat it as erasure
 from WAL, snapshots, or backups. Real member keys remain prohibited in this stack.
 
 Identity version 4 adds independent non-secret session selectors and backfills
 existing rows without changing their tokens or timestamps. Apply it before using
-the updated internal account store. It enables no HTTP session-management route.
+the updated account store and browser session-management routes.
 Its volatile default rewrites the session table and indexes under an exclusive
 table lock. Allow local downtime and sufficient disk space; the runner's existing
 timeouts still apply. Large-table or online upgrades have not been demonstrated.
@@ -306,7 +289,7 @@ Submission version 2 creates the internal
 [submission record tables](database.md#implemented-submission-record-storage).
 Apply `make migrate-submission` before constructing that store. Existing version-1
 databases upgrade additively; no existing records are rewritten. The normal HTTP
-services still receive no runtime credential and accept no submissions.
+submission service verifies anonymous authorization and encrypted envelopes before storage.
 `make db-submission-record-test` uses a separate race-enabled `submission-record-test`
 image on disposable databases with one network/runtime secret at a time. Do not
 deploy the test image or treat a storage reference as a cryptographic receipt.
@@ -314,7 +297,7 @@ deploy the test image or treat a storage reference as a cryptographic receipt.
 ## Production separation
 
 - Deliver the product through the browser for every role; users install no app,
-  extension, CLI, or Node runtime. The offline CLI remains optional tooling.
+  extension, CLI, or Node runtime. Offline key diagnostics are developer-only tooling.
 - Separate issuer/CA and submission origins and operational trust boundaries.
 - Keep account login, dashboard, encrypted member-key vault, and their sessions
   on the identity side. Use narrowly scoped WebAuthn RP IDs and exact allowed

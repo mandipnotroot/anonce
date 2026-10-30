@@ -3,14 +3,15 @@
 """Unit checks for local container policy and no-replace secret preparation."""
 
 import copy
+import io
 import os
 from pathlib import Path
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from containers import EDGE_NETWORKS, INTERNAL_NETWORKS, NETWORKS, PORTS, POSTGRES_IMAGE, ROOT, SECRET_NAMES, Stack, account_checks, check_engine_version, prepare_secrets, validate_config
+from containers import EDGE_NETWORKS, INTERNAL_NETWORKS, NETWORKS, PORTS, POSTGRES_IMAGE, ROOT, SECRET_NAMES, Stack, account_checks, application_command, check_engine_version, main, prepare_secrets, validate_config, validate_state
 
 
 def model():
@@ -22,11 +23,15 @@ def model():
             "security_opt": ["no-new-privileges:true"], "logging": {"driver": "none"}, "cpus": 1,
             "mem_limit": str((128 if application else 512) << 20), "memswap_limit": str((128 if application else 512) << 20),
             "pids_limit": 64 if application else 128, "healthcheck": {"test": ["CMD", "synthetic"]},
-            "user": "65532:65532" if application else "999:999",
+            "user": "1000:1000" if application else "999:999",
         }
         if application:
-            service.update(ports=[{"host_ip": "127.0.0.1", "target": PORTS[name], "protocol": "tcp"}],
-                           command=["-container-network", f"0.0.0.0:{PORTS[name]}"])
+            service.update(image="synthetic-browser:local", ports=[{"host_ip": "127.0.0.1", "target": PORTS[name], "published":str(PORTS[name]), "protocol": "tcp"}],
+                           command=application_command(name, "https://example.invalid/source"),
+                           healthcheck={"test":["CMD", "/app/probe", name]},
+                           secrets=[{"source":f"{name}_runtime", "target":"runtime_password"}],
+                           volumes=[{"type":"bind", "source":f"/synthetic-state/{name}", "target":"/state", "read_only":True,
+                                     "bind":{"create_host_path":False}}])
         else:
             side = name.removesuffix("-db")
             service.update(image=POSTGRES_IMAGE,
@@ -53,6 +58,15 @@ class ContainerPolicyTests(unittest.TestCase):
                 self.assertIn(pattern, patterns)
                 self.assertGreater(patterns.index(pattern), patterns.index("!internal/**"))
         self.assertIn("COPY LICENSES/AGPL-3.0-only.txt /licenses/anonce-LICENSE", (ROOT / "Dockerfile").read_text())
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        self.assertIn('CMD ["/app/browser-identity"]',dockerfile)
+        self.assertNotIn("./cmd/client",dockerfile)
+        self.assertNotIn("./cmd/server",dockerfile)
+        makefile = (ROOT / "Makefile").read_text()
+        default = makefile.split("build: member-wasm\n",1)[1].split(".PHONY: dev-tools",1)[0]
+        self.assertIn("./cmd/browser-identity ./cmd/browser-submission",default)
+        self.assertNotIn("./cmd/client",default)
+        self.assertNotIn("./cmd/server",default)
 
     def test_engine_loopback_boundary(self):
         for version in ("28.0.0", "29.9.2", "29.9.2\n", "28.1.0-test"):
@@ -71,20 +85,23 @@ class ContainerPolicyTests(unittest.TestCase):
 
     def test_unsafe_models_fail(self):
         changes = [
-            ("server", "user", "0:0"), ("identity-db", "user", "0:0"),
-            ("server", "ports", [{"host_ip": "0.0.0.0", "target": 8080, "protocol": "tcp"}]),
+            ("submission", "user", "0:0"), ("identity-db", "user", "0:0"),
+            ("submission", "ports", [{"host_ip": "0.0.0.0", "target": 8444, "protocol": "tcp"}]),
             ("identity-db", "ports", [{"host_ip": "127.0.0.1", "target": 5432, "protocol": "tcp"}]),
-            ("identity-db", "image", "postgres:latest"), ("issuer", "networks", {"submission": {}}),
-            ("server", "secrets", [{"source": "identity_admin"}]), ("ca", "volumes", [{"source": "/var/run/docker.sock"}]),
-            ("server", "environment", {"PGPASSWORD": "synthetic-input"}),
+            ("identity-db", "image", "postgres:latest"), ("identity", "networks", {"submission": {}}),
+            ("submission", "secrets", [{"source": "identity_admin", "target":"runtime_password"}]), ("identity", "volumes", [{"source": "/var/run/docker.sock"}]),
+            ("submission", "environment", {"PGPASSWORD": "synthetic-input"}),
             ("identity-db", "secrets", [{"source": "submission_admin", "target": "admin_password"}]),
             ("submission-db", "volumes", [{"type": "volume", "source": "identity-data", "target": "/var/lib/postgresql"}]),
             ("identity-db", "environment", {"POSTGRES_PASSWORD": "synthetic-input"}),
-            ("server", "read_only", False), ("server", "cap_drop", []), ("server", "cap_add", ["NET_ADMIN"]),
-            ("server", "security_opt", []), ("server", "logging", {"driver": "json-file"}),
-            ("server", "privileged", True), ("server", "network_mode", "host"), ("server", "devices", ["synthetic"]),
-            ("server", "mem_limit", "0"), ("server", "memswap_limit", "-1"), ("server", "cpus", 0),
-            ("server", "pids_limit", -1), ("server", "healthcheck", {"test": ["NONE"], "disable": True}),
+            ("submission", "read_only", False), ("submission", "cap_drop", []), ("submission", "cap_add", ["NET_ADMIN"]),
+            ("submission", "security_opt", []), ("submission", "logging", {"driver": "json-file"}),
+            ("submission", "privileged", True), ("submission", "network_mode", "host"), ("submission", "devices", ["synthetic"]),
+            ("submission", "mem_limit", "0"), ("submission", "memswap_limit", "-1"), ("submission", "cpus", 0),
+            ("submission", "pids_limit", -1), ("submission", "healthcheck", {"test": ["NONE"], "disable": True}),
+            ("identity", "command", application_command("submission", "https://example.invalid/source")),
+            ("identity", "volumes", [{"type":"bind", "source":"/synthetic-state/submission", "target":"/state", "read_only":True}]),
+            ("identity", "secrets", [{"source":"identity_migration", "target":"runtime_password"}]),
         ]
         for name, key, value in changes:
             with self.subTest(service=name, key=key):
@@ -297,5 +314,107 @@ class ContainerSecretTests(unittest.TestCase):
             prepare_secrets(self.path)
 
 
+class BrowserStateTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.path = Path(self.temporary.name) / "state"
+        self.path.mkdir(mode=0o700)
+        for side, names in (("identity", ("tls.crt", "tls.key", "receipt.pub", "bulletin.seed", "membership.seed", "membership.der", "administrator-invitation")),
+                            ("submission", ("tls.crt", "tls.key", "receipt.seed", "bulletin.pub"))):
+            directory = self.path / side
+            directory.mkdir(mode=0o700)
+            for name in names:
+                (directory / name).write_bytes(b"synthetic non-key data")
+                (directory / name).chmod(0o600)
+        (self.path / "local-root.crt").write_bytes(b"synthetic public certificate")
+        (self.path / "local-root.crt").chmod(0o600)
+
+    def test_retains_keys_and_adds_only_public_trust_copies(self):
+        before = {str(path.relative_to(self.path)):path.read_bytes() for path in self.path.rglob("*") if path.is_file()}
+        validate_state(self.path)
+        validate_state(self.path)
+        for name, data in before.items():
+            self.assertEqual((self.path / name).read_bytes(),data)
+        for side in ("identity", "submission"):
+            self.assertEqual((self.path / side / "local-root.crt").read_bytes(),before["local-root.crt"])
+
+    def test_incomplete_state_is_not_reinitialized(self):
+        (self.path / "identity/membership.seed").unlink()
+        with self.assertRaises(ValueError):
+            validate_state(self.path)
+        self.assertFalse((self.path / "identity/membership.seed").exists())
+
+    def test_unsafe_state_files_and_public_copy_changes(self):
+        validate_state(self.path)
+        source = self.path / "identity/tls.key"
+        source.chmod(0o644)
+        with self.assertRaises(ValueError):
+            validate_state(self.path)
+        source.chmod(0o600)
+        source.unlink()
+        source.symlink_to(self.path / "identity/membership.seed")
+        with self.assertRaises(OSError):
+            validate_state(self.path)
+        source.unlink()
+        os.mkfifo(source,mode=0o600)
+        with self.assertRaises(ValueError):
+            validate_state(self.path)
+
+    def test_new_state_refuses_an_existing_browser_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = model()
+            for side in ("identity", "submission"):
+                config["services"][side]["volumes"][0]["source"] = str(Path(directory) / "state" / side)
+            stack = Stack(env={})
+            with patch.object(stack,"config",return_value=config), patch.object(stack,"sql",return_value=SimpleNamespace(stdout=b"t\n")), patch.object(stack,"run") as run:
+                with self.assertRaises(ValueError):
+                    stack.initialize("synthetic")
+                run.assert_not_called()
+                self.assertEqual(list((Path(directory) / "state").iterdir()),[])
+
+
+class BrowserStartupTests(unittest.TestCase):
+    def test_default_actions_use_the_compose_selected_secret_directory(self):
+        for action in ("up","smoke","migrate-identity"):
+            with self.subTest(action=action):
+                stack = Mock()
+                stack.config.return_value = model()
+                stack.run.return_value = SimpleNamespace(stdout=b"29.9.2\n")
+                with patch("containers.Stack",return_value=stack), patch("sys.argv",["containers.py",action]), \
+                        patch("containers.prepare_secrets") as prepare, patch("sys.stdout",new=io.StringIO()):
+                    main()
+                if action == "migrate-identity":
+                    prepare.assert_called_once_with(Path("/synthetic-secrets"))
+                else:
+                    prepare.assert_called_once_with(Path("/synthetic-secrets"),create=action=="up")
+                if action == "up":
+                    stack.start.assert_called_once_with()
+
+    def test_migration_and_initialization_order(self):
+        stack = Stack(env={})
+        calls = []
+
+        def compose(*args, **kwargs):
+            calls.append(args)
+            return SimpleNamespace(stdout=b"",returncode=0)
+
+        with patch.object(stack,"config",return_value=model()), patch.object(stack,"compose",side_effect=compose), \
+                patch.object(stack,"run",return_value=SimpleNamespace(stdout=("sha256:"+"a"*64).encode())), \
+                patch.object(stack,"migration_image",return_value="migration"), \
+                patch.object(stack,"migrate",side_effect=lambda side,image:calls.append(("migrate",side))), \
+                patch.object(stack,"initialize",side_effect=lambda image:calls.append(("initialize",))):
+            stack.start()
+        self.assertLess(calls.index(("stop","identity","submission")),calls.index(("migrate","identity")))
+        self.assertLess(calls.index(("migrate","submission")),calls.index(("initialize",)))
+        app_start = next(index for index,args in enumerate(calls) if args[0]=="up" and args[-2:]==("identity","submission"))
+        self.assertLess(calls.index(("initialize",)),app_start)
+
+    def test_legacy_services_are_not_silently_retained_or_removed(self):
+        stack = Stack(env={})
+        with patch.object(stack,"config",return_value=model()), patch.object(stack,"compose",return_value=SimpleNamespace(stdout=b"server\n")) as compose:
+            with self.assertRaises(ValueError):
+                stack.start()
+            compose.assert_called_once_with("ps","--all","--services")
 if __name__ == "__main__":
     unittest.main()

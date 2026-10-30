@@ -14,6 +14,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"io"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -25,7 +26,23 @@ import (
 // Initialize never replaces an existing directory or file. All server private
 // keys are local development files, not a production signing-key custody design.
 func Initialize(directory string) error {
-	if err := os.Mkdir(directory, 0o700); err != nil {
+	return initialize(directory, false)
+}
+
+// InitializeEmpty initializes a pre-created owner-only, empty directory mounted
+// into the one-shot operator container. Existing contents are never overwritten.
+func InitializeEmpty(directory string) error {
+	return initialize(directory, true)
+}
+
+func initialize(directory string, existing bool) error {
+	if !existing {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			return errors.New("create new browser state directory")
+		}
+	}
+	info, err := os.Lstat(directory)
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
 		return errors.New("create new browser state directory")
 	}
 	stateRoot, err := os.OpenRoot(directory)
@@ -33,6 +50,15 @@ func Initialize(directory string) error {
 		return errors.New("open new browser state directory")
 	}
 	defer func() { _ = stateRoot.Close() }()
+	dir, err := stateRoot.Open(".")
+	if err != nil {
+		return errors.New("open empty browser directory")
+	}
+	_, readErr := dir.ReadDir(1)
+	_ = dir.Close()
+	if readErr != io.EOF {
+		return errors.New("browser state directory is not empty")
+	}
 	write := func(name string, data []byte) error {
 		f, err := stateRoot.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err != nil {
@@ -61,10 +87,20 @@ func Initialize(directory string) error {
 	if err != nil {
 		return errors.New("create local trust root")
 	}
-	if write("local-root.crt", pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rootDER})) != nil {
+	// Use the emitted certificate as issuer so the library-generated subject key
+	// identifier is copied into each leaf's authority key identifier.
+	root, err = x509.ParseCertificate(rootDER)
+	if err != nil {
+		return errors.New("parse local trust root")
+	}
+	rootPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rootDER})
+	if write("local-root.crt", rootPEM) != nil {
 		return errors.New("write local trust root")
 	}
 	for _, side := range []string{"identity", "submission"} {
+		if write(side+"/local-root.crt", rootPEM) != nil {
+			return errors.New("write scoped TLS trust root")
+		}
 		name := "identity.localhost"
 		if side == "submission" {
 			name = "submit.localhost"

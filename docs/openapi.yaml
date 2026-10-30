@@ -6,8 +6,8 @@ info:
   title: anonce infrastructure API
   version: 0.0.0
   description: >-
-    The separate opt-in browser hosts use browser-openapi.yaml. Their
-    /api/browser/ namespace does not enable these demonstration protocol routes.
+    The default browser application uses browser-openapi.yaml and /api/browser/.
+    This document covers developer-only inert demonstration routes, not the product.
 
     Local demonstration processes implement liveness, status, and source discovery.
     Readiness always returns 503. Only submission serves the read-only HTML shell.

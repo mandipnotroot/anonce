@@ -5,6 +5,7 @@ package healthprobe
 
 import (
 	"context"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -42,6 +43,33 @@ func TestProbe(t *testing.T) {
 				t.Fatalf("probe outcome: %v", err)
 			}
 		})
+	}
+}
+
+func TestBrowserProbeTLS(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/healthz" || r.Header.Get("Cookie") != "" || r.Header.Get("Authorization") != "" {
+			t.Error("unexpected browser probe request")
+		}
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer server.Close()
+	trust := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+	address := server.Listener.Addr().String()
+	if err := checkTLS(t.Context(), server.URL+"/healthz", address, trust); err != nil {
+		t.Fatal(err)
+	}
+	if checkTLS(t.Context(), "https://wrong.invalid/healthz", address, trust) == nil {
+		t.Fatal("browser probe bypassed hostname verification")
+	}
+	if checkTLS(t.Context(), server.URL+"/healthz", address, []byte("invalid trust")) == nil {
+		t.Fatal("invalid trust admitted")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := checkTLS(ctx, server.URL+"/healthz", address, trust); !errors.Is(err, context.Canceled) {
+		t.Fatal("browser probe did not propagate cancellation")
 	}
 }
 

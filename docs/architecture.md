@@ -5,7 +5,7 @@
 
 Audience: implementers, reviewers, and operators evaluating system boundaries.
 
-Status: the opt-in [browser MVP](deployment.md#browser-mvp-local-startup) connects
+Status: the default [browser application](deployment.md#browser-mvp-local-startup) connects
 accounts, encrypted member backups, enrollment, rounds, issuance, anonymous
 acceptance and local review. The sections marked proposed describe the broader
 product, not additional MVP guarantees. The original local HTTP services and shell
@@ -55,7 +55,8 @@ for network, credential, backup, and metadata separation.
   automatic key setup follow [the user workflow](ui-design.md#account-and-review-workflow).
   Installation and manual key/file management are not prerequisites.
 - Go serves embedded HTML templates, CSS, ES modules, fonts, and the compiled browser client.
-- Browser WASM and optional CLI tools share device-side Go cryptographic composition.
+- Browser workers use shared device-side Go cryptographic composition. Offline
+  key diagnostics reuse those packages only as developer tooling, not a user workflow.
 - Submission and reply handlers receive ciphertext only.
 - Result pages render decrypted data locally, never on the server.
 

@@ -3,7 +3,8 @@
 
 x-app: &app
   build: .
-  user: "65532:65532"
+  image: '${COMPOSE_PROJECT_NAME:-anonce}-browser:local'
+  user: "${ANONCE_APP_UID:-1000}:${ANONCE_APP_GID:-1000}"
   read_only: true
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
@@ -43,39 +44,44 @@ x-postgres: &postgres
     start_period: 10s
 
 services:
-  server:
+  submission:
     <<: *app
-    command: [/app/server, -container-network, -listen, '0.0.0.0:8080', -source-url, '${ANONCE_SOURCE_URL:?Set ANONCE_SOURCE_URL to this exact build source URL}']
-    ports: ['127.0.0.1:${ANONCE_SERVER_PORT:-8080}:8080']
-    networks: [submission, server-edge]
+    command: [/app/browser-submission, -container-network, -listen, '0.0.0.0:8444', -state, /state, -runtime, /app/runtime, -database, 'postgres://anonce_runtime@submission-db:5432/submission?sslmode=disable&connect_timeout=5', -password-file, /run/secrets/runtime_password, -source-url, '${ANONCE_SOURCE_URL:?Set ANONCE_SOURCE_URL to this exact build source URL}']
+    ports: ['127.0.0.1:${ANONCE_SUBMISSION_PORT:-8444}:8444']
+    networks: [submission, submission-edge]
+    volumes:
+      - type: bind
+        source: ${ANONCE_STATE_DIR:-./.browser}/submission
+        target: /state
+        read_only: true
+        bind: {create_host_path: false}
+    secrets:
+      - {source: submission_runtime, target: runtime_password}
     depends_on:
       submission-db: {condition: service_healthy}
     healthcheck:
-      test: [CMD, /app/probe, server]
+      test: [CMD, /app/probe, submission]
       interval: 5s
       timeout: 3s
       retries: 6
 
-  issuer:
+  identity:
     <<: *app
-    command: [/app/issuer, -container-network, -listen, '0.0.0.0:8081', -source-url, '${ANONCE_SOURCE_URL:?Set ANONCE_SOURCE_URL to this exact build source URL}']
-    ports: ['127.0.0.1:${ANONCE_ISSUER_PORT:-8081}:8081']
-    networks: [identity, signer, issuer-edge]
+    command: [/app/browser-identity, -container-network, -listen, '0.0.0.0:8443', -state, /state, -runtime, /app/runtime, -database, 'postgres://anonce_runtime@identity-db:5432/identity?sslmode=disable&connect_timeout=5', -password-file, /run/secrets/runtime_password, -source-url, '${ANONCE_SOURCE_URL:?Set ANONCE_SOURCE_URL to this exact build source URL}']
+    ports: ['127.0.0.1:${ANONCE_IDENTITY_PORT:-8443}:8443']
+    networks: [identity, identity-edge]
+    volumes:
+      - type: bind
+        source: ${ANONCE_STATE_DIR:-./.browser}/identity
+        target: /state
+        read_only: true
+        bind: {create_host_path: false}
+    secrets:
+      - {source: identity_runtime, target: runtime_password}
     depends_on:
       identity-db: {condition: service_healthy}
     healthcheck:
-      test: [CMD, /app/probe, issuer]
-      interval: 5s
-      timeout: 3s
-      retries: 6
-
-  ca:
-    <<: *app
-    command: [/app/ca, -container-network, -listen, '0.0.0.0:8082', -source-url, '${ANONCE_SOURCE_URL:?Set ANONCE_SOURCE_URL to this exact build source URL}']
-    ports: ['127.0.0.1:${ANONCE_CA_PORT:-8082}:8082']
-    networks: [signer, ca-edge]
-    healthcheck:
-      test: [CMD, /app/probe, ca]
+      test: [CMD, /app/probe, identity]
       interval: 5s
       timeout: 3s
       retries: 6
@@ -115,14 +121,10 @@ services:
 networks:
   identity: {internal: true}
   submission: {internal: true}
-  signer: {internal: true}
-  server-edge:
+  submission-edge:
     internal: false
     driver_opts: {com.docker.network.bridge.host_binding_ipv4: '127.0.0.1'}
-  issuer-edge:
-    internal: false
-    driver_opts: {com.docker.network.bridge.host_binding_ipv4: '127.0.0.1'}
-  ca-edge:
+  identity-edge:
     internal: false
     driver_opts: {com.docker.network.bridge.host_binding_ipv4: '127.0.0.1'}
 

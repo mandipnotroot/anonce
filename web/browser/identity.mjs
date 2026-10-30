@@ -12,7 +12,7 @@ const selected = new URL(location.href).searchParams.get("round");
 const lock = () => { generation++; member?.lock(); member = null; unlocked = false; review?.close(); review = null; lockMemberWorkers(); for (const input of document.querySelectorAll('input[type="password"]')) input.value = ""; for (const output of document.querySelectorAll(".plaintext")) output.textContent = ""; authentication?.abort(); $("issue").disabled = $("enroll").disabled = true; };
 function signedOut() {
   lock(); account = backup = incoming = null; rounds = []; sessions.reset();
-  for (const id of ["vault", "reviews", "administration", "authorization"]) $(id).hidden = true;
+  for (const id of ["workspace-nav", "vault", "reviews", "administration", "authorization"]) $(id).hidden = true;
   $("account").textContent = ""; $("invitation").textContent = ""; $("rounds").replaceChildren();
   $("setup").disabled = $("unlock").disabled = true;
   $("username").focus();
@@ -32,7 +32,7 @@ async function refresh() {
   const nextRounds = (await api("/api/browser/rounds")) ?? [];
   await sessions.refresh(); if (version !== generation) return;
   account = next; backup = nextBackup; rounds = nextRounds; $("account").textContent = `Signed in as ${account.name}${account.administrator ? " (administrator)" : ""}.`;
-  for (const id of ["vault", "reviews"]) $(id).hidden = false;
+  for (const id of ["workspace-nav", "vault", "reviews"]) $(id).hidden = false;
   $("administration").hidden = !account.administrator; $("logout").disabled = false; $("cancel").disabled = false;
   $("setup").disabled = backup !== null; $("unlock").disabled = backup === null;
   $("enroll").disabled = !unlocked;
@@ -98,7 +98,7 @@ function renderRounds() {
     if (r.assigned) {
       const form = document.createElement("form"); const pass = field(form,"Local reviewer-key passphrase",`review-pass-${r.id}`,r.bulletin ? "current-password" : "new-password"); let confirmation;
       if (!r.bulletin) confirmation = field(form,"Confirm reviewer-key passphrase",`review-confirm-${r.id}`,"new-password");
-      const submit = document.createElement("button"); submit.textContent = r.bulletin ? "Unlock and read encrypted answers" : "Prepare round reviewer key"; form.append(submit);
+      const submit = document.createElement("button"); submit.textContent = r.bulletin ? "Unlock and read encrypted answers" : "Set up private review access"; form.append(submit);
       const output = document.createElement("div"); output.className = "plaintext";
       form.onsubmit = handle(async () => {
         const version = generation, p = pass.value, c = confirmation?.value; form.reset(); review?.close(); const current = new ReviewWorker(true); review = current; if (!await current.ready || version !== generation) throw new Error("worker unavailable");

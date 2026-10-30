@@ -7,7 +7,7 @@ Audience: cryptographic reviewers and client implementers.
 
 Status: device-backup encryption, local member/reviewer-key generation/import/export,
 and identity-free member certificate requests are implemented as shared Go packages.
-Identity-side session references use the storage profile below. The opt-in browser
+Identity-side session references use the storage profile below. The default browser
 hosts use MVP profile 1 for enrollment, blind authorization, encryption and signed
 storage acceptance. Broader public-proof protocols remain prospective.
 
@@ -15,7 +15,7 @@ storage acceptance. Broader public-proof protocols remain prospective.
 
 ### Browser MVP profile 1
 
-This unreleased, opt-in composition uses the primary RFC 9474 and RFC 9180
+This unreleased browser composition uses the primary RFC 9474 and RFC 9180
 references below, consulted 2026-10-29, CIRCL 1.6.5 `blindrsa`, and Go 1.27.3
 `crypto/hpke`, `crypto/ed25519`, and `crypto/x509`. It is not independently approved
 or Privacy Pass wire-compatible. Unknown versions and lengths fail closed. No
@@ -94,6 +94,17 @@ initial compatibility limits. Login does not unlock a device key.
 | Password hashing and keystore derivation | `golang.org/x/crypto/argon2`, Argon2id |
 | Log tree and proofs | `golang.org/x/mod/sumdb/tlog` and signed notes; C2SP checkpoint conventions |
 | Randomness | `crypto/rand` through library interfaces |
+
+## Local browser TLS
+
+Local browser TLS uses the existing Go `crypto/x509` ECDSA P-256 initialization,
+not a new primitive. The emitted root certificate is parsed before issuing leaves,
+so the library copies its subject identifier into each leaf's authority identifier.
+This follows [RFC 5280 section 4.2.1.1](https://www.rfc-editor.org/rfc/rfc5280#section-4.2.1.1),
+consulted 2026-10-30. Native/container probes verify the exact configured name and
+local trust root, with TLS 1.3 minimum and no verification bypass. Public root copies
+in each read-only service mount do not expose its peer's private signing state.
+Expired/nonconforming old certificates fail; startup never replaces existing keys.
 
 ## Account session storage profile
 
