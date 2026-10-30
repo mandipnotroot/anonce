@@ -35,6 +35,13 @@ def member_notices(go, env, config):
         info = json.loads(subprocess.check_output(
             [go, "list", "-m", "-json", module], cwd=ROOT, env=env,
         ))
+        if not info.get("Replace") and not info.get("Dir"):
+            # Platform-specific imports may leave an admitted module uncached.
+            # Download the selected version, then apply the same source checks.
+            subprocess.run([go, "mod", "download", module], cwd=ROOT, env=env, check=True)
+            info = json.loads(subprocess.check_output(
+                [go, "list", "-m", "-json", module], cwd=ROOT, env=env,
+            ))
         if info.get("Replace") or not info.get("Dir"):
             raise ValueError("WASM member modules must use admitted module sources")
         for name, digest in (("LICENSE", "license_sha256"), ("PATENTS", "patents_sha256")):
@@ -74,7 +81,6 @@ def build(go, component):
         data = output.read_bytes()
         check_wasm(data, config["max_wasm_bytes"])
         if component == "member":
-            # Build first so admitted modules are available in a fresh cache.
             # Both modules have the same reviewed Go notices. Check each original.
             materials.update(member_notices(go, env, config))
             for name in ("member-client.mjs", "member-worker.mjs", "protocol.mjs"):
