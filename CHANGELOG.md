@@ -373,6 +373,9 @@ and [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- WASM builds with an empty module cache download admitted notice sources at their
+  selected versions before verifying license hashes, including platform-unused modules.
+
 - Browser reviewer reads reject malformed or undecryptable answers individually
   and continue with later records. Lock, visibility loss, round expiry, and owner
   replacement still stop reading without publishing late plaintext; owned buffers

@@ -166,6 +166,9 @@ and x/sys packages through the shared session. It copies each module's unchanged
 `PATENTS.x-crypto`, `LICENSE.x-sys`, and `PATENTS.x-sys`. Their contents match the
 reviewed Go notice hashes above and are verified independently from module-cache
 sources; replaced module sources are rejected. No additional dependency is admitted.
+On an empty cache, the build downloads the selected module versions before reading
+their notices, including modules omitted by platform-specific imports. The same
+source and notice-hash checks apply after download.
 It also packages first-party worker/client modules using standard browser APIs,
 without an npm install, third-party asset, or JavaScript cryptographic dependency.
 

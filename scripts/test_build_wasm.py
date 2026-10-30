@@ -6,10 +6,11 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import subprocess
 import tempfile
 import tomllib
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from build_wasm import checked_material, check_wasm, member_notices
 
@@ -67,11 +68,41 @@ class WASMBuildChecks(unittest.TestCase):
             for name in materials:
                 self.assertEqual(materials[name], (root / name.split(".")[0]).read_bytes())
             for info in ({}, {"Dir": directory, "Replace": {"Dir": directory}}):
-                with self.subTest(info=info), patch("build_wasm.subprocess.check_output", return_value=json.dumps(info).encode()), self.assertRaises(ValueError):
+                with self.subTest(info=info), patch("build_wasm.subprocess.check_output", return_value=json.dumps(info).encode()), patch("build_wasm.subprocess.run"), self.assertRaises(ValueError):
                     member_notices("go", {}, config)
             (root / "LICENSE").write_bytes(b"changed")
             with patch("build_wasm.subprocess.check_output", return_value=json.dumps({"Dir": directory}).encode()), self.assertRaises(ValueError):
                 member_notices("go", {}, config)
+
+    def test_member_notices_cold_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = {}
+            for name in ("LICENSE", "PATENTS"):
+                data = f"synthetic {name}".encode()
+                (root / name).write_bytes(data)
+                config[f"{name.lower()}_sha256"] = hashlib.sha256(data).hexdigest()
+            cached = json.dumps({"Dir": directory}).encode()
+            uncached = json.dumps({"Version": "v0.0.0"}).encode()
+            env = {"GOTOOLCHAIN": "synthetic"}
+            with patch("build_wasm.subprocess.check_output", side_effect=[uncached, cached, uncached, cached]), patch("build_wasm.subprocess.run") as download:
+                materials = member_notices("go", env, config)
+            self.assertEqual(set(materials), {"LICENSE.x-crypto", "PATENTS.x-crypto", "LICENSE.x-sys", "PATENTS.x-sys"})
+            self.assertEqual(download.call_args_list, [
+                call(["go", "mod", "download", module], cwd=Path(__file__).resolve().parents[1], env=env, check=True)
+                for module in ("golang.org/x/crypto", "golang.org/x/sys")
+            ])
+
+    def test_member_notice_download_failures(self):
+        for info, error in (
+            ({"Replace": {"Dir": "synthetic"}}, ValueError),
+            ({}, subprocess.CalledProcessError),
+        ):
+            with self.subTest(info=info), patch("build_wasm.subprocess.check_output", return_value=json.dumps(info).encode()), patch("build_wasm.subprocess.run", side_effect=subprocess.CalledProcessError(1, "go")) as download:
+                with self.assertRaises(error):
+                    member_notices("go", {}, {})
+                if info.get("Replace"):
+                    download.assert_not_called()
 
 
 if __name__ == "__main__":
