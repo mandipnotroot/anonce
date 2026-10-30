@@ -25,16 +25,16 @@ question, one reviewer and an explicitly selected one-response limit. See
 > security approval. Do not collect
 > sensitive information or run an election.
 
-## Planned capabilities
+## Next capabilities
 
-- Membership certificates, published revocation information, and device-held keys.
-- Administrator-set response limits per member and round, enforced through blind
-  authorization tokens that each permit one submission.
-- An independently deployed submission service storing ciphertext rather than answers.
-- Reviewer-side decryption, private replies, and response-threshold controls.
-- Public inclusion receipts and a separate administrative audit trail.
-- A self-hosted browser interface using shared device-side Go cryptography.
-  No user CLI, key files, manual key generation or CSR handling is part of the product.
+- Broader membership/revocation administration and reviewed recovery.
+- Generalized forms and administrator-set response limits beyond one per member/round.
+- Encrypted private replies and reviewed result-release controls.
+- Public inclusion receipts, independent checkpoints and a separate anchored audit trail.
+- Protected signer custody, retention/restoration evidence and tested browser/provider support.
+
+These extend the same browser journey. No user CLI, key files, manual key
+generation or certificate-request handling is part of the product.
 
 See the [roadmap](docs/roadmap.md) and [threat model](docs/threat-model.md)
 for scope and required evidence.
@@ -95,10 +95,6 @@ boundaries. `make browser-test` exercises passkeys and the complete browser jour
 with real PostgreSQL. See [testing](docs/testing.md) for prerequisites and limitations.
 Signed acceptance is not public-log inclusion; recovery, protected signers and
 reviewer server backups are not implemented.
-
-Developer-only CLI and inert-shell regression fixtures are excluded from the
-default build and application image. `make dev-tools` builds them explicitly for
-diagnostics and tests, not as a supported user workflow.
 
 ## Architecture at a glance
 

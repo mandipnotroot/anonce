@@ -20,7 +20,7 @@ class WASMBuildChecks(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         config = tomllib.loads((root / "scripts/wasm.toml").read_text())
         for filename, job, command in (
-            ("checks.yml", "runtime", "make wasm-test"),
+            ("checks.yml", "runtime", "make member-wasm-test"),
             ("pages.yml", "build", "make docs-setup check docs-build"),
         ):
             with self.subTest(workflow=filename):

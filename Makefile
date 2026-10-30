@@ -6,18 +6,17 @@ GO ?= go
 export GOTOOLCHAIN := go1.27.3
 FUZZTIME ?= 15s
 
-.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint wasm wasm-test member-wasm member-wasm-test member-browser-test container-secrets container-config up down smoke container-test migrate-identity migrate-submission db-migration-test db-account-test db-member-backup-test db-submission-record-test
+.PHONY: help setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check build test lint fuzz vuln web-lint member-wasm member-wasm-test member-browser-test container-secrets container-config up down smoke container-test migrate-identity migrate-submission db-migration-test db-account-test db-member-backup-test db-submission-record-test
 help:
 	@echo 'setup attribution commitlint policy-test reuse docs-setup docs-links docs-lint docs-external docs-build workflow-lint labels check'
 	@echo 'up smoke down (default browser application; operator commands only)'
-	@echo 'build test lint fuzz vuln web-lint dev-tools'
-	@echo 'wasm wasm-test'
+	@echo 'build test lint fuzz vuln web-lint'
 	@echo 'member-wasm member-wasm-test'
 	@echo 'member-browser-test (requires MEMBER_BROWSER; see docs/testing.md)'
 	@echo 'container-secrets container-config up down smoke container-test (see docs/deployment.md)'
 	@echo 'migrate-identity migrate-submission db-migration-test db-account-test db-member-backup-test (local PostgreSQL only)'
 	@echo 'db-submission-record-test (atomic ciphertext persistence; local PostgreSQL only)'
-	@echo 'browser-test (real browser/PostgreSQL checks; see docs/testing.md); browser-build is an alias for build'
+	@echo 'browser-test (real browser/PostgreSQL checks; see docs/testing.md)'
 	@echo 'browser-unit-test (reviewer record isolation and cancellation checks)'
 	@echo 'browser-session-test (account session-control lifecycle checks)'
 
@@ -63,17 +62,11 @@ build: member-wasm
 	python3 scripts/build_wasm.py --go '$(GO)' --component review
 	python3 scripts/browser_notices.py
 
-.PHONY: dev-tools
-dev-tools:
-	$(GO) build -trimpath -o bin/ ./cmd/server ./cmd/issuer ./cmd/ca ./cmd/client
-
-.PHONY: browser-build browser-test browser-profile-test browser-unit-test browser-session-test
+.PHONY: browser-test browser-profile-test browser-unit-test browser-session-test
 browser-unit-test:
 	node --test scripts/review_records_test.mjs scripts/review_worker_test.mjs
 
-browser-build: build
-
-browser-test: browser-build browser-session-test
+browser-test: build browser-session-test
 	$(GO) test -race -count=1 -tags=browsermvp ./internal/browserjourney
 
 browser-session-test:
@@ -83,13 +76,6 @@ browser-profile-test:
 	$(GO) test -race -count=1 ./internal/reviewprofile
 	$(GO) test -count=1 -run='^TestVectors$$' github.com/cloudflare/circl/blindsign/blindrsa
 	$(GO) test -count=1 -run='^TestVectors$$' crypto/hpke
-
-wasm:
-	python3 scripts/build_wasm.py --go '$(GO)'
-
-wasm-test: wasm
-	$(GO) test -race -count=1 -tags=wasmintegration -run='^TestClientNativeWASMCompatibility$$' ./internal/clientwasm
-	GOOS=js GOARCH=wasm PATH="$$($(GO) env GOROOT)/lib/wasm:$$PATH" $(GO) test ./internal/clientwasm
 
 member-wasm:
 	python3 scripts/build_wasm.py --go '$(GO)' --component member
@@ -145,7 +131,7 @@ test:
 
 lint:
 	$(GO) vet ./...
-	GOOS=js GOARCH=wasm $(GO) vet ./cmd/wasm ./internal/clientwasm ./cmd/memberwasm ./internal/memberwasm ./cmd/reviewwasm ./internal/reviewwasm
+	GOOS=js GOARCH=wasm $(GO) vet ./cmd/memberwasm ./internal/memberwasm ./cmd/reviewwasm ./internal/reviewwasm
 	$(GO) run mvdan.cc/gofumpt@v0.12.0 -d cmd internal migrations web
 	test -z "$$($(GO) run mvdan.cc/gofumpt@v0.12.0 -l cmd internal migrations web)"
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run
@@ -168,7 +154,6 @@ fuzz:
 	$(GO) test ./internal/dbmigrate -run='^$$' -fuzz='^FuzzMigrationAdmission$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/service -run='^$$' -fuzz='^FuzzConfig$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/service -run='^$$' -fuzz='^FuzzContainerListen$$' -fuzztime=$(FUZZTIME) -parallel=2
-	$(GO) test ./internal/web -run='^$$' -fuzz='^FuzzLookup$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/keystore -run='^$$' -fuzz='^FuzzBackup$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/memberkey -run='^$$' -fuzz='^FuzzMemberKeyPayload$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/membercsr -run='^$$' -fuzz='^FuzzMemberCSR$$' -fuzztime=$(FUZZTIME) -parallel=2
@@ -176,16 +161,11 @@ fuzz:
 	$(GO) test ./internal/client/membersession -run='^$$' -fuzz='^FuzzMemberSessionConfirmation$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/memberwasm -run='^$$' -fuzz='^FuzzMemberWASMSizes$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/memberwasm -run='^$$' -fuzz='^FuzzMemberBrowserManifest$$' -fuzztime=$(FUZZTIME) -parallel=2
-	$(GO) test ./internal/clientwasm -run='^$$' -fuzz='^FuzzWASMRequest$$' -fuzztime=$(FUZZTIME) -parallel=2
-	$(GO) test ./internal/clientwasm -run='^$$' -fuzz='^FuzzWASMExpectedKey$$' -fuzztime=$(FUZZTIME) -parallel=2
 	$(GO) test ./internal/client/reviewerkey -run='^$$' -fuzz='^FuzzReviewerKeyPayload$$' -fuzztime=$(FUZZTIME) -parallel=2
-	$(GO) test ./internal/clientcli -run='^$$' -fuzz='^FuzzClientArguments$$' -fuzztime=$(FUZZTIME) -parallel=2
-	$(GO) test ./internal/clientcli -run='^$$' -fuzz='^FuzzClientPublicKeyLine$$' -fuzztime=$(FUZZTIME) -parallel=2
-	$(GO) test ./internal/clientcli -run='^$$' -fuzz='^FuzzClientPassword$$' -fuzztime=$(FUZZTIME) -parallel=2
-	$(GO) test ./internal/clientcli -run='^$$' -fuzz='^FuzzClientRewrapPasswords$$' -fuzztime=$(FUZZTIME) -parallel=2
 
-web-lint: dev-tools
-	python3 scripts/web_check.py
+web-lint:
+	python3 scripts/browser_markup.py
+	$(GO) test -count=1 ./web/browser
 
 vuln:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
@@ -194,4 +174,4 @@ vuln:
 	$(GO) list -m all
 	$(GO) run github.com/zricethezav/gitleaks/v8@v8.30.1 dir --redact --no-banner .
 
-check: policy-test attribution commitlint reuse docs-lint docs-links build test lint fuzz vuln web-lint wasm-test member-wasm-test browser-unit-test browser-session-test
+check: policy-test attribution commitlint reuse docs-lint docs-links build test lint fuzz vuln web-lint member-wasm-test browser-unit-test browser-session-test

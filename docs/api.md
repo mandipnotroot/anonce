@@ -5,250 +5,116 @@
 
 Audience: transport implementers and client authors.
 
-Status: the default browser services implement the [browser API definition](browser-openapi.yaml)
-and the contract below. The original [API definition](openapi.yaml)
-uses the official [OpenAPI 3.1.0 specification](https://spec.openapis.org/oas/v3.1.0)
-and separates demonstration endpoints from proposed discovery APIs. Browser
-cryptographic encodings are specified separately in
-[profile 1](cryptography.md#browser-mvp-profile-1).
+The browser application uses one [OpenAPI definition](openapi.yaml), following
+[OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0), consulted 2026-10-30.
+Its `/api/browser/` transport and [profile 1](cryptography.md#browser-mvp-profile-1)
+are unreleased and synthetic-only. There is no plaintext-answer, private-key or
+server-decryption API. See [startup](deployment.md#browser-mvp-local-startup).
 
-The separate [local WASM verifier](key-management.md#local-wasm-request-verification)
-provides request validation and opt-in expected-key matching through an in-process
-JavaScript interface, not an HTTP route. These commands serve no verifier artifacts;
-HTTP routes and OpenAPI schemas are unchanged.
+## Browser HTTP contract
 
-The [local member-session bridge](key-management.md#local-wasm-member-sessions)
-itself uses an in-process interface, not HTTP. Browser hosts compose it with the
-backup API below; original demonstration commands still handle no backups.
-Its unlocked `backup(password)` method returns only local encrypted bytes; it is
-not a vault upload or password-change HTTP operation.
-Local `createConfirmed` and `backupConfirmed` add password confirmation in shared
-Go only; neither introduces a request, server password handling, or OpenAPI change.
-Its [worker lock notifications](key-management.md#lock-notifications-and-page-disposal)
-are local browser messages, not a logout endpoint or server revocation API. HTTP
-behavior and OpenAPI schemas remain unchanged.
+All browser routes require the configured HTTPS host, bounded headers, 32 KiB JSON
+bodies, 32 in-flight requests, ten-second request deadlines and `no-store`.
+Identity writes require exact `Origin`, `Sec-Fetch-Site: same-origin` and
+`X-Anonce-CSRF: 1`. Application JSON admission rejects unknown fields, duplicate
+keys, excessive nesting and trailing values. WebAuthn responses use the library's
+bounded parser. Errors contain only `code` and a safe `message`.
+Binary fields use canonical unpadded base64url, except standard WebAuthn JSON.
 
-The worker owner's local [`closed` Promise](key-management.md#local-member-worker-host)
-observes terminal cleanup without a server request or new worker message. It is not
-a logout acknowledgement; HTTP and OpenAPI contracts are unchanged.
+Each origin serves its own page at `/`, verified local assets, `/healthz`
+and `/source`. Liveness returns `ok`, not database or production readiness.
+Source discovery redirects to the
+configured exact-build HTTPS source. Pages/assets support GET and HEAD.
 
-Its [text passphrase methods](key-management.md#browser-passphrase-text-interface)
-encode only locally into existing worker commands. No text passwords enter HTTP,
-and no OpenAPI schema or product route is added.
-
-## Implemented infrastructure
-
-### Browser HTTP contract
-
-See [startup](deployment.md#browser-mvp-local-startup). All browser routes require
-the configured HTTPS host, bounded headers, 32 KiB JSON bodies, 32 in-flight
-requests, ten-second request deadlines and `no-store`. Identity writes additionally
-require exact `Origin`, `Sec-Fetch-Site: same-origin`, and `X-Anonce-CSRF: 1`.
-Only JSON is accepted; unknown fields and trailing values fail. The stable public
-error shape remains `code` and `message`, without internal diagnostics.
+### Browser session management
 
 Identity session and ceremony cookies are `__Host-` prefixed, Secure, HttpOnly,
 host-only, path `/`, SameSite Strict, with one-hour and two-minute lifetimes.
-Session secrets use the existing digest-only store. WebAuthn verifies the exact RP
-and origin with user verification required. Ceremonies are single-use even after
-failed verification. Login replaces the local bearer after verified authentication;
-logout revokes it and locks local workers. One credential per account, no recovery,
-no credential addition and no PRF unlocking are the initial limits.
-
-#### Browser session management
-
-The identity page lists at most 16 live account sessions with a non-secret selector,
-authentication/expiry timestamps and a current-session marker. It collects no device,
-IP, user-agent or anonymous-activity metadata. These routes use the same protected
-session cookie and identity transport gate:
+WebAuthn verifies the exact RP/origin and requires user verification. Ceremonies
+are single-use, including after failed verification. One credential per account,
+no credential addition, no PRF and no recovery are the current limits.
 
 | Method and path | Contract |
 | --- | --- |
-| `GET /api/browser/sessions` | Own live sessions, newest first; `id`, `created_at`, `expires_at`, `current` only |
-| `POST /api/browser/sessions/revoke` | Exactly `{"id":"<22-character selector>"}`; recent authentication required; returns `removed` |
-| `POST /api/browser/logout-all` | Empty object; recent authentication required; removes all own sessions and expires the cookie |
-| `POST /api/browser/auth/reauthenticate/begin` | Empty object; derives the account from a live bearer; returns WebAuthn assertion options |
-| `POST /api/browser/auth/reauthenticate/finish` | Standard WebAuthn assertion; verifies the same account, purpose and original bearer before rotation |
+| `GET /api/browser/sessions` | At most 16 own live sessions, newest first; `id`, `created_at`, `expires_at`, `current` only |
+| `POST /api/browser/sessions/revoke` | Exactly `{"id":"<22-character selector>"}`; recent authentication; returns `removed` |
+| `POST /api/browser/logout-all` | Empty object; recent authentication; removes all own sessions and expires the cookie |
+| `POST /api/browser/auth/reauthenticate/begin` | Empty object; derives account from a live bearer; returns assertion options |
+| `POST /api/browser/auth/reauthenticate/finish` | Standard WebAuthn assertion; verifies purpose, account and original bearer before rotation |
 
-Recent authentication means admission within five minutes, rechecked after account
-lock waits. Old live sessions may list metadata but receive `403` for revocation.
-Missing, expired or revoked bearers receive `401`. Inventory/revocation storage
-failures receive `503`; ceremony admission and verification errors remain opaque.
-Malformed or zero selectors receive `400`. Current, missing, rotated and foreign
+Recent authentication means admission within five minutes, rechecked after
+account-lock waits. Old live sessions may list metadata but cannot revoke sessions.
+Missing/expired/revoked bearers receive `401`, stale authentication `403`, malformed
+selectors `400` and storage failures `503`. Current, stale, missing and foreign
 selectors all return `removed: false`, without revealing another account's sessions.
-Mutations publish no successful result before commit. On uncertain outcomes,
-refresh inventory or sign in again, never automatically repeat a mutation.
+No successful mutation result is published before commit. Uncertain outcomes
+require explicit refresh or fresh sign-in, never automatic mutation retries.
 
-Reauthentication uses the existing two-minute, single-use ceremony store but is
-purpose-separated from login and bound to the original bearer's SHA-256 digest.
-The verified assertion rotates only that bearer and its selector, preserving its
-absolute expiry and every sibling session. It cannot create a session after
-revocation or extend a one-hour sign-in. No account name, freshness assertion or
-owner override is accepted. The client locks keys before reauthentication and
-requires a separately chosen mutation afterward.
+Reauthentication uses a two-minute single-use ceremony bound to its purpose,
+account and the original bearer's SHA-256 digest. Successful verification rotates
+only that bearer/selector, preserves absolute expiry and does not alter siblings.
+It cannot revive a revoked session. The page locks local keys first and requires a
+separately chosen sensitive action afterward. No caller-supplied account or
+freshness assertion overrides the bearer.
 
-Current-session logout requires an empty JSON object. Sign-out everywhere requires
-explicit browser confirmation and locks local workers before the request. Successful
-logout also attempts a secret-free same-partition notification to clear other identity
-pages. Visible running pages check `/me` every 30 seconds and on foreground/focus;
-an observed `401` locks keys, clears plaintext/passwords and hides account controls.
-These checks are not remote erasure: suspended/offline pages, previously admitted
-work and keys or plaintext already copied elsewhere cannot be recalled. Encrypted
-backups, membership and anonymous receipts are unchanged. No session data enters
-the anonymous origin. See [test evidence](testing.md#connected-browser-mvp-checks).
+Current-session logout accepts an empty object. Sign-out everywhere requires
+explicit confirmation and locks workers before transport. Successful logout
+attempts a secret-free same-partition notification. Visible identity pages check
+`/me` every 30 seconds and on foreground/focus; observed `401` clears local keys,
+plaintext, password fields and account controls. This is not remote erasure of
+suspended pages, copied material or already admitted work. Backups, membership
+and anonymous receipts remain unchanged. No session metadata enters anonymous requests.
 
-#### Browser admission and origin boundaries
+### Browser admission and origin boundaries
 
-Authentication begins allow ten attempts per hashed account name per five minutes,
-with at most 1024 in-memory entries, plus 120 global POST requests per minute and
-256 outstanding persisted ceremonies. Rate counters are per process and reset on
-restart; run one instance of each local host. No IP address is collected. These
-bounds do not stop distributed saturation or replace production abuse review.
+Authentication begins permit ten attempts per hashed account name per five minutes,
+with at most 1024 in-memory entries, 120 global POSTs per minute and 256 outstanding
+persisted ceremonies. Counters reset on process restart; run one instance per local
+host. No IP is collected. These bounds do not replace production abuse review.
 
-The anonymous host rejects all cookie and Authorization headers on API requests.
-Its submit route rejects identity-origin calls. Only public publication and
-round-scoped review allow exact-origin CORS from the configured identity host,
-without `Access-Control-Allow-Credentials`. Reviewer proofs are not account
-credentials. Tokens and unlock material never appear in URLs. Public common round
-IDs may appear in query parameters. The API accepts no account-linked submission
-history or plaintext-answer endpoint.
-
-Binary fields are canonical unpadded base64url, except WebAuthn's standard JSON
-ceremony representation. Formats and signature contracts are fixed in
-[cryptography](cryptography.md#browser-mvp-profile-1). The browser API is unreleased
-and incompatible with the proposed `/api/v1/` schemas; no automatic fallback exists.
-
-### Developer-only infrastructure contract
-
-The original demonstration commands, built only by `make dev-tools`, retain the
-inert infrastructure contract below. They are neither the default application nor
-an alternative user workflow.
-
-The internal [submission record store](database.md#implemented-submission-record-storage)
-adds no HTTP endpoint or OpenAPI schema. It trusts a future verifier, so exposing
-its digest/byte arguments directly would bypass token authorization and envelope
-validation. Submission routes still return `501`; readiness remains unavailable.
-
-The [local container stack](deployment.md#container-stack) changes deployment only.
-Its explicit `-container-network` flag permits container-local IPv4 wildcard binding
-while Compose publishes only host loopback ports. `/healthz` still reports liveness,
-`/readyz` remains unavailable, and no HTTP route or OpenAPI schema is added.
-
-All three commands expose:
-
-| Path | `GET` response |
-| --- | --- |
-| `/healthz` | `200`, `ok` |
-| `/readyz` | Always `503`, code `not_ready`; no storage or protocol readiness |
-| `/api/v1/status` | Version `development`, `demonstration: true`; exactly `liveness`, `status`, `source-discovery` capabilities |
-| `/source` | Bodyless `302` to the required configured HTTPS source URL |
-
-- `HEAD` has no body. Other methods return `405`, `Allow: GET, HEAD`.
-- All handler responses use `Cache-Control: no-store` and
-  [restrictive headers](deployment.md#transport-and-headers), without cookies or CORS access.
-- CA reserves enrollment, CA discovery, and `/admin`; issuer reserves challenges,
-  issuances, CA discovery, and `/admin`. Submission reserves rounds, submissions,
-  receipts, log, and reply mailboxes. Reserved roots and descendants return `501`,
-  code `not_implemented`, for every method.
-- Unknown paths, including another process's exclusive routes, return `404`, code `not_found`.
-- Handlers read no request bodies and reflect no request data in errors. They perform
-  no authentication or protocol parsing and consume no capabilities or private state.
-- JSON errors contain only `code` and `message`. Go's transport parser may reject
-  malformed HTTP or oversized headers before handlers, without application JSON/headers.
-
-See [deployment](deployment.md#local-development) for limits and configuration.
-
-## Implemented read-only shell
-
-- **Pages:** submission only, at `/` and `/about`. `/dev/styleguide` requires
-  `-dev-styleguide`; otherwise JSON `404`. CA/issuer serve no shell pages or assets.
-  The infrastructure-only status capability list is unchanged.
-- **CSS:** one embedded `/assets/shell.{sha256}.css`, with the full lowercase
-  hexadecimal SHA-256 digest and matching page SRI. Only the current exact path
-  exists; no listing, unhashed alias, or template download.
-- **Delivery:** `GET`/`HEAD` only; other methods return JSON `405`, `Allow: GET, HEAD`.
-  `HEAD` has no body. Use `no-store`, no cookies/CORS, and the
-  [shell CSP](deployment.md#transport-and-headers).
-- **Input:** no request data in templates. Body-bearing requests close without
-  reading or draining. No forms, authentication, or protocol calls.
-- **Compatibility:** root HTML `200` replaces JSON `404`, a
-  [breaking HTTP change](versioning.md#public-api-boundary), not a stable profile or product interface.
+The submission API rejects cookies and Authorization headers. Submit rejects
+identity-origin calls. Only signed publication and round-scoped review allow exact
+identity-origin CORS, without `Access-Control-Allow-Credentials`. Review proofs are
+not account credentials. Common round IDs may appear in URLs; tokens, passphrases,
+member bindings and receipt capabilities must not.
 
 ## Endpoint ownership
 
-Internal [session-scoped backup access](database.md#session-scoped-member-backup-access)
-uses existing identity sessions within Go storage transactions. The separate browser
-host composes these operations with the authenticated API above; the original
-demonstration commands do not expose them.
+| Origin | Implemented responsibility |
+| --- | --- |
+| Identity | WebAuthn registration/login/reauthentication, sessions/logout, encrypted member backup, membership invitations/enrollment, eligible rounds, draft review and publication |
+| Submission | Common signed round publication, anonymous token/ciphertext submission, signed storage acceptance and proof-authorized ciphertext review |
 
-Account login, credential management, the eligible-round dashboard, and encrypted
-member-key backup operations belong only to the identity side. Their routes,
-schemas and MVP session contract are defined above. Broader recovery and wrapping
-profiles remain unspecified. Do not infer new endpoints from proposed UI paths. Follow the
-[vault requirements](key-management.md#browser-account-vault) before defining them
-in OpenAPI.
-
-| Origin | Planned endpoints | Input boundary |
-| --- | --- | --- |
-| CA/issuer | `/healthz`, `/readyz`, `/api/v1/status`, `/api/v1/ca/certificate`, `/api/v1/ca/revocations` | Public discovery; no private material |
-| CA | `/api/v1/enrollments` | Enrollment code/CSR |
-| Issuer | `/api/v1/challenges`, `/api/v1/issuances` | Challenge context, authenticated blinded request |
-| Submission | `/healthz`, `/readyz`, `/api/v1/status`, `/api/v1/rounds/{round_id}/bulletin` | Public signed round data |
-| Submission | `/api/v1/submissions`, `/api/v1/receipts/{record_id}`, `/api/v1/log/checkpoint` | Anonymous token and ciphertext; public receipt commitments |
-| Submission | `/api/v1/reply-mailboxes/{mailbox_id}` | Anonymous capability and encrypted replies |
-| Identity-side admin | `/admin/*` | Authenticated role-scoped management operations |
-| Go web shell | UI routes in [UI design](ui-design.md), `/source` | Static shell/public source link; no plaintext answer API |
-
-Reviewer retrieval and reply-write endpoints require a separate authorization design
-that does not reuse membership cookies. Never introduce a decrypt endpoint.
+Exact paths, methods and schemas are in [OpenAPI](openapi.yaml). Local worker
+messages are not HTTP endpoints. Member keys and enrollment requests never reach
+the anonymous origin. Reviewers decrypt locally, never through a decrypt endpoint.
+Replies, recovery and wider administration require reviewed contracts before routes
+or UI claims are added.
 
 ## HTTP behavior
 
-- HTTPS outside loopback development; configured trusted proxies only.
-- Bounded bodies, headers, timeouts, concurrency, and pagination.
-- JSON errors contain a stable public code and safe summary, never raw internal errors.
-- `400` for malformed input; `401` for absent authentication; `403` for denied
-  authority; `409` for a consumed capability or incompatible state; `413` for size
-  limits; `429` with bounded retry guidance for rate limits.
-- Unimplemented protocol operations return `501` without consuming any capability.
-- Database or signer unavailability returns a safe failure, not a partial success.
-- Idempotency rules require payload binding and storage review; do not add generic
-  request-ID logging across origins.
+Bound bodies, headers, timeouts, concurrency and pagination. Fail closed on unknown
+versions, malformed encodings, unavailable storage or invalid authority. Never
+reflect raw internal errors, credentials or body contents. No request/IP/SQL-parameter
+logs or cross-origin request identifiers are allowed. Do not trust proxy headers.
 
-Error distinctions on anonymous mailboxes and receipt queries must not become
-existence or participation oracles. Where necessary, use equivalent safe responses.
+Payload-bound submission retries reuse only the exact pending token/ciphertext
+while the round is open. They are not generic request-ID retries. Signed acceptance
+attests durable storage, not log inclusion or protection against privileged rollback.
 
 ## Authentication and caching
 
-Administrative writes require server-side authorization, CSRF protection, and recent
-reauthentication for sensitive actions. Never share issuer session cookies or
-authentication headers with the submission origin.
-
-Future account/vault APIs require owner authorization, bounded encrypted input,
-CSRF protection for session-authenticated writes, secret-free errors, and no-store
-responses. Plaintext device private keys, unlock passphrases, key-recovery secrets,
-and PRF outputs must not appear in requests or responses. A client must serialize
-only the intended authentication fields, not arbitrary browser extension results.
-There is no decrypt endpoint, account-linked submission-history API, or
-identity-authenticated reply API.
-
-Public certificate, bulletin, checkpoint, and asset responses may use explicit
-caches with freshness requirements. Secret or identity-bearing responses use
-`Cache-Control: no-store`.
+Account authentication, local vault unlocking and anonymous authorization are
+separate controls. Login alone cannot decrypt backups or authorize a response.
+Identity mutations derive ownership from live sessions and sensitive operations
+recheck recent authentication after storage locks. Anonymous APIs never accept
+membership cookies. All responses are `no-store`; do not cache personalized pages
+or persist plaintext keys, drafts or unlock material.
 
 ## Response-limit contract
 
-Follow the [protocol rules](protocol.md#round-response-limit): `response_limit`
-must be a bounded positive integer, explicitly confirmed at publication, and
-signed as a common immutable limit. Clients and issuers validate it without
-defaults; each token permits one accepted ciphertext.
-
-- Bind slot/bulletin context to the authenticated issuance challenge. No quota state
-  or slot indices in anonymous submissions or receipt requests; public bulletins
-  expose the common limit, not remaining allowances.
-- Quota exhaustion returns safe authenticated-issuance `409`. No quota reset or
-  identity-authenticated submission fallback.
-- Forms/bulletins follow [public API versioning](versioning.md), including wire/profile
-  compatibility and migration ranges. Configurable limits are a breaking replacement
-  for fixed single-response semantics, not an optional field. No released runtime
-  needs migration; require the limit in the reviewed wire profile.
+The browser profile supports exactly one explicitly selected response per eligible
+member/round. Publication freezes this signed value. Issuance atomically consumes
+the allowance before signing and does not refund interrupted delivery. A token
+permits one accepted ciphertext; exact retries cannot replace it. Higher limits
+and distinct-participant result thresholds remain [protocol work](protocol.md#round-response-limit).

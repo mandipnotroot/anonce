@@ -210,7 +210,7 @@ profile. Existing backup, member-key, and CSR profiles are unchanged.
 
 ### Member CSR profile 1
 
-The offline request profile uses RSA Security Inc. Public-Key Cryptography
+The automatic enrollment request profile uses RSA Security Inc. Public-Key Cryptography
 Standards (PKCS) #10 version 1.7, as published in
 [RFC 2986](https://www.rfc-editor.org/rfc/rfc2986), and the Ed25519 identifiers
 in [RFC 8410](https://www.rfc-editor.org/rfc/rfc8410.html#section-6)
@@ -235,47 +235,9 @@ in [RFC 8410](https://www.rfc-editor.org/rfc/rfc8410.html#section-6)
   membership key. Never send them to the anonymous submission origin. Deterministic
   repeated requests do not establish freshness, identity, eligibility, or authority.
 
-The profile adds no certificate policy, CA trust, enrollment-code handling, replay
-protection, or HTTP route. Future enrollment must separately authenticate the
-member and atomically consume a code. See [compatibility](versioning.md).
-
-The offline [`verify-csr` command](key-management.md#local-member-request-verification)
-reuses this parser and library signature check without changing the profile.
-It prints only the validated public key and makes no certificate-trust or
-enrollment-authorization decision. Its optional expected-public-key check compares
-the complete public key only after profile and signature validation. This adds
-no cryptographic format, primitive, or trust-discovery mechanism.
-
-Optional [public-key file export](key-management.md#local-public-key-file-export)
-from `inspect` and `verify-csr` publishes their existing public-key line only after
-validation and optional expected-key matching. It adds no primitive, cryptographic
-format, signed attestation, or trust-discovery mechanism.
-
-Optional [expected-key file input](key-management.md#local-expected-key-files)
-reads that unchanged, kind-tagged lowercase public-key line through bounded
-owner-only file checks. It supplies the existing complete public-key comparison,
-not a new cryptographic profile, trust anchor, or primitive. The expected record
-must be independently trusted; validation and signing/encryption order are unchanged.
-
-The [WASM verifier's `verifyCSRForKey` method](key-management.md#local-wasm-request-verification)
-uses the same parser and full public-key comparison after signature validation.
-It changes no profile or primitive and requires an independently trusted expected
-key; malformed input and mismatches return no public output.
-
-The optional [`csr -out` file export](key-management.md#local-member-certificate-requests)
-publishes the same public DER without encryption or private-key serialization.
-It changes no cryptographic profile or authorization decision.
-
-The optional `csr -expect-public-key` check compares the complete public key after
-typed backup authentication and payload validation, before request signing or file
-creation. It uses the same validated in-memory key for signing, without reopening
-the backup. The expected key must be independently trusted; no profile or primitive
-changes, freshness check, or enrollment authority is added.
-
-The [local WASM verifier](key-management.md#local-wasm-request-verification) uses
-the same parser and unchanged DER profile. Hexadecimal is only its bounded bridge
-input representation, not a new request format. Its native/Node compatibility
-evidence does not cover device backups or private-key custody in browsers.
+The request profile alone grants no authority. Browser enrollment separately
+authenticates the account, checks its fixed backup binding and atomically consumes
+the invitation under [browser profile 1](#browser-mvp-profile-1).
 
 ### In-memory member session composition
 
@@ -311,7 +273,7 @@ integration limits. PRF wrapping and account recovery remain unspecified.
 
 ### Browser passphrase text encoding
 
-The development worker's opt-in [text passphrase interface](key-management.md#browser-passphrase-text-interface)
+The browser worker's [text passphrase interface](key-management.md#browser-passphrase-text-interface)
 uses UTF-8 through the [WHATWG Encoding Standard](https://encoding.spec.whatwg.org/#interface-textencoder)
 (Living Standard consulted 2026-10-28). Only primitive, well-formed JavaScript
 strings are accepted, with 1–1024 encoded bytes. Unpaired UTF-16 surrogates fail
@@ -353,11 +315,9 @@ storage ceiling does not admit an HPKE encoding or replace envelope validation.
 
 ## Keystore composition
 
-The offline CLI's optional [backup key matching](key-management.md#local-backup-key-matching)
-compares complete public keys only after typed backup authentication and validation.
-Rewrapping can require the same match before replacement-password derivation or
-file creation, using the validated key in memory without reopening the backup.
-It adds no primitive or format and does not establish freshness or round binding.
+Browser restoration compares complete expected public keys only after typed
+backup authentication and payload validation. This establishes matching, not
+independent trust discovery, freshness or rollback protection.
 
 ### Reviewer-key payload profile 1
 
@@ -388,15 +348,13 @@ purpose `2`. This adds no HPKE envelope, round publication, or decryption workfl
   Cancellation is checked at entry and before returning key bytes, in addition to
   the backup package's checks. Runtime copies prevent complete-erasure guarantees.
 
-The encrypted backup is 108 bytes. The [offline CLI](key-management.md#local-key-cli)
-reuses it without changing the outer format or opaque keystore API. See
+The encrypted backup is 108 bytes. Browser reviewer workers use this profile. See
 [file compatibility](versioning.md#cryptographic-file-compatibility) for review
 and migration rules.
 
-The wrapper enforces no round binding, expiry, revocation, restoration policy, or
-separation between rounds. Browser interfaces and submission/reply encryption are
-unimplemented; native/WASM compatibility is untested. Generate a fresh key per
-round when those workflows are introduced.
+The wrapper itself enforces no round binding, expiry or revocation. The browser
+composition generates a fresh key per round and matches its published binding
+before restoration. Read expiry cannot recall keys or plaintext already obtained.
 
 ### Member-key payload profile 1
 
@@ -423,16 +381,15 @@ This is not enrollment, a certificate profile, or a general signing interface.
   library/runtime copies cannot be completely erased. Cancellation is checked at
   entry and before returning keys, in addition to the backup package's checks.
 
-The encrypted backup is 108 bytes. The outer format and generic opaque keystore
-are unchanged; this typed importer accepts only the member-key profile. The
-[offline CLI](key-management.md#local-key-cli) reuses it. See
+The encrypted backup is 108 bytes. This typed importer accepts only the member-key
+profile; the browser session composes it with expected-key restoration. See
 [file compatibility](versioning.md#cryptographic-file-compatibility) for review
 and migration rules.
 
-The wrapper does not bind a key to a member, certificate, round, revocation state,
-or expiry. Browser page custody is unimplemented;
-[native/Node WASM member-backup compatibility](testing.md#wasm-member-session-checks)
-is tested through the separate session adapter.
+The wrapper itself does not bind a key to an account, certificate or expiry.
+The browser enrollment transaction supplies that binding.
+[Native/Node WASM compatibility](testing.md#wasm-member-session-checks) checks the
+same backup through the browser adapter.
 
 ### Device-backup profile 2
 
@@ -523,13 +480,12 @@ without guaranteeing cleanup or complete memory erasure.
 The opt-in [synthetic browser checks](testing.md#member-worker-browser-checks)
 exercise native/worker compatibility under isolated test CSP without changing
 these profiles. They do not establish supported-device costs or product custody.
-The harness's [synthetic forms](ui-design.md#synthetic-member-forms) use the existing
-confirmed setup and required expected-key restoration text methods only.
-They add no JavaScript cryptography,
-password-strength policy, storage format, or account unlock profile.
+The [browser private-access form](ui-design.md#private-access-and-local-state) uses
+confirmed setup and required expected-key restoration through these same methods,
+without JavaScript cryptography or weaker KDF costs.
 
-The [browser account vault](key-management.md#browser-account-vault) is planned.
-WebAuthn Level 3 is the selected authentication design reference; its PRF extension
+The [browser account vault](key-management.md#browser-account-vault) uses local
+passphrase unlocking. WebAuthn Level 3 is the authentication reference; its PRF extension
 is a candidate local unlock source, not a member signing key or a complete vault
 encryption protocol. WebAuthn authentication keys, member Ed25519 keys, and
 round-scoped reviewer X25519 keys retain separate purposes.
@@ -559,7 +515,7 @@ end-to-end post-quantum claim.
 ## Implementation discipline
 
 - Follow [engineering boundaries](../AGENTS.md#engineering-boundaries). Share Go
-  composition across CLI/WASM; do not duplicate primitives in JavaScript.
+  composition across native tests and browser WASM; do not duplicate primitives in JavaScript.
 - Minimize secret copies and clear owned mutable buffers. Go garbage collection,
   JavaScript bridges, strings, storage, and runtime copies prevent complete-erasure
   guarantees. Browser execution is not universally constant-time.

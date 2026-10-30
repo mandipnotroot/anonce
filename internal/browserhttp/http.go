@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Anonce Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package browserhttp supplies bounded transport controls for the separate opt-in
-// browser commands. It contains no database or device-key custody.
+// Package browserhttp supplies bounded transport controls for the browser
+// services. It contains no database or device-key custody.
 package browserhttp
 
 import (

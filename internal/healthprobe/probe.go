@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Anonce Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package healthprobe checks local demonstration liveness, never readiness.
+// Package healthprobe checks fixed browser-service TLS liveness, never readiness.
 package healthprobe
 
 import (
@@ -23,41 +23,27 @@ func Check(ctx context.Context, role string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if role == "identity" || role == "submission" {
-		f, err := os.OpenFile("/state/local-root.crt", os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
-		if err != nil {
-			return errors.New("browser probe trust unavailable")
-		}
-		defer func() { _ = f.Close() }()
-		info, err := f.Stat()
-		if err != nil || !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > 4096 {
-			return errors.New("invalid browser probe trust file")
-		}
-		data, err := io.ReadAll(io.LimitReader(f, 4097))
-		if err != nil || len(data) > 4096 {
-			return errors.New("invalid browser probe trust")
-		}
-		name, port := "identity.localhost", "8443"
-		if role == "submission" {
-			name, port = "submit.localhost", "8444"
-		}
-		return checkTLS(ctx, "https://"+name+":"+port+"/healthz", "127.0.0.1:"+port, data)
-	}
-	port := map[string]string{"server": "8080", "issuer": "8081", "ca": "8082"}[role]
-	if port == "" {
+	if role != "identity" && role != "submission" {
 		return errors.New("unknown liveness probe service")
 	}
-	return check(ctx, "http://127.0.0.1:"+port+"/healthz")
-}
-
-func check(ctx context.Context, target string) (err error) {
-	transport := &http.Transport{
-		DialContext:            (&net.Dialer{Timeout: time.Second}).DialContext,
-		DisableKeepAlives:      true,
-		ResponseHeaderTimeout:  time.Second,
-		MaxResponseHeaderBytes: 1024,
+	f, err := os.OpenFile("/state/local-root.crt", os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return errors.New("browser probe trust unavailable")
 	}
-	return checkTransport(ctx, target, transport)
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > 4096 {
+		return errors.New("invalid browser probe trust file")
+	}
+	data, err := io.ReadAll(io.LimitReader(f, 4097))
+	if err != nil || len(data) > 4096 {
+		return errors.New("invalid browser probe trust")
+	}
+	name, port := "identity.localhost", "8443"
+	if role == "submission" {
+		name, port = "submit.localhost", "8444"
+	}
+	return checkTLS(ctx, "https://"+name+":"+port+"/healthz", "127.0.0.1:"+port, data)
 }
 
 func checkTLS(ctx context.Context, target, address string, trust []byte) error {

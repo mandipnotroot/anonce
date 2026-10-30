@@ -344,7 +344,7 @@ PGPASSFILE="$passfile" PGCONNECT_TIMEOUT=3 psql -XwqAt -v ON_ERROR_STOP=1 -v VER
     def start(self, migrate=True):
         config = self.config()
         present = self.compose("ps", "--all", "--services").stdout.decode().split()
-        require(set(present) <= set(NETWORKS), "legacy services remain in this project; review and remove old containers without deleting volumes before startup")
+        require(set(present) <= set(NETWORKS), "unexpected services in this project; review the Compose project before startup")
         self.compose("build", timeout=600, stream=True)
         image = self.run(["docker", "image", "inspect", "--format", "{{.Id}}", config["services"]["identity"]["image"]]).stdout.decode().strip()
         require(re.fullmatch(r"sha256:[0-9a-f]{64}", image) is not None, "browser application image unavailable")

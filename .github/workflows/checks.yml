@@ -93,14 +93,12 @@ jobs:
         with:
           go-version: '1.27.3'
           cache: false
-      - name: Build and inspect local infrastructure
+      - name: Build and inspect browser application
         run: make build test lint fuzz vuln web-lint
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22.23.3'
-      - name: Build and test public-only WASM verifier
-        run: make wasm-test
-      - name: Build and test local member-session WASM bridge
+      - name: Build and test member-session WASM workers
         run: make member-wasm-test
       - name: Check browser reviewer record handling
         run: make browser-unit-test

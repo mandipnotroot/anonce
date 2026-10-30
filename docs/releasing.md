@@ -37,8 +37,8 @@ implementing release publication.
 ## User verification
 
 This section covers operators and people independently checking release artifacts,
-not ordinary member sign-in. The planned product requires no installed verification
-CLI for members, reviewers, or administrators to use its web workflows. Browser
+not ordinary member sign-in. The browser application requires no installed verification
+tool for members, reviewers, or administrators. Browser
 delivery retains the [distributor trust limit](threat-model.md#browser-delivery-trust).
 
 1. Obtain repository, tag, signing workflow identity, and trust roots through a trusted channel.
@@ -59,8 +59,8 @@ sha256sum --check checksums.txt
 - **Images:** `cosign verify` the digest with the exact workflow identity, then check
   provenance/SBOM attestations against expected source revision and subject digest.
   No broad identity regex accepting arbitrary forks or workflows.
-- **WASM:** verify signed manifest/bundle hash with the independent CLI or trusted
-  local verifier. Compare against an independently trusted log checkpoint, not only
+- **WASM:** independently verify signed manifest/bundle hashes using reviewed release
+  verification tools. Compare against a trusted log checkpoint, not only
   the serving page. Rebuild with the recorded toolchain where reproducibility is claimed.
 - **Limits:** SBOMs are inventories, not safety proofs; review licenses/advisories.
   Signatures prove authorized publication identity, not security or protocol correctness.

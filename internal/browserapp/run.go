@@ -85,7 +85,7 @@ func Command(side string, args []string, factory Factory) error {
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
 		return errors.New("invalid browser command flags")
 	}
-	role := service.Issuer
+	role := service.Identity
 	if side == "submission" {
 		role = service.Submission
 	}

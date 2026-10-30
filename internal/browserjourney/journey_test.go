@@ -188,7 +188,7 @@ func TestBrowserMVP(t *testing.T) {
 		if err != nil {
 			t.Fatal("construct test browser service")
 		}
-		role := service.Issuer
+		role := service.Identity
 		if side == "submission" {
 			role = service.Submission
 		}

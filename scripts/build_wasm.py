@@ -49,7 +49,7 @@ def member_notices(go, env, config):
     return materials
 
 
-def build(go, component="verifier"):
+def build(go, component):
     with (ROOT / "scripts/wasm.toml").open("rb") as handle:
         config = tomllib.load(handle)
     env = dict(os.environ, GOTOOLCHAIN=config["go_version"])
@@ -66,7 +66,6 @@ def build(go, component="verifier"):
         "LICENSE.anonce": (ROOT / "LICENSE").read_bytes(),
     }
     command, relative = {
-        "verifier": ("./cmd/wasm", "bin/wasm"),
         "member": ("./cmd/memberwasm", "bin/memberwasm"),
         "review": ("./cmd/reviewwasm", "bin/reviewwasm"),
     }[component]
@@ -107,7 +106,7 @@ def build(go, component="verifier"):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--go", default="go")
-    parser.add_argument("--component", choices=("verifier", "member", "review"), default="verifier")
+    parser.add_argument("--component", choices=("member", "review"), required=True)
     args = parser.parse_args()
     try:
         build(args.go, args.component)
