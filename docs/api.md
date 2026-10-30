@@ -56,6 +56,50 @@ failed verification. Login replaces the local bearer after verified authenticati
 logout revokes it and locks local workers. One credential per account, no recovery,
 no credential addition and no PRF unlocking are the initial limits.
 
+#### Browser session management
+
+The identity page lists at most 16 live account sessions with a non-secret selector,
+authentication/expiry timestamps and a current-session marker. It collects no device,
+IP, user-agent or anonymous-activity metadata. These routes use the same protected
+session cookie and identity transport gate:
+
+| Method and path | Contract |
+| --- | --- |
+| `GET /api/browser/sessions` | Own live sessions, newest first; `id`, `created_at`, `expires_at`, `current` only |
+| `POST /api/browser/sessions/revoke` | Exactly `{"id":"<22-character selector>"}`; recent authentication required; returns `removed` |
+| `POST /api/browser/logout-all` | Empty object; recent authentication required; removes all own sessions and expires the cookie |
+| `POST /api/browser/auth/reauthenticate/begin` | Empty object; derives the account from a live bearer; returns WebAuthn assertion options |
+| `POST /api/browser/auth/reauthenticate/finish` | Standard WebAuthn assertion; verifies the same account, purpose and original bearer before rotation |
+
+Recent authentication means admission within five minutes, rechecked after account
+lock waits. Old live sessions may list metadata but receive `403` for revocation.
+Missing, expired or revoked bearers receive `401`. Inventory/revocation storage
+failures receive `503`; ceremony admission and verification errors remain opaque.
+Malformed or zero selectors receive `400`. Current, missing, rotated and foreign
+selectors all return `removed: false`, without revealing another account's sessions.
+Mutations publish no successful result before commit. On uncertain outcomes,
+refresh inventory or sign in again, never automatically repeat a mutation.
+
+Reauthentication uses the existing two-minute, single-use ceremony store but is
+purpose-separated from login and bound to the original bearer's SHA-256 digest.
+The verified assertion rotates only that bearer and its selector, preserving its
+absolute expiry and every sibling session. It cannot create a session after
+revocation or extend a one-hour sign-in. No account name, freshness assertion or
+owner override is accepted. The client locks keys before reauthentication and
+requires a separately chosen mutation afterward.
+
+Current-session logout requires an empty JSON object. Sign-out everywhere requires
+explicit browser confirmation and locks local workers before the request. Successful
+logout also attempts a secret-free same-partition notification to clear other identity
+pages. Visible running pages check `/me` every 30 seconds and on foreground/focus;
+an observed `401` locks keys, clears plaintext/passwords and hides account controls.
+These checks are not remote erasure: suspended/offline pages, previously admitted
+work and keys or plaintext already copied elsewhere cannot be recalled. Encrypted
+backups, membership and anonymous receipts are unchanged. No session data enters
+the anonymous origin. See [test evidence](testing.md#connected-browser-mvp-checks).
+
+#### Browser admission and origin boundaries
+
 Authentication begins allow ten attempts per hashed account name per five minutes,
 with at most 1024 in-memory entries, plus 120 global POST requests per minute and
 256 outstanding persisted ceremonies. Rate counters are per process and reset on
@@ -128,17 +172,16 @@ See [deployment](deployment.md#local-development) for limits and configuration.
 ## Endpoint ownership
 
 Internal [session-scoped backup access](database.md#session-scoped-member-backup-access)
-uses existing identity sessions only within Go storage transactions. It introduces
-no HTTP route, cookie encoding, or OpenAPI schema. Recent-authentication admission
-and caller-verified session rotation are internal storage operations, not login or
-reauthentication endpoints.
+uses existing identity sessions within Go storage transactions. The separate browser
+host composes these operations with the authenticated API above; the original
+demonstration commands do not expose them.
 
 Account login, credential management, the eligible-round dashboard, and encrypted
 member-key backup operations belong only to the identity side. Their routes,
-schemas, session/recovery contracts, and wrapping metadata are not specified or
-implemented yet. Do not infer new endpoints from proposed UI paths. Follow the
+schemas and MVP session contract are defined above. Broader recovery and wrapping
+profiles remain unspecified. Do not infer new endpoints from proposed UI paths. Follow the
 [vault requirements](key-management.md#browser-account-vault) before defining them
-in OpenAPI. This documentation change adds no working route or wire format.
+in OpenAPI.
 
 | Origin | Planned endpoints | Input boundary |
 | --- | --- | --- |

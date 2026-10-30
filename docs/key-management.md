@@ -66,6 +66,13 @@ Verify ceremonies on the server under its relying-party rules. A successful
 assertion proves account authentication; it does not expose the authenticator's
 private key or provide an encryption key by itself.
 
+The opt-in browser [session controls](api.md#browser-session-management) reuse that
+verification for expiry-preserving reauthentication. They lock local keys before
+passkey verification and sign-out. Session revocation blocks new server admission;
+same-partition notices and visible-page checks clear observed invalid sessions.
+Neither login nor reauthentication unlocks device keys. Remote/offline erasure,
+key recovery and invalidation of already copied plaintext remain unavailable.
+
 The preferred low-friction unlock candidate is the
 [WebAuthn PRF extension](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/#prf-extension).
 It can provide a credential-specific secret to the browser during a user-approved

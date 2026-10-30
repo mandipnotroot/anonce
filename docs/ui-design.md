@@ -75,6 +75,20 @@ hidden-page state, round expiry, and reviewer-owner replacement stop reading
 instead of being treated as bad answers; no late plaintext or success status is
 displayed.
 
+Active account sessions appear in a separate identity-only section, not submission
+history. A current-session marker and authentication/expiry times avoid claims of
+device identification. Each other session has a labeled sign-out button; sign-out
+everywhere requires an explicit checkbox. A separate passkey verification button
+locks keys and preserves absolute expiry. Verification never automatically repeats
+a failed mutation. Expired admission explains the five-minute requirement; uncertain
+results require refresh or fresh sign-in. See the [session contract](api.md#browser-session-management).
+
+Sign-out and observed session invalidation clear password fields, reviewer plaintext,
+pending local work and account controls. Same-partition pages receive a secret-free
+sign-out notice; visible pages also check sign-in on foreground/focus and every
+30 seconds. The page explicitly warns that offline/suspended pages and remotely
+copied keys or text cannot be erased. Encrypted backups are retained.
+
 Replies, charts, generalized forms, credential/recovery management and advanced
 administration remain excluded. Product screenshots, manual assistive-device,
 contrast, mobile and autofill-provider review remain outstanding. The synthetic

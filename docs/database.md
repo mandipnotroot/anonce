@@ -183,7 +183,9 @@ The returned `SessionInfo` entries contain a non-secret `SessionID`, creation an
 absolute-expiry timestamps, and a `Current` marker. No account ID, token, digest, device ID, IP, user agent,
 or anonymous activity is returned or added to storage. Entries are ordered newest
 first, with expiry and selector tie-breakers; digests never leave the store.
-This is session metadata, not a list of devices or a supported HTTP format.
+This is session metadata, not a list of devices. The separate browser host maps it
+to the [authenticated session API](api.md#browser-session-management); the store's
+Go types are not themselves a wire format.
 Selectors remain stable for a stored row and across authorized bearers. Rotation
 creates a new selector and invalidates the old row; selectors do not identify a
 device across sign-ins. Never accept one as a bearer or put it in anonymous data.
@@ -197,7 +199,8 @@ list without recent authentication. Cancellation or transaction failure returns
 no list. Results are returned only after commit and can immediately become stale;
 cleanup may remove references that expire after admission. Already returned data
 is not recalled by revocation. Hosts still need authentication, protected delivery,
-CSRF protection, and rate limits before exposing session management.
+CSRF protection, and rate limits before exposing session management. The opt-in
+browser host supplies those controls; the original demonstration commands do not.
 
 This follows the existing PostgreSQL 18
 [row-lock](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS) and

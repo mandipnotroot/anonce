@@ -18,6 +18,21 @@ single-use invitations, authorized publication, blind-token quotas, anonymous HP
 answers, signed acceptance and local review. Earlier foundation-only statements
 below continue to describe the original demonstration commands.
 
+The browser [session controls](api.md#browser-session-management) expose only bounded
+own-account inventory. Selected and all-session revocation recheck live ownership
+and five-minute authentication admission after account-lock waits. Passkey
+reauthentication is single-use, purpose/account/original-bearer bound and rotates
+without extending absolute expiry. It cannot revive revoked sessions. Current and
+foreign selectors remove nothing; no device identifiers or anonymous activity are
+collected. HTTP/browser tests are mapped in [testing](testing.md#connected-browser-mvp-checks).
+
+Sign-out locks local workers before transport, and successful sign-out notifies
+same-partition pages to clear local state. Observed `401` responses also lock keys
+and clear plaintext. Foreground checks and a 30-second visible-page heartbeat are
+best-effort observation, not instantaneous distributed cleanup. Network failure,
+suspension, hostile code, copied plaintext and already admitted work remain outside
+this boundary. Session revocation does not revoke membership or erase encrypted backups.
+
 This is source composition, not independent approval. Exact-origin/window checks
 and omitted credentials constrain handoff, not global traffic correlation. The
 website distributor and local host remain trusted. Timing, identifying content and

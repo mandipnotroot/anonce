@@ -248,6 +248,7 @@ func TestBrowserMVP(t *testing.T) {
 	}
 	clear(fixture)
 	t.Log(out.String())
+	t.Run("session-management-http", func(t *testing.T) { testSessionHTTP(t, identityPool, client) })
 	t.Run("runtime-isolation-and-grants", func(t *testing.T) {
 		for _, pool := range []*pgxpool.Pool{identityPool, submissionPool} {
 			var ok bool

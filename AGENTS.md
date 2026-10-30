@@ -20,6 +20,9 @@ Distinguish implemented from planned behavior.
   one-text/one-reviewer/explicit-one-response publication, blind authorization,
   anonymous HPKE answers, signed storage acceptance and local reviewer decryption.
   Identity migration 5 and submission migration 3 connect the existing stores.
+  Browser session controls expose bounded own-account inventory, selected/all-session
+  revocation, expiry-preserving passkey reauthentication and local logout cleanup.
+  Remote revocation does not erase previously loaded keys or plaintext.
   No production readiness, independent approval, transparency-log inclusion, PRF,
   recovery, protected signer custody or reviewer server backup. The original
   demonstration commands remain inert. See the canonical browser startup and API
@@ -94,7 +97,8 @@ Distinguish implemented from planned behavior.
   active-session metadata with non-secret selectors, recently authenticated
   all-sibling or selected-sibling revocation, bearer-derived sign-out everywhere,
   session-authorized atomic account disabling, and bounded expired cleanup;
-  no authentication ceremony, membership, vault, or HTTP integration.
+  no authentication ceremony or membership logic in this package. The separate
+  opt-in browser host composes its session operations with WebAuthn and HTTP.
 - `internal/identity/memberbackup`: development-only account-scoped encrypted
   member-backup slots with fixed public binding, compare-and-swap revisions,
   deletion tombstones, and session-derived access serialized with revocation/disable;
@@ -171,6 +175,7 @@ make docs-external    # check externally hosted references
 make workflow-lint    # pinned actionlint; requires Go
 make build            # build the local demonstration commands
 make test             # race tests and coverage report
+make browser-session-test # browser session-control lifecycle and bounded UI checks
 make lint             # Go analysis, formatting, and module checks
 make fuzz             # bounded configuration, shell-route, backup, key, and CLI parser fuzzing
 make vuln             # Go vulnerability, static security, and secret checks

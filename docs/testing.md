@@ -33,6 +33,31 @@ local reviewer decryption. Wire inspection rejects passphrases, plaintext answer
 account cookies/referrers and unexpected origins. PostgreSQL subtests cover
 persistence, isolation, grants, enrollment races and quota persistence across sessions.
 
+Session checks use two independently authenticated browser contexts and a shared
+partition tab, inspect session-control accessible names and activate verification
+with Enter. Real passkey reauthentication changes the current selector without
+extending expiry or changing siblings, rejects login-purpose confusion, and leaves
+local member keys locked. Selected revocation and confirmed sign-out everywhere
+exercise foreground invalidation, same-partition state clearing, later verified
+sign-in and unchanged encrypted backup storage. Synthetic virtual authenticators
+share test credentials with synchronized counters; no authentication bypass is added.
+
+`session-management-http` exercises actual TLS/CSRF and runtime-role storage for
+bounded metadata, absent/revoked bearers, current/foreign/stale selectors, historical
+authentication rejection and account-isolated sign-out. Existing account-store
+PostgreSQL tests retain lock-wait, race and cancellation coverage. The separate
+`make browser-session-test`, also in `make check`, runs Node lifecycle tests for
+confirmation, single-flight actions, local locking, uncertain failures, no automatic
+retry, delayed-result rejection, visible-page observation and bounded inventory
+validation. `TestSessionHTTPAdmission` and `FuzzSessionSelectorHTTP` exercise bounded
+HTTP selector admission without a database; the fuzz target is included in `make fuzz`.
+The nested `reauthentication-binding-and-consumption` HTTP case rejects swapped
+same-account bearers, missing bearers, login-purpose confusion, malformed/replayed
+assertions and revocation during a ceremony without changing remaining sessions.
+
+These checks do not demonstrate instantaneous remote erasure, offline/suspended-page
+cleanup, a supported-browser matrix or manual accessibility approval.
+
 Native `TestProfileJourney`, `TestEnvelopeIsolation`, `TestBulletinBounds`,
 `FuzzProfileRejection`, `TestIdentityGate`, `TestCookieEncoding` and
 `TestAuthenticationLimiter` cover composition/admission. Existing member worker and

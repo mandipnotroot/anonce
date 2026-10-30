@@ -19,7 +19,10 @@ export async function api(path, body, origin = "", signal) {
   const identity = document.body.hasAttribute("data-identity");
   const response = await fetch(origin + path, { method: body === undefined ? "GET" : "POST", credentials: local && identity ? "same-origin" : "omit", redirect: "error", referrerPolicy: "no-referrer", cache: "no-store", signal,
     headers: body === undefined ? {} : { "Content-Type": "application/json", ...(local && identity ? { "X-Anonce-CSRF": "1" } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
-  if (!response.ok) throw Object.assign(new Error("Operation failed."), {status: response.status});
+  if (!response.ok) {
+    if (response.status === 401 && local && identity) dispatchEvent(new Event("anonce-session-ended"));
+    throw Object.assign(new Error("Operation failed."), {status: response.status});
+  }
   const reader = response.body.getReader(); let size = 0; const chunks = [];
   try { while (true) { const {value, done} = await reader.read(); if (done) break; size += value.length; if (size > 400000) throw new Error("oversized response"); chunks.push(value); } } finally { await reader.cancel(); }
   const bytes = new Uint8Array(size); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
